@@ -8,14 +8,23 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)
 
 ---
 
+## [2.3.1] - 2026-08-31
+### 📺 Supporto Ufficiale Toyota Touch 3 (Display Audio - Senza Mappe)
+#### Added
+- **Modulo Specifico per Infotainment Toyota Touch 3 (Display Audio MM19)**:
+  - **Animazione di Avvio Schermo**: Scelta tra **🏁 Toyota Gazoo Racing (GR)**, **⚡ Hybrid Synergy Drive** e **Standard Toyota**.
+  - **ASL (Auto Sound Levelizer)**: Compensazione automatica del volume audio in base alla velocità reale e al rumore di rotolamento (OFF, Basso, Medio, Alto).
+  - **Disattivazione Bip Schermo & Tasti Fisici**: Silenziamento completo del segnale sonoro alla pressione dello schermo e dei tasti fisici `AUDIO`, `MENU`, `HOME`.
+  - **Ritardo Spegnimento Retrocamera in Manovra**: Mantiene la visuale posteriore per 5 secondi in marcia D.
+
+---
+
 ## [2.3.0] - 2026-08-31
 ### 🖥️ Supporto Ufficiale Toyota Yaris MK4 MY2025 (Smart Connect & Digital Cockpit 7.0")
 #### Added
 - **Modulo Esclusivo per Yaris Restyling MY2025 (Allestimento Trend / Lounge)**:
-  - **Quadro Strumenti Digitale 7.0" (Digital Cockpit)**: Selezione rapida del layout quadranti tra **🏁 Sport GR (Rosso & Barre Potenza kW)**, **Smart (Minimal Ciano)**, **Casual (Standard)** e **Tough**.
-  - **Disattivazione Bip Limiti di Velocità ISA / Cartelli RSA**: Eliminazione del cicalino continuo di superamento limite introdotto con la nuova normativa europea ISA (opzioni: *Muto / Solo Visivo*, *Bip Basso*, *Standard*).
-  - **Retrocamera HD con Ritardo Spegnimento in Manovra**: Mantiene la visuale della telecamera attiva per 5 secondi anche dopo aver inserito la marcia `D`.
-  - **Disattivazione Bip Schermo 9.0" HD**: Silenziamento completo del segnale sonoro alla pressione dei comandi del nuovo infotainment Toyota Smart Connect.
+  - **Quadro Strumenti Digitale 7.0" (Digital Cockpit)**: Selezione rapida del layout quadranti tra **🏁 Sport GR**, **Smart**, **Casual** e **Tough**.
+  - **Disattivazione Bip Limiti di Velocità ISA / Cartelli RSA**: Eliminazione del cicalino continuo sui limiti stradali.
 
 ---
 
@@ -43,13 +52,3 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)
 - **Telemetria Motore & Anticipo Termico**: Anticipo reale (`PID 010E` °BTDC), carico motore (%) e pedale gas (%).
 - **Firma Digitale RSA 2048-bit**: Certificato di sicurezza per Android V1/V2/V3.
 - **Portale Web Mobile-Friendly**: Download diretto APK con barra sticky 1-tap.
-
----
-
-## [1.0.0] - 2026-08-31
-### 🌀 Initial Production Release
-#### Added
-- **Forzatura Ventola Batteria Denso HV**: Controllo Mode 30/2F a 12V Livello 6 (100% MAX).
-- **Lettura Termica Moduli Batteria**: Monitoraggio 4 sonde celle e canale aspirazione (`PID 2228C1`).
-- **Analisi Warm-Up Termico HSD (S0 ➔ S4)**: Tracciamento liquido (ECT), aria (IAT) e giri (RPM).
-- **Foreground Service Persistente**: Funzionamento continuo in background con Google Maps / Waze.

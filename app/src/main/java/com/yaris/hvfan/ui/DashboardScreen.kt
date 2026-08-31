@@ -1229,7 +1229,7 @@ fun EcuCodingSection(
             }
         }
 
-                // --- Category 0: 🖥️ TOYOTA SMART CONNECT & DIGITAL CLUSTER (MY2025 TREND) ---
+                        // --- Category 0: 📺 TOYOTA TOUCH 3 (DISPLAY AUDIO - SENZA MAPPE) ---
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
@@ -1255,7 +1255,7 @@ fun EcuCodingSection(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "🖥️ SMART CONNECT & CLUSTER MY2025",
+                            text = "📺 TOYOTA TOUCH 3 (DISPLAY AUDIO)",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Black,
                             color = AccentCyan,
@@ -1268,7 +1268,7 @@ fun EcuCodingSection(
                         color = Color(0xFFFF1801).copy(alpha = 0.2f)
                     ) {
                         Text(
-                            text = "TREND 2025",
+                            text = "TOUCH 3",
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Black,
@@ -1279,9 +1279,9 @@ fun EcuCodingSection(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Layout Digital Cockpit 7"
+                // Animazione di Avvio Schermo
                 Text(
-                    text = "Layout Quadrante Quadro Strumenti Digitale (7.0")",
+                    text = "Animazione di Avvio Schermo Display (Opening Screen)",
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary
@@ -1289,42 +1289,36 @@ fun EcuCodingSection(
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     PresetButton(
-                        label = "🏁 Sport GR",
-                        isSelected = stateDraft.clusterTheme == DigitalClusterTheme.SPORT_GR,
+                        label = "🏁 Gazoo Racing (GR)",
+                        isSelected = stateDraft.touch3OpeningAnimation == Touch3OpeningScreen.GAZOO_RACING,
+                        modifier = Modifier.weight(1.3f),
+                        onClick = { stateDraft = stateDraft.copy(touch3OpeningAnimation = Touch3OpeningScreen.GAZOO_RACING) }
+                    )
+                    PresetButton(
+                        label = "⚡ Hybrid Synergy",
+                        isSelected = stateDraft.touch3OpeningAnimation == Touch3OpeningScreen.HYBRID_SYNERGY,
                         modifier = Modifier.weight(1.1f),
-                        onClick = { stateDraft = stateDraft.copy(clusterTheme = DigitalClusterTheme.SPORT_GR) }
+                        onClick = { stateDraft = stateDraft.copy(touch3OpeningAnimation = Touch3OpeningScreen.HYBRID_SYNERGY) }
                     )
                     PresetButton(
-                        label = "Smart",
-                        isSelected = stateDraft.clusterTheme == DigitalClusterTheme.SMART,
-                        modifier = Modifier.weight(1f),
-                        onClick = { stateDraft = stateDraft.copy(clusterTheme = DigitalClusterTheme.SMART) }
-                    )
-                    PresetButton(
-                        label = "Casual",
-                        isSelected = stateDraft.clusterTheme == DigitalClusterTheme.CASUAL,
-                        modifier = Modifier.weight(1f),
-                        onClick = { stateDraft = stateDraft.copy(clusterTheme = DigitalClusterTheme.CASUAL) }
-                    )
-                    PresetButton(
-                        label = "Tough",
-                        isSelected = stateDraft.clusterTheme == DigitalClusterTheme.TOUGH,
-                        modifier = Modifier.weight(1f),
-                        onClick = { stateDraft = stateDraft.copy(clusterTheme = DigitalClusterTheme.TOUGH) }
+                        label = "Standard",
+                        isSelected = stateDraft.touch3OpeningAnimation == Touch3OpeningScreen.STANDARD_TOYOTA,
+                        modifier = Modifier.weight(0.9f),
+                        onClick = { stateDraft = stateDraft.copy(touch3OpeningAnimation = Touch3OpeningScreen.STANDARD_TOYOTA) }
                     )
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // ISA Bip Segnali Stradali RSA
+                // ASL Auto Sound Levelizer
                 Text(
-                    text = "Bip Segnali Stradali RSA / Limiti Velocità (Normativa ISA)",
+                    text = "ASL: Volume Audio Automatico in Base alla Velocità",
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary
                 )
                 Text(
-                    text = "Permette di eliminare il continuo bip sonoro quando si superano di 1 km/h i limiti rilevati dai cartelli",
+                    text = "Compensa il rumore di rotolamento delle gomme aumentando il volume in autostrada",
                     fontSize = 11.sp,
                     color = TextSecondary,
                     lineHeight = 15.sp,
@@ -1333,30 +1327,36 @@ fun EcuCodingSection(
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     PresetButton(
-                        label = "🔇 Muto (Consigliato)",
-                        isSelected = stateDraft.rsaSpeedLimitBeep == RsaSpeedBeepMode.MUTE,
-                        modifier = Modifier.weight(1.3f),
-                        onClick = { stateDraft = stateDraft.copy(rsaSpeedLimitBeep = RsaSpeedBeepMode.MUTE) }
+                        label = "OFF",
+                        isSelected = stateDraft.aslVolumeMode == AslVolumeMode.OFF,
+                        modifier = Modifier.weight(0.8f),
+                        onClick = { stateDraft = stateDraft.copy(aslVolumeMode = AslVolumeMode.OFF) }
                     )
                     PresetButton(
-                        label = "Bip Basso",
-                        isSelected = stateDraft.rsaSpeedLimitBeep == RsaSpeedBeepMode.LOW,
+                        label = "Basso",
+                        isSelected = stateDraft.aslVolumeMode == AslVolumeMode.LOW,
                         modifier = Modifier.weight(1f),
-                        onClick = { stateDraft = stateDraft.copy(rsaSpeedLimitBeep = RsaSpeedBeepMode.LOW) }
+                        onClick = { stateDraft = stateDraft.copy(aslVolumeMode = AslVolumeMode.LOW) }
                     )
                     PresetButton(
-                        label = "Standard",
-                        isSelected = stateDraft.rsaSpeedLimitBeep == RsaSpeedBeepMode.STANDARD,
+                        label = "Medio (Ideale)",
+                        isSelected = stateDraft.aslVolumeMode == AslVolumeMode.MID,
+                        modifier = Modifier.weight(1.2f),
+                        onClick = { stateDraft = stateDraft.copy(aslVolumeMode = AslVolumeMode.MID) }
+                    )
+                    PresetButton(
+                        label = "Alto",
+                        isSelected = stateDraft.aslVolumeMode == AslVolumeMode.HIGH,
                         modifier = Modifier.weight(1f),
-                        onClick = { stateDraft = stateDraft.copy(rsaSpeedLimitBeep = RsaSpeedBeepMode.STANDARD) }
+                        onClick = { stateDraft = stateDraft.copy(aslVolumeMode = AslVolumeMode.HIGH) }
                     )
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Retrocamera HD Delay
+                // Retrocamera Delay
                 Text(
-                    text = "Ritardo Spegnimento Retrocamera HD in Manovra",
+                    text = "Ritardo Spegnimento Retrocamera in Manovra",
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary
@@ -1380,7 +1380,7 @@ fun EcuCodingSection(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 CodingSwitchRow(
-                    label = "Bip di Feedback al Tocco Schermo 9.0" HD",
+                    label = "Bip di Feedback al Tocco Schermo & Tasti Fisici",
                     checked = stateDraft.touchScreenBeep,
                     onCheckedChange = { stateDraft = stateDraft.copy(touchScreenBeep = it) }
                 )

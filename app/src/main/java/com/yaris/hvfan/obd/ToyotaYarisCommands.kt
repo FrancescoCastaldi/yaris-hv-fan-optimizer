@@ -65,6 +65,19 @@ data class HvBatteryStatus(
 
 
 
+enum class Touch3OpeningScreen(val label: String, val code: String) {
+    GAZOO_RACING("🏁 Toyota Gazoo Racing (GR)", "01"),
+    HYBRID_SYNERGY("⚡ Hybrid Synergy Drive", "02"),
+    STANDARD_TOYOTA("Toyota Standard", "00")
+}
+
+enum class AslVolumeMode(val label: String, val code: String) {
+    OFF("Disattivato", "00"),
+    LOW("Basso", "01"),
+    MID("Medio (Consigliato)", "02"),
+    HIGH("Alto (Autostrada)", "03")
+}
+
 enum class DigitalClusterTheme(val label: String, val code: String) {
     SPORT_GR("Sport / Gazoo Racing (Rosso & kW)", "01"),
     SMART("Smart (Minimal Ciano)", "02"),
@@ -120,6 +133,8 @@ enum class FollowMeHomeDuration(val label: String, val seconds: Int, val code: S
 
 data class EcuCustomizationState(
     // 0. Toyota Smart Connect & Digital Cockpit (MY2025 Exclusive)
+    val touch3OpeningAnimation: Touch3OpeningScreen = Touch3OpeningScreen.GAZOO_RACING,
+    val aslVolumeMode: AslVolumeMode = AslVolumeMode.MID,
     val clusterTheme: DigitalClusterTheme = DigitalClusterTheme.SPORT_GR,
     val rsaSpeedLimitBeep: RsaSpeedBeepMode = RsaSpeedBeepMode.MUTE,
     val touchScreenBeep: Boolean = false,
