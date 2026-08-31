@@ -2,6 +2,9 @@ package com.yaris.hvfan.ui
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import com.yaris.hvfan.R
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -64,6 +67,8 @@ fun DashboardScreen(
         ),
         label = "PulseScale"
     )
+
+    val isDeviceConnected = connectionState is BleConnectionState.Ready && liveState.isInitialized
 
     Column(
         modifier = Modifier
@@ -207,12 +212,14 @@ fun DashboardScreen(
                 DashboardTab.GR_COCKPIT -> {
                     GrCockpitSection(
                         liveState = liveState,
+                        isConnected = isDeviceConnected,
                         pulseScale = pulseScale
                     )
                 }
                 DashboardTab.FAN_CONTROL -> {
                     FanManagementSection(
                         liveState = liveState,
+                        isConnected = isDeviceConnected,
                         pulseScale = pulseScale,
                         onThresholdChanged = onThresholdChanged,
                         onForcedFanToggle = onForcedFanToggle
@@ -347,11 +354,12 @@ fun DashboardScreen(
 @Composable
 fun GrCockpitSection(
     liveState: ObdLiveState,
+    isConnected: Boolean,
     pulseScale: Float
 ) {
     val perf = liveState.performanceStatus
     val accel = liveState.accelerationState
-    val isFullBoost = !liveState.batteryStatus.isThermalThrottled && (liveState.warmupStatus.stage == WarmupStage.S4 || liveState.warmupStatus.stage == WarmupStage.S2)
+    val isFullBoost = isConnected && !liveState.batteryStatus.isThermalThrottled && (liveState.warmupStatus.stage == WarmupStage.S4 || liveState.warmupStatus.stage == WarmupStage.S2)
 
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
 
@@ -377,29 +385,26 @@ fun GrCockpitSection(
                             modifier = Modifier
                                 .size(10.dp)
                                 .clip(CircleShape)
-                                .background(Color(0xFFFF1801))
+                                .background(if (isConnected) Color(0xFFFF1801) else TextSecondary)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = "GAZOO RACING TELEMETRY",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Black,
-                            color = Color(0xFFFF5252),
+                            color = if (isConnected) Color(0xFFFF5252) else TextSecondary,
                             letterSpacing = 1.sp
                         )
                     }
 
-                    val badgeColor = when {
-                        accel.isLaunchReady -> SuccessGreen
-                        accel.isTimingActive -> WarningOrange
-                        isFullBoost -> AccentCyan
-                        else -> WarningOrange
-                    }
-                    val badgeText = when {
-                        accel.isLaunchReady -> "🟢 LAUNCH READY"
-                        accel.isTimingActive -> "⏱️ SCATTO ATTIVO"
-                        isFullBoost -> "⚡ 59 kW FULL BOOST"
-                        else -> "⚠️ DERATING ATTIVO"
+                    // Strict Disconnected / Connected State Handling
+                    val (badgeColor, badgeText) = when {
+                        !isConnected -> Pair(TextSecondary, "🔌 IN ATTESA OBD")
+                        accel.isLaunchReady -> Pair(SuccessGreen, "🟢 LAUNCH READY")
+                        accel.isTimingActive -> Pair(WarningOrange, "⏱️ SCATTO ATTIVO")
+                        isFullBoost -> Pair(AccentCyan, "⚡ 59 kW FULL BOOST")
+                        liveState.batteryStatus.isThermalThrottled -> Pair(DangerRed, "⚠️ TAGLIO TERMICO")
+                        else -> Pair(AccentCyan, "⚡ IBRIDO PRONTO")
                     }
 
                     Surface(
@@ -443,17 +448,17 @@ fun GrCockpitSection(
                             )
                             Row(verticalAlignment = Alignment.Bottom) {
                                 Text(
-                                    text = "${accel.currentSpeedKmh}",
+                                    text = if (isConnected) "${accel.currentSpeedKmh}" else "--",
                                     fontSize = 52.sp,
                                     fontWeight = FontWeight.Black,
-                                    color = if (accel.currentSpeedKmh > 0) Color.White else TextSecondary,
+                                    color = if (isConnected && accel.currentSpeedKmh > 0) Color.White else TextSecondary,
                                     fontFamily = FontFamily.Monospace
                                 )
                                 Text(
                                     text = " km/h",
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFFF5252),
+                                    color = if (isConnected) Color(0xFFFF5252) else TextSecondary,
                                     modifier = Modifier.padding(bottom = 8.dp)
                                 )
                             }
@@ -469,21 +474,29 @@ fun GrCockpitSection(
                         // Live Sprint Timer
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
-                                text = if (accel.isTimingActive) "SCATTO IN CORSO" else "ULTIMO TEMPO",
+                                text = when {
+                                    !isConnected -> "TIMER STANDBY"
+                                    accel.isTimingActive -> "SCATTO IN CORSO"
+                                    else -> "ULTIMO TEMPO"
+                                },
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (accel.isTimingActive) WarningOrange else TextSecondary,
                                 letterSpacing = 1.sp
                             )
                             Text(
-                                text = if (accel.isTimingActive) {
-                                    String.format("%.2fs", accel.elapsedMs / 1000f)
-                                } else if (accel.last0to100TimeSec != null) {
-                                    String.format("%.2fs", accel.last0to100TimeSec)
-                                } else "--.--s",
+                                text = when {
+                                    accel.isTimingActive -> String.format("%.2fs", accel.elapsedMs / 1000f)
+                                    accel.last0to100TimeSec != null -> String.format("%.2fs", accel.last0to100TimeSec)
+                                    else -> "--.--s"
+                                },
                                 fontSize = 36.sp,
                                 fontWeight = FontWeight.Black,
-                                color = if (accel.isTimingActive) WarningOrange else SuccessGreen,
+                                color = when {
+                                    accel.isTimingActive -> WarningOrange
+                                    accel.last0to100TimeSec != null -> SuccessGreen
+                                    else -> TextSecondary
+                                },
                                 fontFamily = FontFamily.Monospace
                             )
                         }
@@ -528,7 +541,7 @@ fun GrCockpitSection(
                     Icon(
                         imageVector = Icons.Default.Tune,
                         contentDescription = null,
-                        tint = AccentCyan,
+                        tint = if (isConnected) AccentCyan else TextSecondary,
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
@@ -549,20 +562,20 @@ fun GrCockpitSection(
                 ) {
                     TelemetryChip(
                         label = "Anticipo (°BTDC)",
-                        value = if (perf.hasLiveData) "${String.format("%.1f", perf.timingAdvance)}°" else "--",
-                        highlight = perf.hasLiveData && perf.timingAdvance >= 15f,
+                        value = if (isConnected && perf.hasLiveData) "${String.format("%.1f", perf.timingAdvance)}°" else "--",
+                        highlight = isConnected && perf.hasLiveData && perf.timingAdvance >= 15f,
                         modifier = Modifier.weight(1f)
                     )
                     TelemetryChip(
                         label = "Carico Termico",
-                        value = if (perf.hasLiveData) "${perf.engineLoadPercent.toInt()}%" else "--",
-                        highlight = perf.hasLiveData && perf.engineLoadPercent > 70f,
+                        value = if (isConnected && perf.hasLiveData) "${perf.engineLoadPercent.toInt()}%" else "--",
+                        highlight = isConnected && perf.hasLiveData && perf.engineLoadPercent > 70f,
                         modifier = Modifier.weight(1f)
                     )
                     TelemetryChip(
                         label = "Pedale Gas",
-                        value = if (perf.hasLiveData) "${perf.throttlePercent.toInt()}%" else "--",
-                        highlight = perf.hasLiveData && perf.throttlePercent > 50f,
+                        value = if (isConnected && perf.hasLiveData) "${perf.throttlePercent.toInt()}%" else "--",
+                        highlight = isConnected && perf.hasLiveData && perf.throttlePercent > 50f,
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -579,14 +592,18 @@ fun GrCockpitSection(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            imageVector = Icons.Default.CheckCircle,
+                            imageVector = if (isConnected) Icons.Default.CheckCircle else Icons.Default.Info,
                             contentDescription = null,
-                            tint = SuccessGreen,
+                            tint = if (isConnected) SuccessGreen else TextSecondary,
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Raffreddamento forzato attivo: zero calo di tensione per la batteria e 100% di coppia elettrica MG2 pronta.",
+                            text = if (isConnected) {
+                                "Raffreddamento forzato attivo: zero calo di tensione per la batteria e 100% di coppia elettrica MG2 pronta."
+                            } else {
+                                "Collega il dongle OBD-II per attivare il monitoraggio dell'anticipo e il controllo della ventola."
+                            },
                             fontSize = 11.sp,
                             lineHeight = 15.sp,
                             color = TextPrimary
@@ -606,11 +623,12 @@ fun GrCockpitSection(
 @Composable
 fun FanManagementSection(
     liveState: ObdLiveState,
+    isConnected: Boolean,
     pulseScale: Float,
     onThresholdChanged: (Int) -> Unit,
     onForcedFanToggle: (Boolean) -> Unit
 ) {
-    val isFanMax = liveState.batteryStatus.isFanForced || liveState.fanForcedMax
+    val isFanMax = isConnected && (liveState.batteryStatus.isFanForced || liveState.fanForcedMax)
     val activeBgGradient = Brush.horizontalGradient(
         colors = listOf(Color(0xFF0066FF), Color(0xFF00E5FF))
     )
@@ -631,7 +649,7 @@ fun FanManagementSection(
                     color = if (isFanMax) AccentCyan else DividerColor,
                     shape = RoundedCornerShape(24.dp)
                 )
-                .clickable { onForcedFanToggle(!isFanMax) },
+                .clickable { onForcedFanToggle(!liveState.fanForcedMax) },
             color = Color.Transparent
         ) {
             Box(
@@ -669,14 +687,22 @@ fun FanManagementSection(
 
                         Column {
                             Text(
-                                text = if (isFanMax) "VENTOLA HV AL 100%" else "VENTOLA AUTOMATICA",
-                                fontSize = 18.sp,
+                                text = when {
+                                    !isConnected && liveState.fanForcedMax -> "FORZATURA ARMATA (IN ATTESA LINK)"
+                                    isFanMax -> "VENTOLA HV AL 100%"
+                                    else -> "VENTOLA AUTOMATICA"
+                                },
+                                fontSize = 17.sp,
                                 fontWeight = FontWeight.Black,
                                 color = if (isFanMax) Color.White else TextPrimary,
                                 letterSpacing = 0.5.sp
                             )
                             Text(
-                                text = if (isFanMax) "Forzatura Livello 6 Attiva (Mode 30)" else "Attiva oltre la soglia impostata",
+                                text = when {
+                                    !isConnected -> "Si attiverà al Livello 6 appena connesso"
+                                    isFanMax -> "Forzatura Livello 6 Attiva (Mode 30/2F)"
+                                    else -> "Attiva oltre la soglia impostata"
+                                },
                                 fontSize = 12.sp,
                                 color = if (isFanMax) Color.White.copy(alpha = 0.85f) else TextSecondary
                             )
@@ -684,7 +710,7 @@ fun FanManagementSection(
                     }
 
                     Switch(
-                        checked = isFanMax,
+                        checked = liveState.fanForcedMax,
                         onCheckedChange = { onForcedFanToggle(it) },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = Color.White,
@@ -721,16 +747,24 @@ fun FanManagementSection(
                         letterSpacing = 1.sp
                     )
 
+                    // Strict Disconnected Check for Battery Status Badge
+                    val (batBadgeColor, batBadgeText) = when {
+                        !isConnected -> Pair(TextSecondary, "IN ATTESA DATI")
+                        liveState.batteryStatus.maxTemp >= 36.0 -> Pair(DangerRed, "⚠️ TAGLIO TERMICO (>36°)")
+                        liveState.batteryStatus.maxTemp > 30.0 -> Pair(WarningOrange, "CALORE ELEVATO")
+                        else -> Pair(SuccessGreen, "STATO OTTIMALE")
+                    }
+
                     Surface(
                         shape = RoundedCornerShape(10.dp),
-                        color = if (liveState.batteryStatus.maxTemp > 35.0) WarningOrange.copy(alpha = 0.2f) else SuccessGreen.copy(alpha = 0.2f)
+                        color = batBadgeColor.copy(alpha = 0.2f)
                     ) {
                         Text(
-                            text = if (liveState.batteryStatus.maxTemp > 35.0) "ATTENZIONE CALORE" else "STATO OTTIMALE",
+                            text = batBadgeText,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (liveState.batteryStatus.maxTemp > 35.0) WarningOrange else SuccessGreen
+                            color = batBadgeColor
                         )
                     }
                 }
@@ -744,11 +778,13 @@ fun FanManagementSection(
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = if (liveState.isInitialized) "${String.format("%.1f", liveState.batteryStatus.maxTemp)}°C" else "--",
+                            text = if (isConnected && liveState.batteryStatus.maxTemp > 0.0) {
+                                "${String.format("%.1f", liveState.batteryStatus.maxTemp)}°C"
+                            } else "--",
                             fontSize = 38.sp,
                             fontWeight = FontWeight.Black,
                             color = when {
-                                !liveState.isInitialized -> TextSecondary
+                                !isConnected -> TextSecondary
                                 liveState.batteryStatus.maxTemp >= 35.0 -> WarningOrange
                                 else -> AccentCyan
                             },
@@ -770,10 +806,10 @@ fun FanManagementSection(
 
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = if (liveState.isInitialized) "LIVELLO ${liveState.batteryStatus.fanSpeedLevel}" else "OFF",
+                            text = if (isConnected) "LIVELLO ${liveState.batteryStatus.fanSpeedLevel}" else "OFF",
                             fontSize = 24.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (liveState.batteryStatus.fanSpeedLevel > 0) SuccessGreen else TextSecondary,
+                            color = if (isConnected && liveState.batteryStatus.fanSpeedLevel > 0) SuccessGreen else TextSecondary,
                             fontFamily = FontFamily.Monospace
                         )
                         Text(
@@ -799,22 +835,24 @@ fun FanManagementSection(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    SensorItem(label = "Mod. 1", value = liveState.batteryStatus.temp1, isReady = liveState.isInitialized)
-                    SensorItem(label = "Mod. 2", value = liveState.batteryStatus.temp2, isReady = liveState.isInitialized)
-                    SensorItem(label = "Mod. 3", value = liveState.batteryStatus.temp3, isReady = liveState.isInitialized)
-                    SensorItem(label = "Mod. 4", value = liveState.batteryStatus.temp4, isReady = liveState.isInitialized)
-                    SensorItem(label = "Aspiraz.", value = liveState.batteryStatus.intakeTemp, isReady = liveState.isInitialized)
+                    SensorItem(label = "Mod. 1", value = liveState.batteryStatus.temp1, isReady = isConnected && liveState.batteryStatus.temp1 > 0.0)
+                    SensorItem(label = "Mod. 2", value = liveState.batteryStatus.temp2, isReady = isConnected && liveState.batteryStatus.temp2 > 0.0)
+                    SensorItem(label = "Mod. 3", value = liveState.batteryStatus.temp3, isReady = isConnected && liveState.batteryStatus.temp3 > 0.0)
+                    SensorItem(label = "Mod. 4", value = liveState.batteryStatus.temp4, isReady = isConnected && liveState.batteryStatus.temp4 > 0.0)
+                    SensorItem(label = "Aspiraz.", value = liveState.batteryStatus.intakeTemp, isReady = isConnected && liveState.batteryStatus.intakeTemp > 0.0)
                 }
             }
         }
 
         // --- WARM-UP STAGES & EFFICIENCY TIPS CARD ---
         val warmup = liveState.warmupStatus
-        val stageColor = when (warmup.stage) {
-            WarmupStage.S0, WarmupStage.S1A -> WarningOrange
-            WarmupStage.S1B, WarmupStage.S2 -> Color(0xFFFFEB3B)
-            WarmupStage.S3 -> AccentCyan
-            WarmupStage.S4 -> SuccessGreen
+        val stageColor = when {
+            !isConnected || !warmup.hasLiveData -> TextSecondary
+            warmup.stage == WarmupStage.S0 || warmup.stage == WarmupStage.S1A -> WarningOrange
+            warmup.stage == WarmupStage.S1B || warmup.stage == WarmupStage.S2 -> Color(0xFFFFEB3B)
+            warmup.stage == WarmupStage.S3 -> AccentCyan
+            warmup.stage == WarmupStage.S4 -> SuccessGreen
+            else -> TextSecondary
         }
 
         Card(
@@ -854,7 +892,7 @@ fun FanManagementSection(
                         color = stageColor.copy(alpha = 0.2f)
                     ) {
                         Text(
-                            text = warmup.stage.name,
+                            text = if (isConnected && warmup.hasLiveData) warmup.stage.name else "STANDBY",
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Black,
@@ -866,13 +904,17 @@ fun FanManagementSection(
                 Spacer(modifier = Modifier.height(14.dp))
 
                 Text(
-                    text = warmup.stage.title,
+                    text = if (isConnected && warmup.hasLiveData) warmup.stage.title else "In attesa telemetria termica...",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Black,
                     color = TextPrimary
                 )
                 Text(
-                    text = "${warmup.stage.subtitle} (${warmup.stage.targetTempDescription})",
+                    text = if (isConnected && warmup.hasLiveData) {
+                        "${warmup.stage.subtitle} (${warmup.stage.targetTempDescription})"
+                    } else {
+                        "Accendi il quadro vettura o connetti l'adattatore OBD per rilevare la fase HSD."
+                    },
                     fontSize = 12.sp,
                     color = TextSecondary,
                     lineHeight = 16.sp
@@ -887,27 +929,27 @@ fun FanManagementSection(
                 ) {
                     TelemetryChip(
                         label = "Liquido (ECT)",
-                        value = if (warmup.hasLiveData) "${warmup.coolantTemp.toInt()}°C" else "--",
-                        highlight = warmup.hasLiveData && warmup.coolantTemp >= 73f,
+                        value = if (isConnected && warmup.hasLiveData) "${warmup.coolantTemp.toInt()}°C" else "--",
+                        highlight = isConnected && warmup.hasLiveData && warmup.coolantTemp >= 73f,
                         modifier = Modifier.weight(1f)
                     )
                     TelemetryChip(
                         label = "Aria Est. (IAT)",
-                        value = if (warmup.hasLiveData) "${warmup.ambientTemp.toInt()}°C" else "--",
+                        value = if (isConnected && warmup.hasLiveData) "${warmup.ambientTemp.toInt()}°C" else "--",
                         highlight = false,
                         modifier = Modifier.weight(1f)
                     )
                     TelemetryChip(
                         label = "Giri Motore",
-                        value = if (warmup.hasLiveData) {
+                        value = if (isConnected && warmup.hasLiveData) {
                             if (warmup.engineRpm > 0) "${warmup.engineRpm}" else "EV / Spento"
                         } else "--",
-                        highlight = warmup.hasLiveData && warmup.engineRpm == 0 && warmup.stage == WarmupStage.S4,
+                        highlight = isConnected && warmup.hasLiveData && warmup.engineRpm == 0 && warmup.stage == WarmupStage.S4,
                         modifier = Modifier.weight(1.1f)
                     )
                 }
 
-                if (warmup.recommendations.isNotEmpty()) {
+                if (isConnected && warmup.recommendations.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(14.dp))
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
@@ -1033,37 +1075,21 @@ fun FanManagementSection(
 @Composable
 fun GazooRacingLogoBadge() {
     Surface(
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(10.dp),
         color = Color.Black,
         border = BorderStroke(1.dp, Color(0xFF3A4456))
     ) {
-        Row(
+        Box(
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
+            contentAlignment = Alignment.Center
         ) {
-            // White G box
-            Text(
-                text = "G",
-                color = Color.White,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Black,
-                fontFamily = FontFamily.Monospace
+            Image(
+                painter = painterResource(id = R.drawable.ic_gr_logo),
+                contentDescription = "Toyota Gazoo Racing GR Logo",
+                modifier = Modifier
+                    .width(42.dp)
+                    .height(20.dp)
             )
-            // Red R box
-            Surface(
-                shape = RoundedCornerShape(3.dp),
-                color = Color(0xFFFF1801),
-                modifier = Modifier.padding(start = 2.dp)
-            ) {
-                Text(
-                    text = "R",
-                    color = Color.White,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Black,
-                    fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.padding(horizontal = 3.dp, vertical = 0.dp)
-                )
-            }
         }
     }
 }
@@ -1163,7 +1189,7 @@ fun SensorItem(label: String, value: Double, isReady: Boolean) {
             text = if (isReady) "${value.toInt()}°" else "--",
             fontSize = 16.sp,
             fontWeight = FontWeight.Bold,
-            color = TextPrimary
+            color = if (isReady) TextPrimary else TextSecondary
         )
     }
 }
