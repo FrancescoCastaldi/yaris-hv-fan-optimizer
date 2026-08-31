@@ -12,6 +12,7 @@ data class ObdLiveState(
     val isLoopRunning: Boolean = false,
     val batteryStatus: HvBatteryStatus = HvBatteryStatus(),
     val warmupStatus: HybridWarmupStatus = HybridWarmupStatus(),
+    val performanceStatus: EnginePerformanceStatus = EnginePerformanceStatus(),
     val targetThreshold: Int = 20,
     val fanForcedMax: Boolean = true,
     val lastLogMessage: String = "In attesa di connessione...",
@@ -34,9 +35,12 @@ class ObdController(
     private var loopJob: Job? = null
     private var isProtocolInitialized = false
     private var cycleCounter = 0
-    private var lastKnownCoolant = 20f
-    private var lastKnownAmbient = 20f
+    private var lastKnownCoolant = 0f
+    private var lastKnownAmbient = 0f
     private var lastKnownRpm = 0
+    private var lastKnownAdvance = 0f
+    private var lastKnownLoad = 0f
+    private var lastKnownThrottle = 0f
 
     fun startController() {
         scope.launch {
@@ -165,8 +169,10 @@ class ObdController(
             addLog("Batt: ${String.format("%.1f", updatedBattery.maxTemp)}°C (sotto soglia ${currentState.targetThreshold}°C)")
         }
 
-        // Step C: Interleave Engine ECU (7E0 / 7E8) for REAL Coolant (ECT), Intake/Ambient (IAT), and RPM
+        // Step C: Interleave Engine ECU (7E0 / 7E8) for REAL Coolant, Ambient, RPM & Performance Metrics
         var updatedWarmup = currentState.warmupStatus
+        var updatedPerformance = currentState.performanceStatus
+
         if (cycleCounter % 2 == 0) {
             ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU, ToyotaYarisCommands.FILTER_ENGINE_ECU)
 
@@ -191,19 +197,52 @@ class ObdController(
                 lastKnownRpm = parsedRpm
             }
 
+            // Read Real Timing Advance (°BTDC)
+            val rawAdvance = bleManager.sendCommand(ToyotaYarisCommands.PID_TIMING_ADVANCE)
+            val parsedAdvance = ToyotaYarisCommands.parseTimingAdvance(rawAdvance)
+            if (parsedAdvance != null) {
+                lastKnownAdvance = parsedAdvance
+            }
+
+            // Read Engine Load (%)
+            val rawLoad = bleManager.sendCommand(ToyotaYarisCommands.PID_ENGINE_LOAD)
+            val parsedLoad = ToyotaYarisCommands.parseEngineLoad(rawLoad)
+            if (parsedLoad != null) {
+                lastKnownLoad = parsedLoad
+            }
+
+            // Read Throttle / Accelerator Position (%)
+            val rawThrottle = bleManager.sendCommand(ToyotaYarisCommands.PID_THROTTLE_POS)
+            val parsedThrottle = ToyotaYarisCommands.parseThrottlePos(rawThrottle)
+            if (parsedThrottle != null) {
+                lastKnownThrottle = parsedThrottle
+            }
+
             if (parsedCoolant != null || lastKnownCoolant > 0f) {
                 updatedWarmup = ToyotaYarisCommands.evaluateWarmupStatus(
                     coolantTemp = lastKnownCoolant,
                     ambientTemp = lastKnownAmbient,
                     rpm = lastKnownRpm
                 )
-                addLog("Motore: ECT=${lastKnownCoolant.toInt()}°C | IAT=${lastKnownAmbient.toInt()}°C | RPM=$lastKnownRpm [${updatedWarmup.stage.name}]")
             }
+
+            val hasPerfData = parsedAdvance != null || parsedLoad != null || lastKnownLoad > 0f
+            updatedPerformance = EnginePerformanceStatus(
+                timingAdvance = lastKnownAdvance,
+                engineLoadPercent = lastKnownLoad,
+                throttlePercent = lastKnownThrottle,
+                isOptimalAdvance = lastKnownAdvance >= 15.0f,
+                isHighPowerReady = !updatedBattery.isThermalThrottled && updatedWarmup.stage == WarmupStage.S4,
+                hasLiveData = hasPerfData
+            )
+
+            addLog("Performance: Anticipo=${String.format("%.1f", lastKnownAdvance)}° | Carico=${lastKnownLoad.toInt()}% | Gas=${lastKnownThrottle.toInt()}%")
         }
 
         _liveState.value = _liveState.value.copy(
             batteryStatus = updatedBattery.copy(isFanForced = shouldForceFan, fanSpeedLevel = if (shouldForceFan) 6 else updatedBattery.fanSpeedLevel),
-            warmupStatus = updatedWarmup
+            warmupStatus = updatedWarmup,
+            performanceStatus = updatedPerformance
         )
     }
 

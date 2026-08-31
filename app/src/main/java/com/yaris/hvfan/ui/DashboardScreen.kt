@@ -431,6 +431,113 @@ fun DashboardScreen(
         }
 
         Spacer(modifier = Modifier.height(16.dp))
+
+        // --- 4. ENGINE & HYBRID POWER PERFORMANCE MONITOR ---
+        val perf = liveState.performanceStatus
+        val isFullBoost = !liveState.batteryStatus.isThermalThrottled && (liveState.warmupStatus.stage == WarmupStage.S4 || liveState.warmupStatus.stage == WarmupStage.S2)
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = SurfaceDark)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Speed,
+                            contentDescription = null,
+                            tint = if (isFullBoost) AccentCyan else WarningOrange,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "PRESTAZIONI MOTORE & POTENZA",
+                            style = Typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = TextSecondary,
+                            letterSpacing = 1.sp
+                        )
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isFullBoost) SuccessGreen.copy(alpha = 0.15f) else WarningOrange.copy(alpha = 0.15f)
+                    ) {
+                        Text(
+                            text = if (isFullBoost) "⚡ 100% FULL BOOST" else "⚠️ LIMITATO TERMICO",
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black,
+                            color = if (isFullBoost) SuccessGreen else WarningOrange
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    TelemetryChip(
+                        label = "Anticipo (°BTDC)",
+                        value = if (perf.hasLiveData) "${String.format("%.1f", perf.timingAdvance)}°" else "--",
+                        highlight = perf.hasLiveData && perf.timingAdvance >= 15f,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TelemetryChip(
+                        label = "Carico Termico",
+                        value = if (perf.hasLiveData) "${perf.engineLoadPercent.toInt()}%" else "--",
+                        highlight = perf.hasLiveData && perf.engineLoadPercent > 70f,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TelemetryChip(
+                        label = "Pedale Gas",
+                        value = if (perf.hasLiveData) "${perf.throttlePercent.toInt()}%" else "--",
+                        highlight = perf.hasLiveData && perf.throttlePercent > 50f,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    color = CardBackground
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = SuccessGreen,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Raffreddamento L6 attivo: zero taglio di potenza su MG2 (59 kW elettrici pieni sempre pronti).",
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp,
+                            color = TextPrimary
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),

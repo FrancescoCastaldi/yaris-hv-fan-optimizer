@@ -27,6 +27,16 @@ data class HybridWarmupStatus(
     val timestamp: Long = System.currentTimeMillis()
 )
 
+data class EnginePerformanceStatus(
+    val timingAdvance: Float = 0f,
+    val engineLoadPercent: Float = 0f,
+    val throttlePercent: Float = 0f,
+    val isOptimalAdvance: Boolean = false,
+    val isHighPowerReady: Boolean = true,
+    val hasLiveData: Boolean = false,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
 data class HvBatteryStatus(
     val temp1: Double = 0.0,
     val temp2: Double = 0.0,
@@ -37,6 +47,7 @@ data class HvBatteryStatus(
     val intakeTemp: Double = 0.0,
     val fanSpeedLevel: Int = 0, // 0 to 6
     val isFanForced: Boolean = false,
+    val isThermalThrottled: Boolean = false,
     val timestamp: Long = System.currentTimeMillis()
 )
 
@@ -59,6 +70,9 @@ object ToyotaYarisCommands {
     const val PID_INTAKE_AIR_TEMP  = "010F" // Formula: A - 40 (°C)
     const val PID_ENGINE_RPM       = "010C" // Formula: ((A*256)+B)/4
     const val PID_CATALYST_TEMP    = "013C" // Formula: ((A*256)+B)/10 - 40 (°C)
+    const val PID_TIMING_ADVANCE   = "010E" // Formula: (A / 2.0) - 64 (°BTDC)
+    const val PID_ENGINE_LOAD      = "0104" // Formula: (A * 100) / 255 (%)
+    const val PID_THROTTLE_POS     = "0111" // Formula: (A * 100) / 255 (%)
 
     // Toyota Enhanced PID (Mode 22 UDS / Mode 21 KWP)
     const val PID_READ_BATTERY_DATA_TNGA = "2228C1"
@@ -99,6 +113,42 @@ object ToyotaYarisCommands {
                 val a = clean.substring(idx, idx + 2).toInt(16)
                 val b = clean.substring(idx + 2, idx + 4).toInt(16)
                 return ((a * 256) + b) / 4
+            }
+        }
+        return null
+    }
+
+    fun parseTimingAdvance(raw: String): Float? {
+        val clean = Elm327Protocol.cleanResponse(raw).uppercase()
+        if (clean.contains("410E")) {
+            val idx = clean.indexOf("410E") + 4
+            if (clean.length >= idx + 2) {
+                val a = clean.substring(idx, idx + 2).toInt(16)
+                return ((a / 2.0f) - 64.0f)
+            }
+        }
+        return null
+    }
+
+    fun parseEngineLoad(raw: String): Float? {
+        val clean = Elm327Protocol.cleanResponse(raw).uppercase()
+        if (clean.contains("4104")) {
+            val idx = clean.indexOf("4104") + 4
+            if (clean.length >= idx + 2) {
+                val a = clean.substring(idx, idx + 2).toInt(16)
+                return (a * 100.0f) / 255.0f
+            }
+        }
+        return null
+    }
+
+    fun parseThrottlePos(raw: String): Float? {
+        val clean = Elm327Protocol.cleanResponse(raw).uppercase()
+        if (clean.contains("4111")) {
+            val idx = clean.indexOf("4111") + 4
+            if (clean.length >= idx + 2) {
+                val a = clean.substring(idx, idx + 2).toInt(16)
+                return (a * 100.0f) / 255.0f
             }
         }
         return null
@@ -214,6 +264,7 @@ object ToyotaYarisCommands {
                 intakeTemp = intake,
                 fanSpeedLevel = fanLevel,
                 isFanForced = isForced,
+                isThermalThrottled = maxT >= 36.0,
                 timestamp = System.currentTimeMillis()
             )
         } catch (e: Exception) {
