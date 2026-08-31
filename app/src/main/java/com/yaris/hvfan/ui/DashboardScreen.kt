@@ -1076,7 +1076,7 @@ fun FanManagementSection(
 fun GazooRacingLogoBadge() {
     Surface(
         shape = RoundedCornerShape(10.dp),
-        color = Color.Black,
+        color = Color(0xFF070A0F),
         border = BorderStroke(1.dp, Color(0xFF3A4456))
     ) {
         Box(
@@ -1087,8 +1087,8 @@ fun GazooRacingLogoBadge() {
                 painter = painterResource(id = R.drawable.ic_gr_logo),
                 contentDescription = "Toyota Gazoo Racing GR Logo",
                 modifier = Modifier
-                    .width(42.dp)
-                    .height(20.dp)
+                    .width(52.dp)
+                    .height(26.dp)
             )
         }
     }
