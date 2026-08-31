@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>Toyota Yaris MK4 Hybrid - HV Fan & GR Cockpit Optimizer</title>
-    <meta name="description" content="Applicazione Android per il controllo attivo della ventola batteria ad alto voltaggio, ottimizzazione del warm-up termico HSD e cronometro accelerazione 0-100 km/h.">
+    <title>Toyota Yaris MK4 Hybrid - HV Fan & GR Cockpit Optimizer v2.0.0</title>
+    <meta name="description" content="Applicazione Android per il controllo attivo della ventola batteria ad alto voltaggio, telemetria Gazoo Racing e cronometro accelerazione 0-100 km/h.">
     <meta name="theme-color" content="#0B0E14">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -38,7 +38,7 @@
             min-height: 100vh;
             line-height: 1.5;
             overflow-x: hidden;
-            padding-bottom: 90px; /* Spazio per floating bar mobile */
+            padding-bottom: 90px;
             background-image: 
                 radial-gradient(circle at 10% 10%, rgba(0, 229, 255, 0.1) 0%, transparent 45%),
                 radial-gradient(circle at 90% 50%, rgba(255, 24, 1, 0.08) 0%, transparent 45%);
@@ -51,7 +51,6 @@
             padding: 0 16px;
         }
 
-        /* Header / Navbar */
         header {
             padding: 16px 0;
             border-bottom: 1px solid rgba(255, 255, 255, 0.06);
@@ -125,7 +124,6 @@
             background: rgba(255, 255, 255, 0.05);
         }
 
-        /* Hero Section */
         .hero {
             padding: 40px 0 30px;
             text-align: center;
@@ -134,10 +132,10 @@
         .hero-badge {
             display: inline-flex;
             align-items: center;
-            gap: 6px;
-            background: rgba(0, 229, 255, 0.1);
-            border: 1px solid rgba(0, 229, 255, 0.3);
-            color: var(--accent-cyan);
+            gap: 8px;
+            background: rgba(255, 24, 1, 0.12);
+            border: 1px solid rgba(255, 24, 1, 0.35);
+            color: #FF5252;
             padding: 6px 14px;
             border-radius: 100px;
             font-size: 0.75rem;
@@ -299,7 +297,7 @@
             letter-spacing: 0.5px;
         }
 
-        /* Interactive Tabs Simulation Preview */
+        /* Preview Simulation Box */
         .preview-section {
             padding: 20px 0 40px;
         }
@@ -466,6 +464,75 @@
             border-radius: 6px;
         }
 
+        /* Changelog Section */
+        .changelog-section {
+            padding: 40px 0 20px;
+        }
+
+        .changelog-card {
+            background: var(--surface-dark);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 24px;
+        }
+
+        .release-item {
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 18px;
+            margin-bottom: 18px;
+        }
+
+        .release-item:last-child {
+            border-bottom: none;
+            padding-bottom: 0;
+            margin-bottom: 0;
+        }
+
+        .release-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+        }
+
+        .release-tag {
+            background: var(--gr-red);
+            color: #FFF;
+            font-weight: 900;
+            font-size: 0.75rem;
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .release-date {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+        }
+
+        .release-list {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .release-list li {
+            position: relative;
+            padding-left: 18px;
+            margin-bottom: 6px;
+            font-size: 0.88rem;
+            color: var(--text-secondary);
+            line-height: 1.4;
+        }
+
+        .release-list li::before {
+            content: "•";
+            position: absolute;
+            left: 4px;
+            color: var(--accent-cyan);
+            font-weight: bold;
+        }
+
         /* Floating Mobile Download Bar */
         .mobile-bar {
             position: fixed;
@@ -513,7 +580,6 @@
             text-decoration: none;
         }
 
-        /* Footer */
         footer {
             padding: 30px 0;
             border-top: 1px solid var(--border-color);
@@ -537,12 +603,12 @@
                 <img src="icon.jpg" alt="Logo" class="logo-img">
                 <div class="logo-text">
                     Yaris HV
-                    <span class="logo-badge">GR</span>
+                    <span class="logo-badge">GR v2.0</span>
                 </div>
             </a>
             <div class="nav-links">
                 <a href="https://github.com/FrancescoCastaldi/yaris-hv-fan-optimizer" class="nav-btn" target="_blank">GitHub</a>
-                <a href="YarisHvFanControl.apk" download class="nav-btn" style="color: var(--accent-cyan); font-weight: 800;">APK</a>
+                <a href="YarisHvFanControl.apk" download class="nav-btn" style="color: var(--accent-cyan); font-weight: 800;">APK v2.0</a>
             </div>
         </div>
     </header>
@@ -551,22 +617,22 @@
     <section class="hero">
         <div class="container">
             <div class="hero-badge">
-                <span>⚡ TOYOTA YARIS MK4 HYBRID</span>
+                <span>🏁 TOYOTA GAZOO RACING EDITION v2.0.0</span>
             </div>
             <h1 class="hero-title">
                 Sblocca il <span class="accent">100% Boost Elettrico</span> & Cruscotto <span class="gr">GR Cockpit</span>
             </h1>
             <p class="hero-subtitle">
-                Raffreddamento forzato ventola HV Denso, zero tagli termici, telemetria reale in tempo reale e cronometro accelerazione 0-100 km/h.
+                Raffreddamento forzato ventola HV Denso, zero tagli termici, telemetria in tempo reale e cronometro accelerazione 0-100 km/h.
             </p>
 
             <div class="cta-group">
                 <a href="YarisHvFanControl.apk" download class="btn-primary">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                    Scarica APK (v1.0.0 Release)
+                    Scarica APK v2.0.0 (Release)
                 </a>
                 <a href="https://github.com/FrancescoCastaldi/yaris-hv-fan-optimizer" target="_blank" class="btn-secondary">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
                     Sorgenti GitHub
                 </a>
             </div>
@@ -643,7 +709,6 @@
             </div>
 
             <div class="grid">
-                <!-- Card 1 -->
                 <div class="card">
                     <div class="card-icon">🌀</div>
                     <h3 class="card-title">Forzatura Attiva Ventola HV</h3>
@@ -653,7 +718,6 @@
                     <span class="card-badge">ECU 7E2 Active Control</span>
                 </div>
 
-                <!-- Card 2 -->
                 <div class="card">
                     <div class="card-icon red">🏁</div>
                     <h3 class="card-title">GR Cockpit & Timer 0-100</h3>
@@ -663,7 +727,6 @@
                     <span class="card-badge">Precisione Centesimale</span>
                 </div>
 
-                <!-- Card 3 -->
                 <div class="card">
                     <div class="card-icon green">🌡️</div>
                     <h3 class="card-title">Fasi Warm-Up (S0..S4)</h3>
@@ -673,7 +736,6 @@
                     <span class="card-badge">Efficienza Ciclo Atkinson</span>
                 </div>
 
-                <!-- Card 4 -->
                 <div class="card">
                     <div class="card-icon">📊</div>
                     <h3 class="card-title">Anticipo Accensione Reale</h3>
@@ -683,7 +745,6 @@
                     <span class="card-badge">PID 010E / 0104 Live</span>
                 </div>
 
-                <!-- Card 5 -->
                 <div class="card">
                     <div class="card-icon green">📱</div>
                     <h3 class="card-title">Auto-Connessione & Background</h3>
@@ -693,7 +754,6 @@
                     <span class="card-badge">Persistent Service</span>
                 </div>
 
-                <!-- Card 6 -->
                 <div class="card">
                     <div class="card-icon">🔌</div>
                     <h3 class="card-title">Compatibilità Universale BLE</h3>
@@ -701,6 +761,48 @@
                         Supporta adattatori BLE 4.0+ come vLinker MC+, Veepeak OBDCheck, Carista ed ELM327 BLE standard con profili GATT Nordic e ISSC.
                     </p>
                     <span class="card-badge">BLE 4.0+ / 247 MTU</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Changelog Section -->
+    <section class="changelog-section">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">Cronologia Rilasci & Changelog</h2>
+                <p class="section-desc">Evoluzione delle versioni e miglioramenti ingegneristici.</p>
+            </div>
+
+            <div class="changelog-card">
+                <!-- v2.0.0 -->
+                <div class="release-item">
+                    <div class="release-header">
+                        <span class="release-tag">v2.0.0 (Release Attuale)</span>
+                        <span class="release-date">31 Agosto 2026</span>
+                    </div>
+                    <ul class="release-list">
+                        <li><strong>Architettura a Doppia Scheda (Dual-Tab)</strong>: Scheda "GR Cockpit" e Scheda "Ventola & Termiche".</li>
+                        <li><strong>Badge Ufficiale Gazoo Racing</strong> integrato nella top bar.</li>
+                        <li><strong>Tachimetro Digitale Gigante</strong> con lettura OBD reale a 52sp.</li>
+                        <li><strong>Launch Control Automatico</strong> con spia verde a 0 km/h e Dragy timer per 0-50 km/h e 0-100 km/h con Record Personale.</li>
+                        <li><strong>Telemetria Anticipo Accensione (°BTDC)</strong>, carico termico e pedale acceleratore.</li>
+                        <li><strong>Firma Digitale Release RSA 2048-bit</strong> (V1/V2/V3) e nuova icona HD Gazoo Racing.</li>
+                    </ul>
+                </div>
+
+                <!-- v1.0.0 -->
+                <div class="release-item">
+                    <div class="release-header">
+                        <span class="release-tag" style="background: var(--surface-dark); border: 1px solid var(--border-color); color: var(--text-secondary);">v1.0.0</span>
+                        <span class="release-date">31 Agosto 2026</span>
+                    </div>
+                    <ul class="release-list">
+                        <li>Forzatura ventola di raffreddamento batteria Denso a Livello 6 (100% MAX).</li>
+                        <li>Monitoraggio 4 sensori temperatura celle e canale di aspirazione.</li>
+                        <li>Analisi Fasi Warm-Up motore termico HSD (S0..S4) con consigli climatizzatore.</li>
+                        <li>Foreground Service persistente per navigazione con Google Maps e Waze.</li>
+                    </ul>
                 </div>
             </div>
         </div>
@@ -718,10 +820,10 @@
     <div class="mobile-bar">
         <a href="YarisHvFanControl.apk" download class="btn-download">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Scarica APK (15.8 MB)
+            Scarica APK v2.0.0 (15.8 MB)
         </a>
         <a href="https://github.com/FrancescoCastaldi/yaris-hv-fan-optimizer" target="_blank" class="btn-github" title="Vedi su GitHub">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
         </a>
     </div>
 
