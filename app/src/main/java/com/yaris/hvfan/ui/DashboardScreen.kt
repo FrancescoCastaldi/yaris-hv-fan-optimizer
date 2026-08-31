@@ -370,20 +370,22 @@ fun DashboardScreen(
                 ) {
                     TelemetryChip(
                         label = "Liquido (ECT)",
-                        value = "${warmup.coolantTemp.toInt()}°C",
-                        highlight = warmup.coolantTemp >= 73f,
+                        value = if (warmup.hasLiveData) "${warmup.coolantTemp.toInt()}°C" else "--",
+                        highlight = warmup.hasLiveData && warmup.coolantTemp >= 73f,
                         modifier = Modifier.weight(1f)
                     )
                     TelemetryChip(
                         label = "Aria Est. (IAT)",
-                        value = "${warmup.ambientTemp.toInt()}°C",
+                        value = if (warmup.hasLiveData) "${warmup.ambientTemp.toInt()}°C" else "--",
                         highlight = false,
                         modifier = Modifier.weight(1f)
                     )
                     TelemetryChip(
                         label = "Giri Motore",
-                        value = if (warmup.engineRpm > 0) "${warmup.engineRpm}" else "EV / Spento",
-                        highlight = warmup.engineRpm == 0 && warmup.stage == WarmupStage.S4,
+                        value = if (warmup.hasLiveData) {
+                            if (warmup.engineRpm > 0) "${warmup.engineRpm}" else "EV / Spento"
+                        } else "--",
+                        highlight = warmup.hasLiveData && warmup.engineRpm == 0 && warmup.stage == WarmupStage.S4,
                         modifier = Modifier.weight(1.1f)
                     )
                 }

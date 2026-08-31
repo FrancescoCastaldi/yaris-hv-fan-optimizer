@@ -121,11 +121,24 @@ class ObdController(
         }
     }
 
+    private var currentCanHeader: String = ""
+
+    private suspend fun ensureCanHeader(header: String, filter: String) {
+        if (currentCanHeader != header) {
+            bleManager.sendCommand("AT SH $header")
+            bleManager.sendCommand("AT CRA $filter")
+            currentCanHeader = header
+            delay(40)
+        }
+    }
+
     private suspend fun executeFanControlCycle() {
         val currentState = _liveState.value
         cycleCounter++
 
-        // Step A: Set Battery ECU Header & Read Battery Temperatures (Mode 22 / Mode 21)
+        // Step A: Switch to Battery ECU (7E2 / 7EA) & Read Battery Temperatures (Mode 22 / Mode 21)
+        ensureCanHeader(ToyotaYarisCommands.HEADER_BATTERY_ECU, ToyotaYarisCommands.FILTER_BATTERY_ECU)
+
         var rawResponse = bleManager.sendCommand(ToyotaYarisCommands.PID_READ_BATTERY_DATA_TNGA)
         if (Elm327Protocol.isError(rawResponse)) {
             rawResponse = bleManager.sendCommand(ToyotaYarisCommands.PID_READ_BATTERY_DATA_LEGACY)
@@ -138,7 +151,7 @@ class ObdController(
             currentState.batteryStatus.copy(timestamp = System.currentTimeMillis())
         }
 
-        // Step B: Thermal threshold evaluation & Fan Control
+        // Step B: Thermal threshold evaluation & Active Test Fan Control
         val shouldForceFan = currentState.fanForcedMax || (updatedBattery.maxTemp >= currentState.targetThreshold)
         if (shouldForceFan) {
             val fanCmdRes = bleManager.sendCommand(ToyotaYarisCommands.CMD_FAN_MAX_SPEED_UDS)
@@ -152,35 +165,40 @@ class ObdController(
             addLog("Batt: ${String.format("%.1f", updatedBattery.maxTemp)}°C (sotto soglia ${currentState.targetThreshold}°C)")
         }
 
-        // Step C: Interleave Engine & Ambient sensors every 2 cycles for Warm-Up Stage analysis
+        // Step C: Interleave Engine ECU (7E0 / 7E8) for REAL Coolant (ECT), Intake/Ambient (IAT), and RPM
         var updatedWarmup = currentState.warmupStatus
         if (cycleCounter % 2 == 0) {
-            // Read Coolant Temp
+            ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU, ToyotaYarisCommands.FILTER_ENGINE_ECU)
+
+            // Read Real Physical Coolant Temp (ECT)
             val rawCoolant = bleManager.sendCommand(ToyotaYarisCommands.PID_COOLANT_TEMP)
             val parsedCoolant = ToyotaYarisCommands.parseCoolantTemp(rawCoolant)
             if (parsedCoolant != null) {
                 lastKnownCoolant = parsedCoolant
             }
 
-            // Read Intake/Ambient Temp
+            // Read Real Physical Intake/Ambient Air Temp (IAT)
             val rawAmbient = bleManager.sendCommand(ToyotaYarisCommands.PID_INTAKE_AIR_TEMP)
             val parsedAmbient = ToyotaYarisCommands.parseIntakeAirTemp(rawAmbient)
             if (parsedAmbient != null) {
                 lastKnownAmbient = parsedAmbient
             }
 
-            // Read RPM
+            // Read Real Physical Engine RPM
             val rawRpm = bleManager.sendCommand(ToyotaYarisCommands.PID_ENGINE_RPM)
             val parsedRpm = ToyotaYarisCommands.parseEngineRpm(rawRpm)
             if (parsedRpm != null) {
                 lastKnownRpm = parsedRpm
             }
 
-            updatedWarmup = ToyotaYarisCommands.evaluateWarmupStatus(
-                coolantTemp = lastKnownCoolant,
-                ambientTemp = lastKnownAmbient,
-                rpm = lastKnownRpm
-            )
+            if (parsedCoolant != null || lastKnownCoolant > 0f) {
+                updatedWarmup = ToyotaYarisCommands.evaluateWarmupStatus(
+                    coolantTemp = lastKnownCoolant,
+                    ambientTemp = lastKnownAmbient,
+                    rpm = lastKnownRpm
+                )
+                addLog("Motore: ECT=${lastKnownCoolant.toInt()}°C | IAT=${lastKnownAmbient.toInt()}°C | RPM=$lastKnownRpm [${updatedWarmup.stage.name}]")
+            }
         }
 
         _liveState.value = _liveState.value.copy(

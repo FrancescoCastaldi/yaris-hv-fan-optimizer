@@ -17,11 +17,12 @@ enum class WarmupStage(
 
 data class HybridWarmupStatus(
     val stage: WarmupStage = WarmupStage.S0,
-    val coolantTemp: Float = 20f,
-    val ambientTemp: Float = 20f,
-    val catalystTemp: Float = 150f,
+    val coolantTemp: Float = 0f,
+    val ambientTemp: Float = 0f,
+    val catalystTemp: Float = 0f,
     val engineRpm: Int = 0,
     val progressPercent: Float = 0f,
+    val hasLiveData: Boolean = false,
     val recommendations: List<String> = emptyList(),
     val timestamp: Long = System.currentTimeMillis()
 )
@@ -42,7 +43,13 @@ data class HvBatteryStatus(
 object ToyotaYarisCommands {
     private const val TAG = "ToyotaYarisCommands"
 
-    // CAN Headers
+    // CAN Headers & Filter IDs
+    const val HEADER_BATTERY_ECU = "7E2"
+    const val FILTER_BATTERY_ECU = "7EA"
+
+    const val HEADER_ENGINE_ECU  = "7E0"
+    const val FILTER_ENGINE_ECU  = "7E8"
+
     const val CMD_SET_HEADER_BATTERY_ECU = "AT SH 7E2"  // Toyota HV Battery Management ECU
     const val CMD_SET_HEADER_ENGINE_ECU  = "AT SH 7E0"  // Toyota Engine / Hybrid Main ECU
     const val CMD_SET_RECEIVE_FILTER     = "AT CRA 7EA" // Filter for Battery ECU responses
@@ -154,6 +161,7 @@ object ToyotaYarisCommands {
             catalystTemp = if (coolantTemp > 60f) 550f else 320f,
             engineRpm = rpm,
             progressPercent = progress,
+            hasLiveData = true,
             recommendations = tips
         )
     }
