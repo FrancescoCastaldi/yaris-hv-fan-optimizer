@@ -8,21 +8,33 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)
 
 ---
 
-## [2.1.0] - 2026-08-31
-### 🛠️ Modulo Codifiche Centralina (ECU Coding & Customizations)
+## [2.2.0] - 2026-08-31
+### 🛠️ Suite Completa Codifiche Centralina (All Toyota TNGA-B Codings)
 #### Added
-- **Nuova Scheda "🛠️ CODIFICHE ECU"**:
-  - **Cicalino Retromarcia (Reverse Beep)**: Passaggio da bip continuo a singolo bip di comfort per il sistema ibrido.
-  - **Cicalini Cinture di Sicurezza**: Controllo sonoro per sedile conducente, passeggero e sedili posteriori.
-  - **Finestrini Comfort con Telecomando**: Apertura e chiusura totale dei finestrini tenendo premuto il tasto della chiave originale.
-  - **Blocco Automatico Porte**: Chiusura porte a 20 km/h (Speed Lock) o all'innesto della marcia `D`, con sblocco automatico in `P`.
-  - **Frecce Comfort**: Personalizzazione del numero di lampeggi per il cambio corsia (3, 4 o 5 lampeggi).
-  - **Climatizzazione Intelligente**: Opzione per impedire l'attivazione automatica del compressore A/C premendo AUTO.
-- **Protocollo di Sicurezza & Backup**:
-  - Lettura iniziale della configurazione con backup in memoria.
-  - Scrittura sicura UDS/TDS con conferma visiva e gestione errori.
-  - Pulsante 1-Click *"Ripristina Impostazioni di Fabbrica"*.
-- **Interfaccia a 3 Schede**: Navigazione fluida tra `COCKPIT`, `VENTOLA` e `CODIFICHE`.
+- **Espansione Completa Codifiche Centralina nella Scheda "CODIFICHE"**:
+  - **🔑 Smart Key & Serrature**:
+    - Volume sirena acustica esterna alla chiusura/apertura (Muto, Basso, Medio, Alto).
+    - Auto-Relock (tempo di richiusura automatica a 30s, 60s, 120s se le porte non vengono aperte).
+    - Sblocco selettivo porte (Solo lato guida vs Tutte le porte).
+    - Finestrini totali con telecomando originale.
+    - Blocco porte a 20 km/h (Speed Lock) o in marcia D, con sblocco automatico in `P`.
+  - **🌧️ Tergicristalli & Pioggia**:
+    - Tergilunotto automatico inserendo la retromarcia.
+    - Passata finale anti-goccia lavavetri (*Drip Wipe*).
+    - Intermittenza spazzole dipendente dalla velocità vettura.
+  - **💡 Luci, Frecce & Plafoniera**:
+    - Frecce comfort cambio corsia (3, 4 o 5 lampeggi).
+    - Tempo dissolvenza luci abitacolo interne (7.5s, 15s OEM, 30s).
+    - Illuminazione vano piedi / pedali attiva anche durante la marcia notturna.
+    - Regolazione sensibilità fari crepuscolari (Scuro -1, Normale, Chiaro +1).
+    - Luci di cortesia Follow Me Home (OFF, 30s, 60s).
+  - **🛡️ ADAS & Sicurezza (Toyota Safety Sense 2.5)**:
+    - Volume avviso sonoro cambio corsia LDA/LTA (Basso, Medio, Alto).
+    - Sensibilità e distanza rilevamento angolo cieco BSM (Vicino, Normale, Anticipato).
+  - **❄️ Climatizzazione & Efficienza**:
+    - Disattivazione automatica A/C forzata su tasto AUTO.
+    - Modalità Eco Run Clima per massimizzare l'autonomia elettrica EV.
+  - **🛡️ Backup & Restore**: Lettura iniziale, scrittura sicura con feedback visivo e tasto *"Ripristina Impostazioni di Fabbrica (OEM Toyota)"*.
 
 ---
 

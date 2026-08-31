@@ -794,7 +794,6 @@ fun FanManagementSection(
                         letterSpacing = 1.sp
                     )
 
-                    // Strict Disconnected Check for Battery Status Badge
                     val (batBadgeColor, batBadgeText) = when {
                         !isConnected -> Pair(TextSecondary, "IN ATTESA DATI")
                         liveState.batteryStatus.maxTemp >= 36.0 -> Pair(DangerRed, "⚠️ TAGLIO TERMICO (>36°)")
@@ -969,7 +968,6 @@ fun FanManagementSection(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Engine & Atmosphere Telemetry Badges
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1115,7 +1113,7 @@ fun FanManagementSection(
 
 /**
  * =========================================================
- * 3. ECU CUSTOMIZATION & CODING VIEW
+ * 3. COMPLETE ECU CUSTOMIZATION & CODING VIEW
  * =========================================================
  */
 @Composable
@@ -1187,7 +1185,6 @@ fun EcuCodingSection(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Action Buttons: Leggi / Applica Modifiche
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1227,12 +1224,12 @@ fun EcuCodingSection(
                     enabled = isConnected && !codingState.isWriting,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Ripristina Impostazioni di Fabbrica", fontSize = 11.sp, color = TextSecondary)
+                    Text("Ripristina Impostazioni di Fabbrica (OEM Toyota)", fontSize = 11.sp, color = TextSecondary)
                 }
             }
         }
 
-        // --- Category 1: Comfort & Cicalini di Bordo ---
+        // --- Category 1: 🔔 Comfort & Cicalini di Bordo ---
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
@@ -1252,7 +1249,6 @@ fun EcuCodingSection(
                 )
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Bip Retromarcia
                 Text(text = "Cicalino Retromarcia (Reverse Beep)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(
@@ -1277,7 +1273,6 @@ fun EcuCodingSection(
                 HorizontalDivider(color = DividerColor)
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Cicalini Cinture
                 CodingSwitchRow(
                     label = "Cicalino Cintura Conducente",
                     checked = stateDraft.driverSeatbeltBeep,
@@ -1296,7 +1291,7 @@ fun EcuCodingSection(
             }
         }
 
-        // --- Category 2: Finestrini & Chiusura Porte ---
+        // --- Category 2: 🔑 Smart Key, Telecomando & Serrature ---
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
@@ -1308,7 +1303,78 @@ fun EcuCodingSection(
                     .padding(20.dp)
             ) {
                 Text(
-                    text = "🪟 FINESTRINI & CHIUSURA PORTE",
+                    text = "🔑 SMART KEY & SERRATURE",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Black,
+                    color = AccentCyan,
+                    letterSpacing = 0.8.sp
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Text(text = "Volume Segnale Sirena Esterna (Chiusura/Apertura)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    PresetButton(label = "Muto", isSelected = stateDraft.keylessBuzzerVolume == KeylessBuzzerVolume.MUTE, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(keylessBuzzerVolume = KeylessBuzzerVolume.MUTE) })
+                    PresetButton(label = "Basso", isSelected = stateDraft.keylessBuzzerVolume == KeylessBuzzerVolume.LOW, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(keylessBuzzerVolume = KeylessBuzzerVolume.LOW) })
+                    PresetButton(label = "Medio", isSelected = stateDraft.keylessBuzzerVolume == KeylessBuzzerVolume.MEDIUM, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(keylessBuzzerVolume = KeylessBuzzerVolume.MEDIUM) })
+                    PresetButton(label = "Alto", isSelected = stateDraft.keylessBuzzerVolume == KeylessBuzzerVolume.HIGH, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(keylessBuzzerVolume = KeylessBuzzerVolume.HIGH) })
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+                Text(text = "Tempo Richiusura Automatica (Auto-Relock)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    PresetButton(label = "30s", isSelected = stateDraft.autoRelockTime == AutoRelockTime.SEC_30, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(autoRelockTime = AutoRelockTime.SEC_30) })
+                    PresetButton(label = "60s", isSelected = stateDraft.autoRelockTime == AutoRelockTime.SEC_60, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(autoRelockTime = AutoRelockTime.SEC_60) })
+                    PresetButton(label = "120s", isSelected = stateDraft.autoRelockTime == AutoRelockTime.SEC_120, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(autoRelockTime = AutoRelockTime.SEC_120) })
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+                Text(text = "Sblocco Selettivo Portiere", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    PresetButton(label = "Tutte le porte (1 tocco)", isSelected = stateDraft.doorUnlockMode == DoorUnlockMode.ALL_DOORS, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(doorUnlockMode = DoorUnlockMode.ALL_DOORS) })
+                    PresetButton(label = "Solo guida (2 tocchi tutte)", isSelected = stateDraft.doorUnlockMode == DoorUnlockMode.DRIVER_FIRST, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(doorUnlockMode = DoorUnlockMode.DRIVER_FIRST) })
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+                CodingSwitchRow(
+                    label = "Apertura/Chiusura Finestrini con Telecomando",
+                    checked = stateDraft.windowsWithKeyFob,
+                    onCheckedChange = { stateDraft = stateDraft.copy(windowsWithKeyFob = it) }
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(text = "Chiusura Automatica Serrature in Movimento", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    PresetButton(label = "A 20 km/h", isSelected = stateDraft.autoDoorLock == AutoDoorLockMode.BY_SPEED, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(autoDoorLock = AutoDoorLockMode.BY_SPEED) })
+                    PresetButton(label = "Marcia D", isSelected = stateDraft.autoDoorLock == AutoDoorLockMode.BY_SHIFT_D, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(autoDoorLock = AutoDoorLockMode.BY_SHIFT_D) })
+                    PresetButton(label = "OFF", isSelected = stateDraft.autoDoorLock == AutoDoorLockMode.OFF, modifier = Modifier.weight(0.7f), onClick = { stateDraft = stateDraft.copy(autoDoorLock = AutoDoorLockMode.OFF) })
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+                CodingSwitchRow(
+                    label = "Sblocco Automatico Porte inserendo la marcia 'P'",
+                    checked = stateDraft.autoDoorUnlock,
+                    onCheckedChange = { stateDraft = stateDraft.copy(autoDoorUnlock = it) }
+                )
+            }
+        }
+
+        // --- Category 3: 🌧️ Tergicristalli & Sensore Pioggia ---
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = SurfaceDark)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp)
+            ) {
+                Text(
+                    text = "🌧️ TERGICRISTALLI & SENSORE PIOGGIA",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Black,
                     color = AccentCyan,
@@ -1317,48 +1383,24 @@ fun EcuCodingSection(
                 Spacer(modifier = Modifier.height(14.dp))
 
                 CodingSwitchRow(
-                    label = "Apertura/Chiusura Vetri con Telecomando",
-                    checked = stateDraft.windowsWithKeyFob,
-                    onCheckedChange = { stateDraft = stateDraft.copy(windowsWithKeyFob = it) }
+                    label = "Tergilunotto Automatico in Retromarcia",
+                    checked = stateDraft.rearWiperReverseLink,
+                    onCheckedChange = { stateDraft = stateDraft.copy(rearWiperReverseLink = it) }
                 )
-
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(text = "Chiusura Automatica Serrature", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                Spacer(modifier = Modifier.height(6.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    PresetButton(
-                        label = "A 20 km/h",
-                        isSelected = stateDraft.autoDoorLock == AutoDoorLockMode.BY_SPEED,
-                        modifier = Modifier.weight(1f),
-                        onClick = { stateDraft = stateDraft.copy(autoDoorLock = AutoDoorLockMode.BY_SPEED) }
-                    )
-                    PresetButton(
-                        label = "Marcia D",
-                        isSelected = stateDraft.autoDoorLock == AutoDoorLockMode.BY_SHIFT_D,
-                        modifier = Modifier.weight(1f),
-                        onClick = { stateDraft = stateDraft.copy(autoDoorLock = AutoDoorLockMode.BY_SHIFT_D) }
-                    )
-                    PresetButton(
-                        label = "OFF",
-                        isSelected = stateDraft.autoDoorLock == AutoDoorLockMode.OFF,
-                        modifier = Modifier.weight(0.7f),
-                        onClick = { stateDraft = stateDraft.copy(autoDoorLock = AutoDoorLockMode.OFF) }
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
                 CodingSwitchRow(
-                    label = "Sblocco Automatico Porte in 'P'",
-                    checked = stateDraft.autoDoorUnlock,
-                    onCheckedChange = { stateDraft = stateDraft.copy(autoDoorUnlock = it) }
+                    label = "Passata Finale Anti-Goccia Lavavetri (Drip Wipe)",
+                    checked = stateDraft.dripWipeExtraPass,
+                    onCheckedChange = { stateDraft = stateDraft.copy(dripWipeExtraPass = it) }
+                )
+                CodingSwitchRow(
+                    label = "Intermittenza Spazzole Legata alla Velocità",
+                    checked = stateDraft.wiperSpeedLink,
+                    onCheckedChange = { stateDraft = stateDraft.copy(wiperSpeedLink = it) }
                 )
             }
         }
 
-        // --- Category 3: Luci, Frecce & Clima ---
+        // --- Category 4: 💡 Luci, Frecce & Plafoniera ---
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
@@ -1370,7 +1412,7 @@ fun EcuCodingSection(
                     .padding(20.dp)
             ) {
                 Text(
-                    text = "💡 FRECCE, FARI & CLIMA",
+                    text = "💡 FRECCE, FARI & PLAFONIERA",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Black,
                     color = AccentCyan,
@@ -1380,20 +1422,116 @@ fun EcuCodingSection(
 
                 Text(text = "Lampeggi Freccia Comfort (Cambio Corsia)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Spacer(modifier = Modifier.height(6.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     PresetButton(label = "3 Lampeggi", isSelected = stateDraft.turnSignalFlashes == TurnSignalFlashes.FLASHES_3, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(turnSignalFlashes = TurnSignalFlashes.FLASHES_3) })
                     PresetButton(label = "4 Lampeggi", isSelected = stateDraft.turnSignalFlashes == TurnSignalFlashes.FLASHES_4, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(turnSignalFlashes = TurnSignalFlashes.FLASHES_4) })
                     PresetButton(label = "5 Lampeggi", isSelected = stateDraft.turnSignalFlashes == TurnSignalFlashes.FLASHES_5, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(turnSignalFlashes = TurnSignalFlashes.FLASHES_5) })
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
+                Text(text = "Dissolvenza Luci Interne Plafoniera", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    PresetButton(label = "7.5s", isSelected = stateDraft.interiorDimTime == InteriorLightDimTime.SEC_7_5, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(interiorDimTime = InteriorLightDimTime.SEC_7_5) })
+                    PresetButton(label = "15s (OEM)", isSelected = stateDraft.interiorDimTime == InteriorLightDimTime.SEC_15, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(interiorDimTime = InteriorLightDimTime.SEC_15) })
+                    PresetButton(label = "30s", isSelected = stateDraft.interiorDimTime == InteriorLightDimTime.SEC_30, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(interiorDimTime = InteriorLightDimTime.SEC_30) })
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+                CodingSwitchRow(
+                    label = "Illuminazione Vano Piedi Attiva in Marcia",
+                    checked = stateDraft.footwellLightingInDrive,
+                    onCheckedChange = { stateDraft = stateDraft.copy(footwellLightingInDrive = it) }
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+                Text(text = "Sensibilità Fari Automatici Crepuscolari", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    PresetButton(label = "Scuro (-1)", isSelected = stateDraft.lightSensitivity == LightSensitivity.DARK_1, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(lightSensitivity = LightSensitivity.DARK_1) })
+                    PresetButton(label = "Normale", isSelected = stateDraft.lightSensitivity == LightSensitivity.NORMAL, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(lightSensitivity = LightSensitivity.NORMAL) })
+                    PresetButton(label = "Chiaro (+1)", isSelected = stateDraft.lightSensitivity == LightSensitivity.LIGHT_1, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(lightSensitivity = LightSensitivity.LIGHT_1) })
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+                Text(text = "Luci Guida a Casa (Follow Me Home)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    PresetButton(label = "OFF", isSelected = stateDraft.followMeHome == FollowMeHomeDuration.OFF, modifier = Modifier.weight(0.8f), onClick = { stateDraft = stateDraft.copy(followMeHome = FollowMeHomeDuration.OFF) })
+                    PresetButton(label = "30s", isSelected = stateDraft.followMeHome == FollowMeHomeDuration.SEC_30, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(followMeHome = FollowMeHomeDuration.SEC_30) })
+                    PresetButton(label = "60s", isSelected = stateDraft.followMeHome == FollowMeHomeDuration.SEC_60, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(followMeHome = FollowMeHomeDuration.SEC_60) })
+                }
+            }
+        }
+
+        // --- Category 5: 🛡️ ADAS & Assistenza Guida (TSS 2.5) ---
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = SurfaceDark)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp)
+            ) {
+                Text(
+                    text = "🛡️ ADAS & SICUREZZA (TOYOTA SAFETY SENSE)",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Black,
+                    color = AccentCyan,
+                    letterSpacing = 0.8.sp
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Text(text = "Volume Avviso Cambio Corsia (LDA / LTA)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    PresetButton(label = "Basso", isSelected = stateDraft.ldaWarningVolume == LdaWarningVolume.LOW, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(ldaWarningVolume = LdaWarningVolume.LOW) })
+                    PresetButton(label = "Medio", isSelected = stateDraft.ldaWarningVolume == LdaWarningVolume.MEDIUM, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(ldaWarningVolume = LdaWarningVolume.MEDIUM) })
+                    PresetButton(label = "Alto", isSelected = stateDraft.ldaWarningVolume == LdaWarningVolume.HIGH, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(ldaWarningVolume = LdaWarningVolume.HIGH) })
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+                Text(text = "Sensibilità Rilevamento Angolo Cieco (BSM)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    PresetButton(label = "Vicino", isSelected = stateDraft.bsmSensitivity == BsmSensitivity.NEAR, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(bsmSensitivity = BsmSensitivity.NEAR) })
+                    PresetButton(label = "Normale", isSelected = stateDraft.bsmSensitivity == BsmSensitivity.NORMAL, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(bsmSensitivity = BsmSensitivity.NORMAL) })
+                    PresetButton(label = "Anticipato", isSelected = stateDraft.bsmSensitivity == BsmSensitivity.FAR, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(bsmSensitivity = BsmSensitivity.FAR) })
+                }
+            }
+        }
+
+        // --- Category 6: ❄️ Climatizzatore & Modalità Eco ---
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = SurfaceDark)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp)
+            ) {
+                Text(
+                    text = "❄️ CLIMATIZZATORE & ECO EFFICIENZA",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Black,
+                    color = AccentCyan,
+                    letterSpacing = 0.8.sp
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+
                 CodingSwitchRow(
                     label = "Attivazione Automatica Compressore A/C su 'AUTO'",
                     checked = stateDraft.autoAcWithAutoButton,
                     onCheckedChange = { stateDraft = stateDraft.copy(autoAcWithAutoButton = it) }
+                )
+                CodingSwitchRow(
+                    label = "Modalità Eco Run Clima (Risparmio Batteria HV)",
+                    checked = stateDraft.ecoAirConEfficiencyMode,
+                    onCheckedChange = { stateDraft = stateDraft.copy(ecoAirConEfficiencyMode = it) }
                 )
             }
         }
