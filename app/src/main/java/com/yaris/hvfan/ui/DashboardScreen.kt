@@ -68,7 +68,9 @@ fun DashboardScreen(
         label = "PulseScale"
     )
 
-    val isDeviceConnected = connectionState is BleConnectionState.Ready && liveState.isInitialized
+    val isDeviceConnected = (connectionState is BleConnectionState.Ready || connectionState is BleConnectionState.Connected) &&
+        liveState.isInitialized &&
+        (liveState.batteryStatus.maxTemp > 0.0 || liveState.warmupStatus.hasLiveData || liveState.performanceStatus.hasLiveData)
 
     Column(
         modifier = Modifier
