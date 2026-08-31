@@ -65,6 +65,25 @@ data class HvBatteryStatus(
 
 
 
+enum class DigitalClusterTheme(val label: String, val code: String) {
+    SPORT_GR("Sport / Gazoo Racing (Rosso & kW)", "01"),
+    SMART("Smart (Minimal Ciano)", "02"),
+    CASUAL("Casual (Standard Toyota)", "03"),
+    TOUGH("Tough (Dinamico)", "04")
+}
+
+enum class RsaSpeedBeepMode(val label: String, val code: String) {
+    MUTE("Muto / Solo Visivo (Consigliato)", "00"),
+    LOW("Bip Basso", "01"),
+    STANDARD("Bip Standard (Normativa ISA)", "02")
+}
+
+enum class CameraOffDelay(val label: String, val code: String) {
+    IMMEDIATE("Spegnimento Immediato", "00"),
+    SEC_5("Ritardo 5s in manovra D (Comodo)", "01"),
+    SEC_10("Ritardo 10s", "02")
+}
+
 enum class ReverseBeepMode(val label: String, val code: String) {
     CONTINUOUS("Bip Continuo (Standard)", "01"),
     SINGLE("Singolo Bip (Comfort Silenzioso)", "00")
@@ -100,6 +119,12 @@ enum class FollowMeHomeDuration(val label: String, val seconds: Int, val code: S
 }
 
 data class EcuCustomizationState(
+    // 0. Toyota Smart Connect & Digital Cockpit (MY2025 Exclusive)
+    val clusterTheme: DigitalClusterTheme = DigitalClusterTheme.SPORT_GR,
+    val rsaSpeedLimitBeep: RsaSpeedBeepMode = RsaSpeedBeepMode.MUTE,
+    val touchScreenBeep: Boolean = false,
+    val rearCameraDelay: CameraOffDelay = CameraOffDelay.SEC_5,
+    val micGainDb: Int = 2,
     val reverseBeep: ReverseBeepMode = ReverseBeepMode.SINGLE,
     val driverSeatbeltBeep: Boolean = true,
     val passengerSeatbeltBeep: Boolean = true,

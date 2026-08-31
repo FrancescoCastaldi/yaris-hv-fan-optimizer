@@ -101,7 +101,7 @@ fun DashboardScreen(
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
                         Text(
-                            text = "YARIS HYBRID MK4",
+                            text = "YARIS HYBRID MK4 (MY2025)",
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Black,
                             color = TextPrimary,
@@ -1229,7 +1229,165 @@ fun EcuCodingSection(
             }
         }
 
-        // --- Category 1: 🔔 Comfort & Cicalini di Bordo ---
+                // --- Category 0: 🖥️ TOYOTA SMART CONNECT & DIGITAL CLUSTER (MY2025 TREND) ---
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF0F1522)),
+            border = BorderStroke(1.dp, Color(0xFF2B3A55))
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Tv,
+                            contentDescription = null,
+                            tint = AccentCyan,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "🖥️ SMART CONNECT & CLUSTER MY2025",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Black,
+                            color = AccentCyan,
+                            letterSpacing = 0.8.sp
+                        )
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFFFF1801).copy(alpha = 0.2f)
+                    ) {
+                        Text(
+                            text = "TREND 2025",
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color(0xFFFF5252)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Layout Digital Cockpit 7"
+                Text(
+                    text = "Layout Quadrante Quadro Strumenti Digitale (7.0")",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    PresetButton(
+                        label = "🏁 Sport GR",
+                        isSelected = stateDraft.clusterTheme == DigitalClusterTheme.SPORT_GR,
+                        modifier = Modifier.weight(1.1f),
+                        onClick = { stateDraft = stateDraft.copy(clusterTheme = DigitalClusterTheme.SPORT_GR) }
+                    )
+                    PresetButton(
+                        label = "Smart",
+                        isSelected = stateDraft.clusterTheme == DigitalClusterTheme.SMART,
+                        modifier = Modifier.weight(1f),
+                        onClick = { stateDraft = stateDraft.copy(clusterTheme = DigitalClusterTheme.SMART) }
+                    )
+                    PresetButton(
+                        label = "Casual",
+                        isSelected = stateDraft.clusterTheme == DigitalClusterTheme.CASUAL,
+                        modifier = Modifier.weight(1f),
+                        onClick = { stateDraft = stateDraft.copy(clusterTheme = DigitalClusterTheme.CASUAL) }
+                    )
+                    PresetButton(
+                        label = "Tough",
+                        isSelected = stateDraft.clusterTheme == DigitalClusterTheme.TOUGH,
+                        modifier = Modifier.weight(1f),
+                        onClick = { stateDraft = stateDraft.copy(clusterTheme = DigitalClusterTheme.TOUGH) }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // ISA Bip Segnali Stradali RSA
+                Text(
+                    text = "Bip Segnali Stradali RSA / Limiti Velocità (Normativa ISA)",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
+                )
+                Text(
+                    text = "Permette di eliminare il continuo bip sonoro quando si superano di 1 km/h i limiti rilevati dai cartelli",
+                    fontSize = 11.sp,
+                    color = TextSecondary,
+                    lineHeight = 15.sp,
+                    modifier = Modifier.padding(vertical = 2.dp)
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    PresetButton(
+                        label = "🔇 Muto (Consigliato)",
+                        isSelected = stateDraft.rsaSpeedLimitBeep == RsaSpeedBeepMode.MUTE,
+                        modifier = Modifier.weight(1.3f),
+                        onClick = { stateDraft = stateDraft.copy(rsaSpeedLimitBeep = RsaSpeedBeepMode.MUTE) }
+                    )
+                    PresetButton(
+                        label = "Bip Basso",
+                        isSelected = stateDraft.rsaSpeedLimitBeep == RsaSpeedBeepMode.LOW,
+                        modifier = Modifier.weight(1f),
+                        onClick = { stateDraft = stateDraft.copy(rsaSpeedLimitBeep = RsaSpeedBeepMode.LOW) }
+                    )
+                    PresetButton(
+                        label = "Standard",
+                        isSelected = stateDraft.rsaSpeedLimitBeep == RsaSpeedBeepMode.STANDARD,
+                        modifier = Modifier.weight(1f),
+                        onClick = { stateDraft = stateDraft.copy(rsaSpeedLimitBeep = RsaSpeedBeepMode.STANDARD) }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Retrocamera HD Delay
+                Text(
+                    text = "Ritardo Spegnimento Retrocamera HD in Manovra",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    PresetButton(
+                        label = "5s in marcia D (Comodo)",
+                        isSelected = stateDraft.rearCameraDelay == CameraOffDelay.SEC_5,
+                        modifier = Modifier.weight(1.3f),
+                        onClick = { stateDraft = stateDraft.copy(rearCameraDelay = CameraOffDelay.SEC_5) }
+                    )
+                    PresetButton(
+                        label = "Immediato",
+                        isSelected = stateDraft.rearCameraDelay == CameraOffDelay.IMMEDIATE,
+                        modifier = Modifier.weight(1f),
+                        onClick = { stateDraft = stateDraft.copy(rearCameraDelay = CameraOffDelay.IMMEDIATE) }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                CodingSwitchRow(
+                    label = "Bip di Feedback al Tocco Schermo 9.0" HD",
+                    checked = stateDraft.touchScreenBeep,
+                    onCheckedChange = { stateDraft = stateDraft.copy(touchScreenBeep = it) }
+                )
+            }
+        }
+
+// --- Category 1: 🔔 Comfort & Cicalini di Bordo ---
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
