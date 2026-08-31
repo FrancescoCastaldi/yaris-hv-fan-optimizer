@@ -1,0 +1,216 @@
+package com.yaris.hvfan.obd
+
+import android.util.Log
+
+enum class WarmupStage(
+    val title: String,
+    val subtitle: String,
+    val targetTempDescription: String
+) {
+    S0("S0 - Motore Freddo", "Quadro acceso, termico non ancora avviato", "ECT < 40°C"),
+    S1A("S1a - Riscaldamento Catalizzatore", "Accensione ritardata per riscaldare il catalizzatore (EV bloccato)", "Cat < 400°C"),
+    S1B("S1b - Warm-up Liquido & Monoblocco", "Riscaldamento motore e circuito riscaldamento", "ECT 40°C - 55°C"),
+    S2("S2 - Transizione Efficienza", "Il motore può spegnersi a veicolo fermo", "ECT 55°C - 70°C"),
+    S3("S3 - Preriscaldamento Completo", "Fase di verifica regime termico per sblocco S4", "ECT 70°C - 73°C"),
+    S4("S4 - Piena Efficienza Ibrida", "Atkinson puro, veleggiamento EV al 100% e massimo risparmio", "ECT > 73°C")
+}
+
+data class HybridWarmupStatus(
+    val stage: WarmupStage = WarmupStage.S0,
+    val coolantTemp: Float = 20f,
+    val ambientTemp: Float = 20f,
+    val catalystTemp: Float = 150f,
+    val engineRpm: Int = 0,
+    val progressPercent: Float = 0f,
+    val recommendations: List<String> = emptyList(),
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+data class HvBatteryStatus(
+    val temp1: Double = 0.0,
+    val temp2: Double = 0.0,
+    val temp3: Double = 0.0,
+    val temp4: Double = 0.0,
+    val maxTemp: Double = 0.0,
+    val avgTemp: Double = 0.0,
+    val intakeTemp: Double = 0.0,
+    val fanSpeedLevel: Int = 0, // 0 to 6
+    val isFanForced: Boolean = false,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+object ToyotaYarisCommands {
+    private const val TAG = "ToyotaYarisCommands"
+
+    // CAN Headers
+    const val CMD_SET_HEADER_BATTERY_ECU = "AT SH 7E2"  // Toyota HV Battery Management ECU
+    const val CMD_SET_HEADER_ENGINE_ECU  = "AT SH 7E0"  // Toyota Engine / Hybrid Main ECU
+    const val CMD_SET_RECEIVE_FILTER     = "AT CRA 7EA" // Filter for Battery ECU responses
+
+    // Standard OBD-II PIDs (Mode 01 for Engine & Atmosphere)
+    const val PID_COOLANT_TEMP     = "0105" // Formula: A - 40 (°C)
+    const val PID_INTAKE_AIR_TEMP  = "010F" // Formula: A - 40 (°C)
+    const val PID_ENGINE_RPM       = "010C" // Formula: ((A*256)+B)/4
+    const val PID_CATALYST_TEMP    = "013C" // Formula: ((A*256)+B)/10 - 40 (°C)
+
+    // Toyota Enhanced PID (Mode 22 UDS / Mode 21 KWP)
+    const val PID_READ_BATTERY_DATA_TNGA = "2228C1"
+    const val PID_READ_BATTERY_DATA_LEGACY = "2161"
+
+    // Active Test / IO Control: Set Battery Cooling Fan to Level 6 (MAX)
+    const val CMD_FAN_MAX_SPEED_UDS = "300806"       // Mode 30 IO Control (Fan Level 6)
+    const val CMD_FAN_MAX_SPEED_ALT = "2F580306"     // Mode 2F IO Control Short Term Adjustment to 6
+    const val CMD_TESTER_PRESENT     = "3E00"         // Tester Present keep-alive
+
+    fun parseCoolantTemp(raw: String): Float? {
+        val clean = Elm327Protocol.cleanResponse(raw).uppercase()
+        if (clean.contains("4105")) {
+            val idx = clean.indexOf("4105") + 4
+            if (clean.length >= idx + 2) {
+                return (clean.substring(idx, idx + 2).toInt(16) - 40).toFloat()
+            }
+        }
+        return null
+    }
+
+    fun parseIntakeAirTemp(raw: String): Float? {
+        val clean = Elm327Protocol.cleanResponse(raw).uppercase()
+        if (clean.contains("410F")) {
+            val idx = clean.indexOf("410F") + 4
+            if (clean.length >= idx + 2) {
+                return (clean.substring(idx, idx + 2).toInt(16) - 40).toFloat()
+            }
+        }
+        return null
+    }
+
+    fun parseEngineRpm(raw: String): Int? {
+        val clean = Elm327Protocol.cleanResponse(raw).uppercase()
+        if (clean.contains("410C")) {
+            val idx = clean.indexOf("410C") + 4
+            if (clean.length >= idx + 4) {
+                val a = clean.substring(idx, idx + 2).toInt(16)
+                val b = clean.substring(idx + 2, idx + 4).toInt(16)
+                return ((a * 256) + b) / 4
+            }
+        }
+        return null
+    }
+
+    fun evaluateWarmupStatus(
+        coolantTemp: Float,
+        ambientTemp: Float,
+        rpm: Int
+    ): HybridWarmupStatus {
+        val stage: WarmupStage
+        val progress: Float
+        val tips = mutableListOf<String>()
+
+        when {
+            coolantTemp < 40f && rpm <= 0 -> {
+                stage = WarmupStage.S0
+                progress = (coolantTemp / 73f).coerceIn(0f, 0.2f)
+                tips.add("❄️ Motore spento a freddo (${coolantTemp.toInt()}°C). All'avvio, mantieni il riscaldamento abitacolo spento per 1 minuto.")
+            }
+            coolantTemp < 40f && rpm > 0 -> {
+                stage = WarmupStage.S1A
+                progress = 0.25f + ((coolantTemp / 40f) * 0.15f)
+                tips.add("🔥 S1a: Riscaldamento catalizzatore in corso. Tieni il clima OFF o al minimo per non sottrarre calore e ridurre la durata della fase.")
+                if (ambientTemp < 12f) {
+                    tips.add("💨 Temperatura esterna rigida (${ambientTemp.toInt()}°C): Evita partenze brusche, procedi a velocità costante moderata.")
+                }
+            }
+            coolantTemp in 40f..54.9f -> {
+                stage = WarmupStage.S1B
+                progress = 0.40f + (((coolantTemp - 40f) / 15f) * 0.20f)
+                tips.add("🚗 S1b: Il termico si sta scaldando (${coolantTemp.toInt()}°C / 73°C). Guida dolce a 1500-2000 RPM per velocizzare il riscaldamento.")
+                if (ambientTemp < 15f) {
+                    tips.add("💡 Consiglio: Imposta il riscaldamento su max 20°C in modalità ECO per evitare riaccensioni continue del termico.")
+                }
+            }
+            coolantTemp in 55f..69.9f -> {
+                stage = WarmupStage.S2
+                progress = 0.60f + (((coolantTemp - 55f) / 15f) * 0.25f)
+                tips.add("⚡ S2: Transizione attiva. Il motore termico può spegnersi alle soste ai semafori.")
+                tips.add("🎯 Mantieni un carico motore medio durante le accelerazioni per raggiungere rapidamente i 73°C.")
+            }
+            coolantTemp in 70f..72.9f -> {
+                stage = WarmupStage.S3
+                progress = 0.88f
+                tips.add("🚀 S3: Quasi a regime completo (${coolantTemp.toInt()}°C). Rilascia l'acceleratore per 5s alla prima fermata per forzare il passaggio a S4!")
+            }
+            else -> {
+                stage = WarmupStage.S4
+                progress = 1.0f
+                tips.add("✅ S4: Piena Efficienza Ibrida Raggiunta! Il motore termico opera in ciclo Atkinson al 100%.")
+                tips.add("🌿 Massima economia: Usa la tecnica 'Pulse & Glide' e il veleggiamento EV per consumi record.")
+            }
+        }
+
+        return HybridWarmupStatus(
+            stage = stage,
+            coolantTemp = coolantTemp,
+            ambientTemp = ambientTemp,
+            catalystTemp = if (coolantTemp > 60f) 550f else 320f,
+            engineRpm = rpm,
+            progressPercent = progress,
+            recommendations = tips
+        )
+    }
+
+    /**
+     * Parses the response from 2228C1 or 2161 into HvBatteryStatus.
+     */
+    fun parseBatteryResponse(raw: String, isForced: Boolean): HvBatteryStatus? {
+        val clean = Elm327Protocol.cleanResponse(raw).uppercase()
+        if (Elm327Protocol.isError(clean) || clean.length < 8) {
+            return null
+        }
+
+        try {
+            var hexPayload = clean
+            if (hexPayload.contains("6228C1")) {
+                hexPayload = hexPayload.substring(hexPayload.indexOf("6228C1") + 6)
+            } else if (hexPayload.contains("6161")) {
+                hexPayload = hexPayload.substring(hexPayload.indexOf("6161") + 4)
+            }
+
+            if (hexPayload.length < 8) {
+                return null
+            }
+
+            val t1 = (hexPayload.substring(0, 2).toInt(16) - 40).toDouble()
+            val t2 = if (hexPayload.length >= 4) (hexPayload.substring(2, 4).toInt(16) - 40).toDouble() else t1
+            val t3 = if (hexPayload.length >= 6) (hexPayload.substring(4, 6).toInt(16) - 40).toDouble() else t1
+            val t4 = if (hexPayload.length >= 8) (hexPayload.substring(6, 8).toInt(16) - 40).toDouble() else t1
+            
+            val intake = if (hexPayload.length >= 10) (hexPayload.substring(8, 10).toInt(16) - 40).toDouble() else t1
+            val fanLevel = if (hexPayload.length >= 12) {
+                val rawFan = hexPayload.substring(10, 12).toInt(16)
+                rawFan.coerceIn(0, 6)
+            } else {
+                if (isForced) 6 else 0
+            }
+
+            val temps = listOf(t1, t2, t3, t4).filter { it > -30 && it < 100 }
+            val maxT = if (temps.isNotEmpty()) temps.maxOrNull() ?: t1 else t1
+            val avgT = if (temps.isNotEmpty()) temps.average() else t1
+
+            return HvBatteryStatus(
+                temp1 = t1,
+                temp2 = t2,
+                temp3 = t3,
+                temp4 = t4,
+                maxTemp = maxT,
+                avgTemp = avgT,
+                intakeTemp = intake,
+                fanSpeedLevel = fanLevel,
+                isFanForced = isForced,
+                timestamp = System.currentTimeMillis()
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Errore parsing frame batteria: $raw", e)
+            return null
+        }
+    }
+}
