@@ -63,6 +63,59 @@ data class HvBatteryStatus(
     val timestamp: Long = System.currentTimeMillis()
 )
 
+
+
+enum class ReverseBeepMode(val label: String, val code: String) {
+    CONTINUOUS("Bip Continuo (Standard)", "01"),
+    SINGLE("Singolo Bip (Comfort Silenzioso)", "00")
+}
+
+enum class TurnSignalFlashes(val label: String, val flashes: Int, val code: String) {
+    FLASHES_3("3 Lampeggi (Standard)", 3, "03"),
+    FLASHES_4("4 Lampeggi", 4, "04"),
+    FLASHES_5("5 Lampeggi (Consigliato)", 5, "05"),
+    FLASHES_6("6 Lampeggi", 6, "06"),
+    OFF("Disattivato (Solo manuale)", 0, "00")
+}
+
+enum class AutoDoorLockMode(val label: String, val code: String) {
+    OFF("Disattivato", "00"),
+    BY_SPEED("Chiusura a 20 km/h (Speed Lock)", "01"),
+    BY_SHIFT_D("Chiusura marcia D (Shift from P)", "02")
+}
+
+enum class LightSensitivity(val label: String, val code: String) {
+    DARK_2("Molto Scuro (-2)", "01"),
+    DARK_1("Scuro (-1)", "02"),
+    NORMAL("Normale (Standard)", "03"),
+    LIGHT_1("Luminoso (+1)", "04"),
+    LIGHT_2("Molto Luminoso (+2)", "05")
+}
+
+enum class FollowMeHomeDuration(val label: String, val seconds: Int, val code: String) {
+    OFF("Disattivato", 0, "00"),
+    SEC_30("30 Secondi", 30, "01"),
+    SEC_60("60 Secondi", 60, "02"),
+    SEC_90("90 Secondi", 90, "03")
+}
+
+data class EcuCustomizationState(
+    val reverseBeep: ReverseBeepMode = ReverseBeepMode.SINGLE,
+    val driverSeatbeltBeep: Boolean = true,
+    val passengerSeatbeltBeep: Boolean = true,
+    val rearSeatbeltBeep: Boolean = true,
+    val windowsWithKeyFob: Boolean = true,
+    val autoDoorLock: AutoDoorLockMode = AutoDoorLockMode.BY_SPEED,
+    val autoDoorUnlock: Boolean = true,
+    val turnSignalFlashes: TurnSignalFlashes = TurnSignalFlashes.FLASHES_5,
+    val lightSensitivity: LightSensitivity = LightSensitivity.NORMAL,
+    val followMeHome: FollowMeHomeDuration = FollowMeHomeDuration.SEC_30,
+    val autoAcWithAutoButton: Boolean = false,
+    val isReadCompleted: Boolean = false,
+    val isWriting: Boolean = false,
+    val lastOperationStatus: String = "Pronto per la lettura"
+)
+
 object ToyotaYarisCommands {
     private const val TAG = "ToyotaYarisCommands"
 

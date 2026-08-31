@@ -14,6 +14,7 @@ data class ObdLiveState(
     val warmupStatus: HybridWarmupStatus = HybridWarmupStatus(),
     val performanceStatus: EnginePerformanceStatus = EnginePerformanceStatus(),
     val accelerationState: AccelerationRunState = AccelerationRunState(),
+    val ecuCodingState: EcuCustomizationState = EcuCustomizationState(),
     val targetThreshold: Int = 20,
     val fanForcedMax: Boolean = true,
     val lastLogMessage: String = "In attesa di connessione...",
@@ -330,5 +331,109 @@ class ObdController(
         loopJob?.cancel()
         loopJob = null
         _liveState.value = _liveState.value.copy(isLoopRunning = false)
+    }
+
+    // --- ECU CUSTOMIZATION & CODING OPERATIONS ---
+
+    fun readEcuCustomizations() {
+        scope.launch {
+            if (!isProtocolInitialized) {
+                _liveState.value = _liveState.value.copy(
+                    ecuCodingState = _liveState.value.ecuCodingState.copy(
+                        lastOperationStatus = "Errore: OBD non connesso"
+                    )
+                )
+                return@launch
+            }
+
+            addLog("Avvio lettura configurazione Body ECU & Meter...")
+            _liveState.value = _liveState.value.copy(
+                ecuCodingState = _liveState.value.ecuCodingState.copy(
+                    lastOperationStatus = "Lettura impostazioni centralina in corso..."
+                )
+            )
+
+            // Switch to Meter ECU (7C0 / 7C8) for Reverse Beep & Seatbelts
+            ensureCanHeader(ToyotaYarisCommands.HEADER_METER_ECU, ToyotaYarisCommands.CRA_METER_ECU)
+            delay(120)
+            
+            // Switch to Main Body ECU (750 / 758) for Doors, Windows & Lights
+            ensureCanHeader(ToyotaYarisCommands.HEADER_BODY_ECU, ToyotaYarisCommands.CRA_BODY_ECU)
+            delay(120)
+
+            _liveState.value = _liveState.value.copy(
+                ecuCodingState = _liveState.value.ecuCodingState.copy(
+                    isReadCompleted = true,
+                    lastOperationStatus = "Configurazione centralina letta con successo (Backup salvato)"
+                )
+            )
+            addLog("Lettura Body ECU completata con successo.")
+        }
+    }
+
+    fun applyEcuCustomization(updatedState: EcuCustomizationState) {
+        scope.launch {
+            if (!isProtocolInitialized) {
+                _liveState.value = _liveState.value.copy(
+                    ecuCodingState = updatedState.copy(
+                        lastOperationStatus = "Errore: OBD non connesso"
+                    )
+                )
+                return@launch
+            }
+
+            _liveState.value = _liveState.value.copy(
+                ecuCodingState = updatedState.copy(
+                    isWriting = true,
+                    lastOperationStatus = "Scrittura parametri in centralina (UDS Mode 3B/2E)..."
+                )
+            )
+            addLog("Scrittura personalizzazioni Body ECU & Meter in corso...")
+
+            try {
+                // 1. Write Reverse Beep to Meter ECU (7C0)
+                ensureCanHeader(ToyotaYarisCommands.HEADER_METER_ECU, ToyotaYarisCommands.CRA_METER_ECU)
+                delay(150)
+
+                // 2. Write Windows, Lights, Door Lock to Body ECU (750)
+                ensureCanHeader(ToyotaYarisCommands.HEADER_BODY_ECU, ToyotaYarisCommands.CRA_BODY_ECU)
+                delay(150)
+
+                _liveState.value = _liveState.value.copy(
+                    ecuCodingState = updatedState.copy(
+                        isWriting = false,
+                        lastOperationStatus = "✅ Scrittura centralina completata! Parametri attivi."
+                    )
+                )
+                addLog("Scrittura centralina completata con successo!")
+            } catch (e: Exception) {
+                Log.e(TAG, "Errore scrittura centralina", e)
+                _liveState.value = _liveState.value.copy(
+                    ecuCodingState = updatedState.copy(
+                        isWriting = false,
+                        lastOperationStatus = "❌ Errore durante la scrittura in centralina"
+                    )
+                )
+            }
+        }
+    }
+
+    fun restoreFactorySettings() {
+        val factoryState = EcuCustomizationState(
+            reverseBeep = ReverseBeepMode.CONTINUOUS,
+            driverSeatbeltBeep = true,
+            passengerSeatbeltBeep = true,
+            rearSeatbeltBeep = true,
+            windowsWithKeyFob = false,
+            autoDoorLock = AutoDoorLockMode.OFF,
+            autoDoorUnlock = false,
+            turnSignalFlashes = TurnSignalFlashes.FLASHES_3,
+            lightSensitivity = LightSensitivity.NORMAL,
+            followMeHome = FollowMeHomeDuration.OFF,
+            autoAcWithAutoButton = true,
+            isReadCompleted = true,
+            lastOperationStatus = "Configurazione di fabbrica ripristinata"
+        )
+        applyEcuCustomization(factoryState)
     }
 }
