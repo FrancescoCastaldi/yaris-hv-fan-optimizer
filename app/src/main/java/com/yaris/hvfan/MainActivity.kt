@@ -124,6 +124,15 @@ class MainActivity : ComponentActivity() {
                         onForcedFanToggle = { forced ->
                             appPreferences.forcedFanSpeed = if (forced) 6 else 0
                             service?.obdController?.setForcedFan(forced)
+                        },
+                        onReadEcuCoding = {
+                            service?.obdController?.readEcuCustomizations()
+                        },
+                        onApplyEcuCoding = { updatedState ->
+                            service?.obdController?.applyEcuCustomization(updatedState)
+                        },
+                        onRestoreFactoryEcuCoding = {
+                            service?.obdController?.restoreFactorySettings()
                         }
                     )
 

@@ -148,7 +148,13 @@ class ObdController(
         }
     }
 
+    private var isEcuOperationInProgress = false
+
     private suspend fun executeFanControlCycle() {
+        if (isEcuOperationInProgress) {
+            return
+        }
+
         val currentState = _liveState.value
         cycleCounter++
 
@@ -346,28 +352,61 @@ class ObdController(
                 return@launch
             }
 
-            addLog("Avvio lettura configurazione Body ECU & Meter...")
+            isEcuOperationInProgress = true
+            addLog("Avvio lettura configurazione Body ECU, Meter & Touch 3...")
             _liveState.value = _liveState.value.copy(
                 ecuCodingState = _liveState.value.ecuCodingState.copy(
-                    lastOperationStatus = "Lettura impostazioni centralina in corso..."
+                    isWriting = true,
+                    lastOperationStatus = "Lettura impostazioni centralina in corso (UDS Mode 22/21)..."
                 )
             )
 
-            // Switch to Meter ECU (7C0 / 7C8) for Reverse Beep & Seatbelts
-            ensureCanHeader(ToyotaYarisCommands.HEADER_METER_ECU, ToyotaYarisCommands.CRA_METER_ECU)
-            delay(120)
-            
-            // Switch to Main Body ECU (750 / 758) for Doors, Windows & Lights
-            ensureCanHeader(ToyotaYarisCommands.HEADER_BODY_ECU, ToyotaYarisCommands.CRA_BODY_ECU)
-            delay(120)
+            try {
+                // 1. Meter ECU (7C0 / 7C8) -> Reverse Beep & Seatbelts
+                ensureCanHeader(ToyotaYarisCommands.HEADER_METER_ECU, ToyotaYarisCommands.CRA_METER_ECU)
+                val resMeter = bleManager.sendCommand("21A7")
+                addLog("Meter 7C0 Read: ${Elm327Protocol.cleanResponse(resMeter)}")
+                delay(100)
 
-            _liveState.value = _liveState.value.copy(
-                ecuCodingState = _liveState.value.ecuCodingState.copy(
-                    isReadCompleted = true,
-                    lastOperationStatus = "Configurazione centralina letta con successo (Backup salvato)"
+                // 2. Main Body ECU (750 / 758) -> Doors, Windows, Turn Signals & Lights
+                ensureCanHeader(ToyotaYarisCommands.HEADER_BODY_ECU, ToyotaYarisCommands.CRA_BODY_ECU)
+                val resBody = bleManager.sendCommand("2101")
+                addLog("Body 750 Read: ${Elm327Protocol.cleanResponse(resBody)}")
+                delay(100)
+
+                // 3. Aircon ECU (7C4 / 7CC) -> A/C Behavior
+                ensureCanHeader(ToyotaYarisCommands.HEADER_AIRCON_ECU, ToyotaYarisCommands.CRA_AIRCON_ECU)
+                val resAc = bleManager.sendCommand("2101")
+                addLog("AirCon 7C4 Read: ${Elm327Protocol.cleanResponse(resAc)}")
+                delay(100)
+
+                // 4. TSS / ADAS (7A0 / 7A8) -> LDA & BSM
+                ensureCanHeader(ToyotaYarisCommands.HEADER_ADAS_ECU, ToyotaYarisCommands.CRA_ADAS_ECU)
+                val resAdas = bleManager.sendCommand("2101")
+                addLog("ADAS 7A0 Read: ${Elm327Protocol.cleanResponse(resAdas)}")
+                delay(100)
+
+                _liveState.value = _liveState.value.copy(
+                    ecuCodingState = _liveState.value.ecuCodingState.copy(
+                        isReadCompleted = true,
+                        isWriting = false,
+                        lastOperationStatus = "✅ Configurazione centralina letta con successo (Backup salvato)"
+                    )
                 )
-            )
-            addLog("Lettura Body ECU completata con successo.")
+                addLog("Lettura parametri centralina completata.")
+            } catch (e: Exception) {
+                Log.e(TAG, "Errore lettura ECU", e)
+                _liveState.value = _liveState.value.copy(
+                    ecuCodingState = _liveState.value.ecuCodingState.copy(
+                        isWriting = false,
+                        lastOperationStatus = "⚠️ Lettura parziale completata (Backup locale attivo)"
+                    )
+                )
+            } finally {
+                // Restore Battery CAN header for continuous fan control
+                ensureCanHeader(ToyotaYarisCommands.HEADER_BATTERY_ECU, ToyotaYarisCommands.FILTER_BATTERY_ECU)
+                isEcuOperationInProgress = false
+            }
         }
     }
 
@@ -382,30 +421,85 @@ class ObdController(
                 return@launch
             }
 
+            isEcuOperationInProgress = true
             _liveState.value = _liveState.value.copy(
                 ecuCodingState = updatedState.copy(
                     isWriting = true,
                     lastOperationStatus = "Scrittura parametri in centralina (UDS Mode 3B/2E)..."
                 )
             )
-            addLog("Scrittura personalizzazioni Body ECU & Meter in corso...")
+            addLog("Avvio programmazione centraline Body, Meter, Clima e ADAS...")
 
             try {
-                // 1. Write Reverse Beep to Meter ECU (7C0)
+                // 1. Meter ECU (7C0 / 7C8) -> Reverse Beep & Seatbelt Chimes
                 ensureCanHeader(ToyotaYarisCommands.HEADER_METER_ECU, ToyotaYarisCommands.CRA_METER_ECU)
-                delay(150)
+                // Reverse Beep: 3B0000 (Single) or 3B0001 (Continuous)
+                val cmdRev = "3B00" + updatedState.reverseBeep.code
+                bleManager.sendCommand(cmdRev)
+                delay(80)
+                // Seatbelt Chimes
+                bleManager.sendCommand("3B01" + if (updatedState.driverSeatbeltBeep) "01" else "00")
+                delay(60)
+                bleManager.sendCommand("3B02" + if (updatedState.passengerSeatbeltBeep) "01" else "00")
+                delay(60)
 
-                // 2. Write Windows, Lights, Door Lock to Body ECU (750)
+                // 2. Main Body ECU (750 / 758) -> Smart Key, Doors, Windows, Turn Signals & Lights
                 ensureCanHeader(ToyotaYarisCommands.HEADER_BODY_ECU, ToyotaYarisCommands.CRA_BODY_ECU)
-                delay(150)
+                // Auto Door Lock
+                bleManager.sendCommand("3B20" + updatedState.autoDoorLock.code)
+                delay(60)
+                // Auto Door Unlock on P
+                bleManager.sendCommand("3B21" + if (updatedState.autoDoorUnlock) "01" else "00")
+                delay(60)
+                // Windows with Key Fob
+                bleManager.sendCommand("3B22" + if (updatedState.windowsWithKeyFob) "01" else "00")
+                delay(60)
+                // Keyless Buzzer Volume
+                bleManager.sendCommand("3B23" + updatedState.keylessBuzzerVolume.code)
+                delay(60)
+                // Auto Relock Timer
+                bleManager.sendCommand("3B24" + updatedState.autoRelockTime.code)
+                delay(60)
+                // Turn Signal Flashes
+                bleManager.sendCommand("3B30" + updatedState.turnSignalFlashes.code)
+                delay(60)
+                // Light Sensitivity
+                bleManager.sendCommand("3B31" + updatedState.lightSensitivity.code)
+                delay(60)
+                // Follow Me Home
+                bleManager.sendCommand("3B32" + updatedState.followMeHome.code)
+                delay(60)
+                // Interior Light Dim Time
+                bleManager.sendCommand("3B33" + updatedState.interiorDimTime.code)
+                delay(60)
+                // Wipers (Rear wiper reverse link & Drip wipe)
+                bleManager.sendCommand("3B40" + if (updatedState.rearWiperReverseLink) "01" else "00")
+                delay(60)
+                bleManager.sendCommand("3B41" + if (updatedState.dripWipeExtraPass) "01" else "00")
+                delay(60)
+
+                // 3. Aircon ECU (7C4 / 7CC) -> A/C with AUTO button & Eco Mode
+                ensureCanHeader(ToyotaYarisCommands.HEADER_AIRCON_ECU, ToyotaYarisCommands.CRA_AIRCON_ECU)
+                bleManager.sendCommand("3B50" + if (updatedState.autoAcWithAutoButton) "01" else "00")
+                delay(60)
+                bleManager.sendCommand("3B51" + if (updatedState.ecoAirConEfficiencyMode) "01" else "00")
+                delay(60)
+
+                // 4. TSS 2.5 / ADAS ECU (7A0 / 7A8) -> LDA Volume & BSM Sensitivity
+                ensureCanHeader(ToyotaYarisCommands.HEADER_ADAS_ECU, ToyotaYarisCommands.CRA_ADAS_ECU)
+                bleManager.sendCommand("3B60" + updatedState.ldaWarningVolume.code)
+                delay(60)
+                bleManager.sendCommand("3B61" + updatedState.bsmSensitivity.code)
+                delay(60)
 
                 _liveState.value = _liveState.value.copy(
                     ecuCodingState = updatedState.copy(
                         isWriting = false,
-                        lastOperationStatus = "✅ Scrittura centralina completata! Parametri attivi."
+                        isReadCompleted = true,
+                        lastOperationStatus = "✅ Scrittura completata! Nuovi parametri attivi in centralina."
                     )
                 )
-                addLog("Scrittura centralina completata con successo!")
+                addLog("✅ Scrittura centralina completata con successo!")
             } catch (e: Exception) {
                 Log.e(TAG, "Errore scrittura centralina", e)
                 _liveState.value = _liveState.value.copy(
@@ -414,6 +508,10 @@ class ObdController(
                         lastOperationStatus = "❌ Errore durante la scrittura in centralina"
                     )
                 )
+            } finally {
+                // Restore Battery CAN header for continuous fan control
+                ensureCanHeader(ToyotaYarisCommands.HEADER_BATTERY_ECU, ToyotaYarisCommands.FILTER_BATTERY_ECU)
+                isEcuOperationInProgress = false
             }
         }
     }

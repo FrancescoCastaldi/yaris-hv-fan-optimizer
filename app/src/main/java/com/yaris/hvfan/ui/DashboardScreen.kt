@@ -74,8 +74,7 @@ fun DashboardScreen(
     )
 
     val isDeviceConnected = (connectionState is BleConnectionState.Ready || connectionState is BleConnectionState.Connected) &&
-        liveState.isInitialized &&
-        (liveState.batteryStatus.maxTemp > 0.0 || liveState.warmupStatus.hasLiveData || liveState.performanceStatus.hasLiveData)
+        liveState.isInitialized
 
     Column(
         modifier = Modifier
