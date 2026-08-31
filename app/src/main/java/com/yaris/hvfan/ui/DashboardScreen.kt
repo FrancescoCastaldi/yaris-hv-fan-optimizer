@@ -82,12 +82,14 @@ fun DashboardScreen(
             .padding(16.dp)
             .verticalScroll(scrollState)
     ) {
-        // --- Top App Header Bar ---
+        // --- Top App Header Bar (Cyber Glassmorphism) ---
         Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(BorderStroke(1.dp, CardBorder), RoundedCornerShape(22.dp)),
+            shape = RoundedCornerShape(22.dp),
             color = SurfaceDark,
-            tonalElevation = 4.dp
+            tonalElevation = 6.dp
         ) {
             Row(
                 modifier = Modifier
@@ -121,19 +123,21 @@ fun DashboardScreen(
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        // --- Custom Segmented Tab Bar (3 Tabs: GR Cockpit, Fan & Termiche, Codifiche ECU) ---
+        // --- Custom Segmented Tab Bar (Gazoo Racing Racing Pills) ---
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(54.dp),
-            shape = RoundedCornerShape(16.dp),
-            color = SurfaceDark
+                .height(56.dp)
+                .border(BorderStroke(1.dp, CardBorder), RoundedCornerShape(18.dp)),
+            shape = RoundedCornerShape(18.dp),
+            color = SurfaceDark,
+            tonalElevation = 4.dp
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(4.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    .padding(5.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 // Tab 1: GR Cockpit
                 val isGrSelected = selectedTab == DashboardTab.GR_COCKPIT
@@ -141,10 +145,12 @@ fun DashboardScreen(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable { selectedTab = DashboardTab.GR_COCKPIT },
-                    color = if (isGrSelected) Color(0xFFFF1801) else Color.Transparent,
-                    shape = RoundedCornerShape(12.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable { selectedTab = DashboardTab.GR_COCKPIT }
+                        .then(if (isGrSelected) Modifier.border(BorderStroke(1.dp, GrRedGlow.copy(alpha = 0.6f)), RoundedCornerShape(14.dp)) else Modifier),
+                    color = if (isGrSelected) GrRedPrimary else Color.Transparent,
+                    shape = RoundedCornerShape(14.dp),
+                    tonalElevation = if (isGrSelected) 8.dp else 0.dp
                 ) {
                     Row(
                         modifier = Modifier.fillMaxSize(),
@@ -163,7 +169,7 @@ fun DashboardScreen(
                             fontSize = 12.sp,
                             fontWeight = if (isGrSelected) FontWeight.Black else FontWeight.Bold,
                             color = if (isGrSelected) Color.White else TextSecondary,
-                            letterSpacing = 0.5.sp
+                            letterSpacing = 0.8.sp
                         )
                     }
                 }
@@ -174,10 +180,12 @@ fun DashboardScreen(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable { selectedTab = DashboardTab.FAN_CONTROL },
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable { selectedTab = DashboardTab.FAN_CONTROL }
+                        .then(if (isFanSelected) Modifier.border(BorderStroke(1.dp, AccentCyan.copy(alpha = 0.6f)), RoundedCornerShape(14.dp)) else Modifier),
                     color = if (isFanSelected) AccentCyan else Color.Transparent,
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(14.dp),
+                    tonalElevation = if (isFanSelected) 8.dp else 0.dp
                 ) {
                     Row(
                         modifier = Modifier.fillMaxSize(),
@@ -196,7 +204,7 @@ fun DashboardScreen(
                             fontSize = 12.sp,
                             fontWeight = if (isFanSelected) FontWeight.Black else FontWeight.Bold,
                             color = if (isFanSelected) DarkBackground else TextSecondary,
-                            letterSpacing = 0.5.sp
+                            letterSpacing = 0.8.sp
                         )
                     }
                 }
@@ -207,10 +215,12 @@ fun DashboardScreen(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable { selectedTab = DashboardTab.ECU_CODING },
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable { selectedTab = DashboardTab.ECU_CODING }
+                        .then(if (isEcuSelected) Modifier.border(BorderStroke(1.dp, Color(0xFF9E7AFF)), RoundedCornerShape(14.dp)) else Modifier),
                     color = if (isEcuSelected) Color(0xFF7C4DFF) else Color.Transparent,
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(14.dp),
+                    tonalElevation = if (isEcuSelected) 8.dp else 0.dp
                 ) {
                     Row(
                         modifier = Modifier.fillMaxSize(),
@@ -229,7 +239,7 @@ fun DashboardScreen(
                             fontSize = 12.sp,
                             fontWeight = if (isEcuSelected) FontWeight.Black else FontWeight.Bold,
                             color = if (isEcuSelected) Color.White else TextSecondary,
-                            letterSpacing = 0.5.sp
+                            letterSpacing = 0.8.sp
                         )
                     }
                 }
@@ -414,7 +424,7 @@ fun GrCockpitSection(
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(26.dp),
-            colors = CardDefaults.cardColors(containerColor = SurfaceDark)
+            colors = CardDefaults.cardColors(containerColor = CardBackground), border = BorderStroke(1.dp, CardBorder)
         ) {
             Column(
                 modifier = Modifier
@@ -470,12 +480,19 @@ fun GrCockpitSection(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Digital Speedometer & Live Timer Centerpiece
+                // Digital Speedometer & Live Timer Centerpiece (Gazoo Cyber-Glow)
                 Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    color = Color(0xFF070A0F),
-                    border = BorderStroke(1.dp, Color(0xFF222B3D))
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(
+                            BorderStroke(
+                                1.5.dp,
+                                if (isConnected && accel.currentSpeedKmh > 0) CardBorderActive else CardBorder
+                            ),
+                            RoundedCornerShape(22.dp)
+                        ),
+                    shape = RoundedCornerShape(22.dp),
+                    color = DarkBackground
                 ) {
                     Row(
                         modifier = Modifier
@@ -577,7 +594,7 @@ fun GrCockpitSection(
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = SurfaceDark)
+            colors = CardDefaults.cardColors(containerColor = CardBackground), border = BorderStroke(1.dp, CardBorder)
         ) {
             Column(
                 modifier = Modifier
@@ -774,7 +791,7 @@ fun FanManagementSection(
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = SurfaceDark)
+            colors = CardDefaults.cardColors(containerColor = CardBackground), border = BorderStroke(1.dp, CardBorder)
         ) {
             Column(
                 modifier = Modifier
@@ -904,7 +921,7 @@ fun FanManagementSection(
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = SurfaceDark)
+            colors = CardDefaults.cardColors(containerColor = CardBackground), border = BorderStroke(1.dp, CardBorder)
         ) {
             Column(
                 modifier = Modifier
@@ -1038,7 +1055,7 @@ fun FanManagementSection(
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = SurfaceDark)
+            colors = CardDefaults.cardColors(containerColor = CardBackground), border = BorderStroke(1.dp, CardBorder)
         ) {
             Column(
                 modifier = Modifier
@@ -1132,7 +1149,7 @@ fun EcuCodingSection(
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = SurfaceDark)
+            colors = CardDefaults.cardColors(containerColor = CardBackground), border = BorderStroke(1.dp, CardBorder)
         ) {
             Column(
                 modifier = Modifier
@@ -1391,7 +1408,7 @@ fun EcuCodingSection(
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = SurfaceDark)
+            colors = CardDefaults.cardColors(containerColor = CardBackground), border = BorderStroke(1.dp, CardBorder)
         ) {
             Column(
                 modifier = Modifier
@@ -1453,7 +1470,7 @@ fun EcuCodingSection(
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = SurfaceDark)
+            colors = CardDefaults.cardColors(containerColor = CardBackground), border = BorderStroke(1.dp, CardBorder)
         ) {
             Column(
                 modifier = Modifier
@@ -1524,7 +1541,7 @@ fun EcuCodingSection(
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = SurfaceDark)
+            colors = CardDefaults.cardColors(containerColor = CardBackground), border = BorderStroke(1.dp, CardBorder)
         ) {
             Column(
                 modifier = Modifier
@@ -1562,7 +1579,7 @@ fun EcuCodingSection(
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = SurfaceDark)
+            colors = CardDefaults.cardColors(containerColor = CardBackground), border = BorderStroke(1.dp, CardBorder)
         ) {
             Column(
                 modifier = Modifier
@@ -1626,7 +1643,7 @@ fun EcuCodingSection(
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = SurfaceDark)
+            colors = CardDefaults.cardColors(containerColor = CardBackground), border = BorderStroke(1.dp, CardBorder)
         ) {
             Column(
                 modifier = Modifier
@@ -1665,7 +1682,7 @@ fun EcuCodingSection(
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = SurfaceDark)
+            colors = CardDefaults.cardColors(containerColor = CardBackground), border = BorderStroke(1.dp, CardBorder)
         ) {
             Column(
                 modifier = Modifier

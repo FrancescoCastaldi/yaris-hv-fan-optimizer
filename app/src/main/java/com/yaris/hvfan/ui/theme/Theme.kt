@@ -1,19 +1,21 @@
-﻿package com.yaris.hvfan.ui.theme
+package com.yaris.hvfan.ui.theme
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 
 private val DarkColorScheme = darkColorScheme(
-    primary = AccentCyan,
-    secondary = AccentBlue,
+    primary = GrRedPrimary,
+    secondary = AccentCyan,
     tertiary = SuccessGreen,
     background = DarkBackground,
     surface = SurfaceDark,
-    onPrimary = DarkBackground,
-    onSecondary = TextPrimary,
+    surfaceVariant = CardBackground,
+    onPrimary = TextPrimary,
+    onSecondary = DarkBackground,
     onBackground = TextPrimary,
-    onSurface = TextPrimary
+    onSurface = TextPrimary,
+    outline = CardBorder
 )
 
 @Composable
