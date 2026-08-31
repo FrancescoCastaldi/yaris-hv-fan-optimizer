@@ -381,16 +381,17 @@ fun GrCockpitSection(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
+                        Image(
+                            painter = painterResource(id = R.drawable.ic_gr_logo),
+                            contentDescription = "Gazoo Racing Logo",
                             modifier = Modifier
-                                .size(10.dp)
-                                .clip(CircleShape)
-                                .background(if (isConnected) Color(0xFFFF1801) else TextSecondary)
+                                .width(38.dp)
+                                .height(19.dp)
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
                         Text(
                             text = "GAZOO RACING TELEMETRY",
-                            fontSize = 11.sp,
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Black,
                             color = if (isConnected) Color(0xFFFF5252) else TextSecondary,
                             letterSpacing = 1.sp
