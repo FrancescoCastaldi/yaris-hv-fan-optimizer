@@ -13,6 +13,7 @@ data class ObdLiveState(
     val batteryStatus: HvBatteryStatus = HvBatteryStatus(),
     val warmupStatus: HybridWarmupStatus = HybridWarmupStatus(),
     val performanceStatus: EnginePerformanceStatus = EnginePerformanceStatus(),
+    val accelerationState: AccelerationRunState = AccelerationRunState(),
     val targetThreshold: Int = 20,
     val fanForcedMax: Boolean = true,
     val lastLogMessage: String = "In attesa di connessione...",
@@ -41,6 +42,16 @@ class ObdController(
     private var lastKnownAdvance = 0f
     private var lastKnownLoad = 0f
     private var lastKnownThrottle = 0f
+    private var lastKnownSpeed = 0
+
+    // Acceleration Timer State Machine
+    private var launchStartTimeMs = 0L
+    private var isTimingInProgress = false
+    private var isLaunchArmed = false
+    private var run0to50Sec: Float? = null
+    private var run0to100Sec: Float? = null
+    private var best0to50Sec: Float? = null
+    private var best0to100Sec: Float? = null
 
     fun startController() {
         scope.launch {
@@ -169,12 +180,20 @@ class ObdController(
             addLog("Batt: ${String.format("%.1f", updatedBattery.maxTemp)}°C (sotto soglia ${currentState.targetThreshold}°C)")
         }
 
-        // Step C: Interleave Engine ECU (7E0 / 7E8) for REAL Coolant, Ambient, RPM & Performance Metrics
+        // Step C: Interleave Engine ECU (7E0 / 7E8) for REAL Coolant, Ambient, RPM, Speed & Performance
         var updatedWarmup = currentState.warmupStatus
         var updatedPerformance = currentState.performanceStatus
+        var updatedAcceleration = currentState.accelerationState
 
         if (cycleCounter % 2 == 0) {
             ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU, ToyotaYarisCommands.FILTER_ENGINE_ECU)
+
+            // Read Real Physical Vehicle Speed (km/h)
+            val rawSpeed = bleManager.sendCommand(ToyotaYarisCommands.PID_VEHICLE_SPEED)
+            val parsedSpeed = ToyotaYarisCommands.parseVehicleSpeed(rawSpeed)
+            if (parsedSpeed != null) {
+                lastKnownSpeed = parsedSpeed
+            }
 
             // Read Real Physical Coolant Temp (ECT)
             val rawCoolant = bleManager.sendCommand(ToyotaYarisCommands.PID_COOLANT_TEMP)
@@ -236,13 +255,64 @@ class ObdController(
                 hasLiveData = hasPerfData
             )
 
-            addLog("Performance: Anticipo=${String.format("%.1f", lastKnownAdvance)}° | Carico=${lastKnownLoad.toInt()}% | Gas=${lastKnownThrottle.toInt()}%")
+            // --- Acceleration Sprint Timer Logic ---
+            var elapsedRunMs = 0L
+            if (lastKnownSpeed == 0) {
+                isLaunchArmed = true
+                if (isTimingInProgress) {
+                    isTimingInProgress = false
+                }
+            } else if (isLaunchArmed && lastKnownSpeed > 0 && lastKnownThrottle > 15f) {
+                // Launch started!
+                isLaunchArmed = false
+                isTimingInProgress = true
+                launchStartTimeMs = System.currentTimeMillis()
+                run0to50Sec = null
+                run0to100Sec = null
+                addLog("🏁 SCATTO AVVIATO! Rilevamento 0-50 / 0-100 km/h in corso...")
+            }
+
+            if (isTimingInProgress && launchStartTimeMs > 0L) {
+                elapsedRunMs = System.currentTimeMillis() - launchStartTimeMs
+
+                if (lastKnownSpeed >= 50 && run0to50Sec == null) {
+                    run0to50Sec = elapsedRunMs / 1000.0f
+                    if (best0to50Sec == null || run0to50Sec!! < best0to50Sec!!) {
+                        best0to50Sec = run0to50Sec
+                    }
+                    addLog("⚡ TRAGUARDO 0-50 km/h: ${String.format("%.2f", run0to50Sec)}s (Record: ${String.format("%.2f", best0to50Sec)}s)")
+                }
+
+                if (lastKnownSpeed >= 100 && run0to100Sec == null) {
+                    run0to100Sec = elapsedRunMs / 1000.0f
+                    if (best0to100Sec == null || run0to100Sec!! < best0to100Sec!!) {
+                        best0to100Sec = run0to100Sec
+                    }
+                    isTimingInProgress = false
+                    addLog("🏆 TRAGUARDO 0-100 km/h: ${String.format("%.2f", run0to100Sec)}s (Record: ${String.format("%.2f", best0to100Sec)}s)")
+                }
+            }
+
+            updatedAcceleration = AccelerationRunState(
+                currentSpeedKmh = lastKnownSpeed,
+                isLaunchReady = isLaunchArmed && lastKnownSpeed == 0,
+                isTimingActive = isTimingInProgress,
+                elapsedMs = elapsedRunMs,
+                last0to50TimeSec = run0to50Sec,
+                last0to100TimeSec = run0to100Sec,
+                best0to50TimeSec = best0to50Sec,
+                best0to100TimeSec = best0to100Sec,
+                lastRunCompleted = run0to100Sec != null || (run0to50Sec != null && !isTimingInProgress)
+            )
+
+            addLog("GR Telemetry: ${lastKnownSpeed} km/h | Advance=${String.format("%.1f", lastKnownAdvance)}° | Load=${lastKnownLoad.toInt()}%")
         }
 
         _liveState.value = _liveState.value.copy(
             batteryStatus = updatedBattery.copy(isFanForced = shouldForceFan, fanSpeedLevel = if (shouldForceFan) 6 else updatedBattery.fanSpeedLevel),
             warmupStatus = updatedWarmup,
-            performanceStatus = updatedPerformance
+            performanceStatus = updatedPerformance,
+            accelerationState = updatedAcceleration
         )
     }
 

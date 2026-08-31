@@ -432,8 +432,9 @@ fun DashboardScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // --- 4. ENGINE & HYBRID POWER PERFORMANCE MONITOR ---
+        // --- 4. GAZOO RACING COCKPIT & SPRINT TIMER (0-50 / 0-100 km/h) ---
         val perf = liveState.performanceStatus
+        val accel = liveState.accelerationState
         val isFullBoost = !liveState.batteryStatus.isThermalThrottled && (liveState.warmupStatus.stage == WarmupStage.S4 || liveState.warmupStatus.stage == WarmupStage.S2)
 
         Card(
@@ -446,6 +447,7 @@ fun DashboardScreen(
                     .fillMaxWidth()
                     .padding(20.dp)
             ) {
+                // Header
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -455,35 +457,143 @@ fun DashboardScreen(
                         Icon(
                             imageVector = Icons.Default.Speed,
                             contentDescription = null,
-                            tint = if (isFullBoost) AccentCyan else WarningOrange,
+                            tint = Color(0xFFFF3D00), // GR Racing Red
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "PRESTAZIONI MOTORE & POTENZA",
+                            text = "GR COCKPIT & SPRINT TIMER",
                             style = Typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
+                            fontWeight = FontWeight.Black,
                             color = TextSecondary,
                             letterSpacing = 1.sp
                         )
                     }
 
+                    val badgeColor = when {
+                        accel.isLaunchReady -> SuccessGreen
+                        accel.isTimingActive -> WarningOrange
+                        isFullBoost -> AccentCyan
+                        else -> WarningOrange
+                    }
+                    val badgeText = when {
+                        accel.isLaunchReady -> "🟢 LAUNCH READY"
+                        accel.isTimingActive -> "⏱️ SCATTO IN CORSO"
+                        isFullBoost -> "⚡ 100% BOOST READY"
+                        else -> "⚠️ TAGLIO TERMICO"
+                    }
+
                     Surface(
                         shape = RoundedCornerShape(12.dp),
-                        color = if (isFullBoost) SuccessGreen.copy(alpha = 0.15f) else WarningOrange.copy(alpha = 0.15f)
+                        color = badgeColor.copy(alpha = 0.15f)
                     ) {
                         Text(
-                            text = if (isFullBoost) "⚡ 100% FULL BOOST" else "⚠️ LIMITATO TERMICO",
+                            text = badgeText,
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Black,
-                            color = if (isFullBoost) SuccessGreen else WarningOrange
+                            color = badgeColor
                         )
                     }
                 }
 
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Digital Speedometer & Live Timer Centerpiece
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    color = Color.Black
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(18.dp),
+                        horizontalArrangement = Arrangement.SpaceAround,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Digital Speedometer
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "VELOCITÀ",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextSecondary,
+                                letterSpacing = 1.sp
+                            )
+                            Row(verticalAlignment = Alignment.Bottom) {
+                                Text(
+                                    text = "${accel.currentSpeedKmh}",
+                                    fontSize = 44.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = if (accel.currentSpeedKmh > 0) Color.White else TextSecondary,
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                                )
+                                Text(
+                                    text = " km/h",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = AccentCyan,
+                                    modifier = Modifier.padding(bottom = 6.dp)
+                                )
+                            }
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .width(1.dp)
+                                .height(50.dp)
+                                .background(DividerColor)
+                        )
+
+                        // Live Sprint Timer
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = if (accel.isTimingActive) "TIMER SCATTO" else "CRONOMETRO",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (accel.isTimingActive) WarningOrange else TextSecondary,
+                                letterSpacing = 1.sp
+                            )
+                            Text(
+                                text = if (accel.isTimingActive) {
+                                    String.format("%.2fs", accel.elapsedMs / 1000f)
+                                } else if (accel.last0to100TimeSec != null) {
+                                    String.format("%.2fs", accel.last0to100TimeSec)
+                                } else "--.--s",
+                                fontSize = 34.sp,
+                                fontWeight = FontWeight.Black,
+                                color = if (accel.isTimingActive) WarningOrange else SuccessGreen,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Sprint Dragy-style Times (0-50 & 0-100 km/h)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    SprintScoreCard(
+                        title = "SCATTO 0-50 km/h",
+                        lastTime = accel.last0to50TimeSec,
+                        bestTime = accel.best0to50TimeSec,
+                        modifier = Modifier.weight(1f)
+                    )
+                    SprintScoreCard(
+                        title = "SCATTO 0-100 km/h",
+                        lastTime = accel.last0to100TimeSec,
+                        bestTime = accel.best0to100TimeSec,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(14.dp))
 
+                // Engine Performance & Ignition Advance Telemetry
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -495,7 +605,7 @@ fun DashboardScreen(
                         modifier = Modifier.weight(1f)
                     )
                     TelemetryChip(
-                        label = "Carico Termico",
+                        label = "Carico Motore",
                         value = if (perf.hasLiveData) "${perf.engineLoadPercent.toInt()}%" else "--",
                         highlight = perf.hasLiveData && perf.engineLoadPercent > 70f,
                         modifier = Modifier.weight(1f)
@@ -527,7 +637,7 @@ fun DashboardScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Raffreddamento L6 attivo: zero taglio di potenza su MG2 (59 kW elettrici pieni sempre pronti).",
+                            text = "Launch Control automatico: fermati a 0 km/h per armare il timer, premi tutto il gas e misura il tempo!",
                             fontSize = 11.sp,
                             lineHeight = 15.sp,
                             color = TextPrimary
@@ -860,6 +970,57 @@ fun ConnectionBadge(connectionState: BleConnectionState) {
             fontWeight = FontWeight.Bold,
             letterSpacing = 0.5.sp
         )
+    }
+}
+
+@Composable
+fun SprintScoreCard(
+    title: String,
+    lastTime: Float?,
+    bestTime: Float?,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        color = CardBackground
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = title,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Black,
+                color = AccentCyan,
+                letterSpacing = 0.5.sp
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = if (lastTime != null) String.format("%.2fs", lastTime) else "--.--s",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Black,
+                color = if (lastTime != null) TextPrimary else TextSecondary,
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "🏆 RECORD: ",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextSecondary
+                )
+                Text(
+                    text = if (bestTime != null) String.format("%.2fs", bestTime) else "--",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Black,
+                    color = SuccessGreen,
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                )
+            }
+        }
     }
 }
 

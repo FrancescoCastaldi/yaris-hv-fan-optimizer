@@ -27,6 +27,18 @@ data class HybridWarmupStatus(
     val timestamp: Long = System.currentTimeMillis()
 )
 
+data class AccelerationRunState(
+    val currentSpeedKmh: Int = 0,
+    val isLaunchReady: Boolean = false,
+    val isTimingActive: Boolean = false,
+    val elapsedMs: Long = 0L,
+    val last0to50TimeSec: Float? = null,
+    val last0to100TimeSec: Float? = null,
+    val best0to50TimeSec: Float? = null,
+    val best0to100TimeSec: Float? = null,
+    val lastRunCompleted: Boolean = false
+)
+
 data class EnginePerformanceStatus(
     val timingAdvance: Float = 0f,
     val engineLoadPercent: Float = 0f,
@@ -66,6 +78,7 @@ object ToyotaYarisCommands {
     const val CMD_SET_RECEIVE_FILTER     = "AT CRA 7EA" // Filter for Battery ECU responses
 
     // Standard OBD-II PIDs (Mode 01 for Engine & Atmosphere)
+    const val PID_VEHICLE_SPEED    = "010D" // Formula: A (km/h)
     const val PID_COOLANT_TEMP     = "0105" // Formula: A - 40 (°C)
     const val PID_INTAKE_AIR_TEMP  = "010F" // Formula: A - 40 (°C)
     const val PID_ENGINE_RPM       = "010C" // Formula: ((A*256)+B)/4
@@ -82,6 +95,17 @@ object ToyotaYarisCommands {
     const val CMD_FAN_MAX_SPEED_UDS = "300806"       // Mode 30 IO Control (Fan Level 6)
     const val CMD_FAN_MAX_SPEED_ALT = "2F580306"     // Mode 2F IO Control Short Term Adjustment to 6
     const val CMD_TESTER_PRESENT     = "3E00"         // Tester Present keep-alive
+
+    fun parseVehicleSpeed(raw: String): Int? {
+        val clean = Elm327Protocol.cleanResponse(raw).uppercase()
+        if (clean.contains("410D")) {
+            val idx = clean.indexOf("410D") + 4
+            if (clean.length >= idx + 2) {
+                return clean.substring(idx, idx + 2).toInt(16)
+            }
+        }
+        return null
+    }
 
     fun parseCoolantTemp(raw: String): Float? {
         val clean = Elm327Protocol.cleanResponse(raw).uppercase()
