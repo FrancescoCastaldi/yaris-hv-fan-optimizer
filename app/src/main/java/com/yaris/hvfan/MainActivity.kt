@@ -1,6 +1,9 @@
 package com.yaris.hvfan
 
 import android.Manifest
+import android.app.Activity
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -34,6 +37,14 @@ class MainActivity : ComponentActivity() {
 
     private var showDevicePicker by mutableStateOf(false)
 
+    private val enableBtLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            checkAndAutoConnect()
+        }
+    }
+
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
             serviceBinder = binder as? FanControlForegroundService.LocalBinder
@@ -52,12 +63,14 @@ class MainActivity : ComponentActivity() {
     ) { permissions ->
         val allGranted = permissions.entries.all { it.value }
         if (allGranted) {
+            promptEnableBluetoothIfDisabled()
             checkAndAutoConnect()
         }
     }
 
     override fun onResume() {
         super.onResume()
+        promptEnableBluetoothIfDisabled()
         checkAndAutoConnect()
     }
 
@@ -161,7 +174,21 @@ class MainActivity : ComponentActivity() {
         if (requiredPermissions.isNotEmpty()) {
             permissionLauncher.launch(requiredPermissions.toTypedArray())
         } else {
+            promptEnableBluetoothIfDisabled()
             checkAndAutoConnect()
+        }
+    }
+
+    private fun promptEnableBluetoothIfDisabled() {
+        val btManager = getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+        val adapter = btManager?.adapter
+        if (adapter != null && !adapter.isEnabled) {
+            try {
+                val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+                enableBtLauncher.launch(enableBtIntent)
+            } catch (e: Exception) {
+                // Ignore if security restriction prevents intent
+            }
         }
     }
 

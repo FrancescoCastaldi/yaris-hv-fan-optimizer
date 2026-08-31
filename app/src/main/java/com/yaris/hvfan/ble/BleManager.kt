@@ -29,7 +29,8 @@ sealed class BleConnectionState {
 data class DiscoveredBleDevice(
     val name: String,
     val address: String,
-    val rssi: Int
+    val rssi: Int,
+    val isBonded: Boolean = false
 )
 
 @SuppressLint("MissingPermission")
@@ -64,6 +65,7 @@ class BleManager(private val context: Context) {
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var isScanning = false
+    private var isServicesDiscovered = false
 
     val isBluetoothEnabled: Boolean
         get() = bluetoothAdapter?.isEnabled == true
@@ -77,7 +79,25 @@ class BleManager(private val context: Context) {
         }
         if (isScanning) return
 
-        _discoveredDevices.value = emptyList()
+        // 1. Carica subito i dispositivi già accoppiati/associati su Android (Bonded)
+        val initialList = mutableListOf<DiscoveredBleDevice>()
+        try {
+            bluetoothAdapter?.bondedDevices?.forEach { bonded ->
+                val bName = bonded.name ?: "Dispositivo Associato"
+                initialList.add(
+                    DiscoveredBleDevice(
+                        name = bName,
+                        address = bonded.address,
+                        rssi = 0,
+                        isBonded = true
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Impossibile recuperare dispositivi bonded", e)
+        }
+
+        _discoveredDevices.value = initialList
         _connectionState.value = BleConnectionState.Scanning
         isScanning = true
 
@@ -114,18 +134,46 @@ class BleManager(private val context: Context) {
         override fun onScanResult(callbackType: Int, result: ScanResult?) {
             result?.let { res ->
                 val device = res.device
-                val name = device.name ?: res.scanRecord?.deviceName ?: "Dispositivo Sconosciuto"
                 val address = device.address
                 val rssi = res.rssi
 
+                // Risoluzione robusta del nome del dispositivo
+                var resolvedName = device.name ?: res.scanRecord?.deviceName
+
+                // Se nullo, proviamo a estrarre il nome dai byte grezzi di advertisement
+                if (resolvedName.isNullOrBlank()) {
+                    resolvedName = parseNameFromAdvBytes(res.scanRecord?.bytes)
+                }
+
+                // Se ancora sconosciuto, verifichiamo se annuncia servizi OBD noti (es. Vgate iCar Pro / HM-10)
+                if (resolvedName.isNullOrBlank() || resolvedName.equals("Dispositivo Sconosciuto", ignoreCase = true)) {
+                    val serviceUuids = res.scanRecord?.serviceUuids
+                    val hasObdService = serviceUuids?.any { parcelUuid ->
+                        BleGattAttributes.KNOWN_OBD_SERVICES.contains(parcelUuid.uuid)
+                    } ?: false
+
+                    resolvedName = if (hasObdService) {
+                        "Vgate / OBD-II BLE"
+                    } else {
+                        "Dispositivo BLE (${address.takeLast(5)})"
+                    }
+                }
+
                 val currentList = _discoveredDevices.value.toMutableList()
                 val existingIndex = currentList.indexOfFirst { it.address == address }
-                val newEntry = DiscoveredBleDevice(name, address, rssi)
+                val isBonded = device.bondState == BluetoothDevice.BOND_BONDED
 
                 if (existingIndex >= 0) {
-                    currentList[existingIndex] = newEntry
+                    val old = currentList[existingIndex]
+                    // Aggiorniamo se il nuovo nome è più dettagliato o se cambia l'RSSI
+                    val betterName = if (old.name.contains("Dispositivo", ignoreCase = true) && !resolvedName.contains("Dispositivo", ignoreCase = true)) {
+                        resolvedName
+                    } else {
+                        old.name
+                    }
+                    currentList[existingIndex] = DiscoveredBleDevice(betterName, address, rssi, old.isBonded || isBonded)
                 } else {
-                    currentList.add(newEntry)
+                    currentList.add(DiscoveredBleDevice(resolvedName, address, rssi, isBonded))
                 }
                 _discoveredDevices.value = currentList
             }
@@ -136,6 +184,23 @@ class BleManager(private val context: Context) {
             isScanning = false
             _connectionState.value = BleConnectionState.Error("Scansione fallita: codice $errorCode")
         }
+    }
+
+    private fun parseNameFromAdvBytes(bytes: ByteArray?): String? {
+        if (bytes == null || bytes.isEmpty()) return null
+        var ptr = 0
+        while (ptr < bytes.size - 2) {
+            val length = bytes[ptr].toInt() and 0xFF
+            if (length == 0) break
+            if (ptr + length >= bytes.size) break
+            val type = bytes[ptr + 1].toInt() and 0xFF
+            if (type == 0x08 || type == 0x09) { // Shortened or Complete Local Name
+                val nameBytes = bytes.copyOfRange(ptr + 2, ptr + 1 + length)
+                return String(nameBytes, Charsets.UTF_8).trim()
+            }
+            ptr += length + 1
+        }
+        return null
     }
 
     private var lastTargetMac: String? = null
@@ -149,11 +214,22 @@ class BleManager(private val context: Context) {
         }
     }
 
+    private val serviceDiscoveryFallback = Runnable {
+        bluetoothGatt?.let { gatt ->
+            if (!isServicesDiscovered) {
+                Log.i(TAG, "Avvio fallback Service Discovery su thread principale...")
+                gatt.discoverServices()
+            }
+        }
+    }
+
     fun connect(macAddress: String) {
         stopScan()
         isManualDisconnect = false
         lastTargetMac = macAddress
+        isServicesDiscovered = false
         mainHandler.removeCallbacks(reconnectRunnable)
+        mainHandler.removeCallbacks(serviceDiscoveryFallback)
 
         if (!isBluetoothEnabled) {
             _connectionState.value = BleConnectionState.Error("Bluetooth disattivato")
@@ -197,6 +273,7 @@ class BleManager(private val context: Context) {
     fun disconnect() {
         isManualDisconnect = true
         mainHandler.removeCallbacks(reconnectRunnable)
+        mainHandler.removeCallbacks(serviceDiscoveryFallback)
         internalDisconnect()
     }
 
@@ -210,6 +287,7 @@ class BleManager(private val context: Context) {
             bluetoothGatt = null
             writeCharacteristic = null
             notifyCharacteristic = null
+            isServicesDiscovered = false
             _connectionState.value = BleConnectionState.Disconnected
         }
     }
@@ -232,10 +310,13 @@ class BleManager(private val context: Context) {
 
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
-                    Log.i(TAG, "GATT Connesso a $name. Richiesta MTU 247...")
+                    Log.i(TAG, "GATT Connesso a $name ($addr).")
                     mainHandler.removeCallbacks(reconnectRunnable)
                     _connectionState.value = BleConnectionState.Connected(name, addr)
-                    gatt?.requestMtu(247)
+                    
+                    // Richiesta MTU 247 e fallback Service Discovery garantito a 250ms per Vgate iCar Pro
+                    val requestedMtu = gatt?.requestMtu(247) ?: false
+                    mainHandler.postDelayed(serviceDiscoveryFallback, 250L)
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     Log.i(TAG, "GATT Disconnesso.")
@@ -246,32 +327,67 @@ class BleManager(private val context: Context) {
         }
 
         override fun onMtuChanged(gatt: BluetoothGatt?, mtu: Int, status: Int) {
-            Log.i(TAG, "MTU negoziato: $mtu, status=$status. Avvio Service Discovery...")
-            gatt?.discoverServices()
+            Log.i(TAG, "MTU negoziato: $mtu, status=$status. Avvio Service Discovery immediato...")
+            mainHandler.removeCallbacks(serviceDiscoveryFallback)
+            if (!isServicesDiscovered) {
+                gatt?.discoverServices()
+            }
         }
 
         override fun onServicesDiscovered(gatt: BluetoothGatt?, status: Int) {
+            mainHandler.removeCallbacks(serviceDiscoveryFallback)
+            isServicesDiscovered = true
+
             if (status != BluetoothGatt.GATT_SUCCESS || gatt == null) {
                 Log.e(TAG, "Service Discovery fallito: $status")
                 _connectionState.value = BleConnectionState.Error("Service discovery fallito")
                 return
             }
 
-            Log.i(TAG, "Servizi BLE scoperti. Cerco caratteristiche OBD...")
+            Log.i(TAG, "Servizi BLE scoperti. Ricerca caratteristiche seriali OBD compatibili...")
             var foundWrite: BluetoothGattCharacteristic? = null
             var foundNotify: BluetoothGattCharacteristic? = null
 
+            // 1. Cerca prima all'interno dei servizi OBD noti
             for (service in gatt.services) {
-                for (ch in service.characteristics) {
-                    val props = ch.properties
-                    val canWrite = (props and (BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE)) != 0
-                    val canNotify = (props and (BluetoothGattCharacteristic.PROPERTY_NOTIFY or BluetoothGattCharacteristic.PROPERTY_INDICATE)) != 0
+                if (BleGattAttributes.KNOWN_OBD_SERVICES.contains(service.uuid)) {
+                    Log.i(TAG, "Trovato servizio OBD noto: ${service.uuid}")
+                    for (ch in service.characteristics) {
+                        val props = ch.properties
+                        val canWrite = (props and (BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE)) != 0
+                        val canNotify = (props and (BluetoothGattCharacteristic.PROPERTY_NOTIFY or BluetoothGattCharacteristic.PROPERTY_INDICATE)) != 0
 
-                    if (canWrite && (foundWrite == null || BleGattAttributes.WRITE_CHARACTERISTICS.contains(ch.uuid))) {
-                        foundWrite = ch
+                        if (canWrite) foundWrite = ch
+                        if (canNotify) foundNotify = ch
                     }
-                    if (canNotify && (foundNotify == null || BleGattAttributes.NOTIFY_CHARACTERISTICS.contains(ch.uuid))) {
-                        foundNotify = ch
+                    if (foundWrite != null && foundNotify != null) {
+                        break
+                    }
+                }
+            }
+
+            // 2. Fallback: cerca su qualsiasi servizio personalizzato non escluso
+            if (foundWrite == null || foundNotify == null) {
+                for (service in gatt.services) {
+                    if (BleGattAttributes.EXCLUDED_SERVICES.contains(service.uuid)) continue
+
+                    var tempWrite: BluetoothGattCharacteristic? = null
+                    var tempNotify: BluetoothGattCharacteristic? = null
+
+                    for (ch in service.characteristics) {
+                        val props = ch.properties
+                        val canWrite = (props and (BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE)) != 0
+                        val canNotify = (props and (BluetoothGattCharacteristic.PROPERTY_NOTIFY or BluetoothGattCharacteristic.PROPERTY_INDICATE)) != 0
+
+                        if (canWrite) tempWrite = ch
+                        if (canNotify) tempNotify = ch
+                    }
+
+                    if (tempWrite != null && tempNotify != null) {
+                        foundWrite = tempWrite
+                        foundNotify = tempNotify
+                        Log.i(TAG, "Trovato servizio compatibile con canale duplex: ${service.uuid}")
+                        break
                     }
                 }
             }
@@ -279,16 +395,27 @@ class BleManager(private val context: Context) {
             if (foundWrite != null && foundNotify != null) {
                 writeCharacteristic = foundWrite
                 notifyCharacteristic = foundNotify
-                Log.i(TAG, "Caratteristiche OBD trovate! Write: ${foundWrite.uuid}, Notify: ${foundNotify.uuid}")
+                Log.i(TAG, "Caratteristiche OBD collegate! Write: ${foundWrite.uuid}, Notify: ${foundNotify.uuid}")
 
                 enableNotification(gatt, foundNotify)
                 val name = gatt.device.name ?: "OBD Device"
                 val addr = gatt.device.address
-                _connectionState.value = BleConnectionState.Ready(name, addr)
+
+                // Passa a Ready
+                mainHandler.postDelayed({
+                    _connectionState.value = BleConnectionState.Ready(name, addr)
+                }, 300L)
             } else {
                 Log.e(TAG, "Caratteristiche GATT OBD compatibili non trovate.")
                 _connectionState.value = BleConnectionState.Error("Nessun profilo seriale OBD BLE compatibile trovato")
             }
+        }
+
+        override fun onDescriptorWrite(gatt: BluetoothGatt?, descriptor: BluetoothGattDescriptor?, status: Int) {
+            val name = gatt?.device?.name ?: "OBD Device"
+            val addr = gatt?.device?.address ?: ""
+            Log.i(TAG, "CCCD descriptor scritto con successo (status=$status). Pronto per comandi OBD.")
+            _connectionState.value = BleConnectionState.Ready(name, addr)
         }
 
         override fun onCharacteristicChanged(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?) {
@@ -338,7 +465,10 @@ class BleManager(private val context: Context) {
 
         val cmdBytes = (command.trim() + "\r").toByteArray(Charsets.US_ASCII)
         writeCh.value = cmdBytes
-        writeCh.writeType = if ((writeCh.properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0) {
+
+        // Impostazione corretta del WriteType in base alle proprietà del chip (Vgate iCar Pro / vLinker)
+        writeCh.writeType = if ((writeCh.properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0 &&
+            (writeCh.properties and BluetoothGattCharacteristic.PROPERTY_WRITE) == 0) {
             BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
         } else {
             BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
@@ -362,3 +492,4 @@ class BleManager(private val context: Context) {
         }
     }
 }
+

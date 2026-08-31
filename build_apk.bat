@@ -1,6 +1,6 @@
 @echo off
 setlocal enabledelayedexpansion
-set JAVA_HOME=C:\Program Files\Microsoft\jdk-17.0.20.101-hotspot
+set JAVA_HOME=D:\Tools\jdk-21\jdk-21
 set ANDROID_HOME=D:\Tools\android-sdk
 set PATH=%JAVA_HOME%\bin;%ANDROID_HOME%\cmdline-tools\latest\bin;%PATH%
 set GRADLE_OPTS=-Xmx3072m -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8

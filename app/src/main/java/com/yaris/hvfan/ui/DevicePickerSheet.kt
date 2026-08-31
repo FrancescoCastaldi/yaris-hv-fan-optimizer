@@ -107,18 +107,38 @@ fun DevicePickerSheet(
                                 Icon(
                                     imageVector = Icons.Default.Bluetooth,
                                     contentDescription = null,
-                                    tint = AccentCyan,
+                                    tint = if (device.isBonded) SuccessGreen else AccentCyan,
                                     modifier = Modifier.size(28.dp)
                                 )
                                 Spacer(modifier = Modifier.width(16.dp))
                                 Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = device.name,
+                                            style = Typography.bodyLarge,
+                                            color = TextPrimary
+                                        )
+                                        if (device.isBonded) {
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Surface(
+                                                color = SuccessGreen.copy(alpha = 0.2f),
+                                                shape = RoundedCornerShape(4.dp)
+                                            ) {
+                                                Text(
+                                                    text = "ASSOCIATO",
+                                                    style = Typography.labelSmall,
+                                                    color = SuccessGreen,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+                                    }
                                     Text(
-                                        text = device.name,
-                                        style = Typography.bodyLarge,
-                                        color = TextPrimary
-                                    )
-                                    Text(
-                                        text = "${device.address} (${device.rssi} dBm)",
+                                        text = if (device.isBonded && device.rssi == 0) {
+                                            "${device.address} • Memoria Bluetooth"
+                                        } else {
+                                            "${device.address} (${device.rssi} dBm)"
+                                        },
                                         style = Typography.labelSmall,
                                         color = TextSecondary
                                     )
