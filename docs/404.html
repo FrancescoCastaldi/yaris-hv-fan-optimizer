@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Toyota Yaris MK4 Hybrid - HV Fan & GR Cockpit Optimizer</title>
+    <meta name="description" content="Applicazione Android per il controllo attivo della ventola batteria ad alto voltaggio, ottimizzazione del warm-up termico HSD e cronometro accelerazione 0-100 km/h.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #0B0E14;
+            --surface-dark: #121824;
+            --card-bg: #1A2232;
+            --accent-cyan: #00E5FF;
+            --accent-glow: rgba(0, 229, 255, 0.4);
+            --gr-red: #FF2A2A;
+            --gr-glow: rgba(255, 42, 42, 0.4);
+            --success-green: #00E676;
+            --text-primary: #FFFFFF;
+            --text-secondary: #94A3B8;
+            --border-color: #2A364F;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-primary);
+            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+            min-height: 100vh;
+            line-height: 1.6;
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(circle at 20% 15%, rgba(0, 229, 255, 0.08) 0%, transparent 40%),
+                radial-gradient(circle at 80% 60%, rgba(255, 42, 42, 0.08) 0%, transparent 40%);
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        /* Header / Navbar */
+        header {
+            padding: 24px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: rgba(11, 14, 20, 0.85);
+        }
+
+        .nav-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo-group {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+            color: var(--text-primary);
+        }
+
+        .logo-img {
+            width: 42px;
+            height: 42px;
+            border-radius: 10px;
+            box-shadow: 0 0 15px var(--accent-glow);
+        }
+
+        .logo-text {
+            font-size: 1.25rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+        }
+
+        .logo-badge {
+            background: linear-gradient(135deg, var(--accent-cyan), #0082FC);
+            color: #000;
+            font-size: 0.7rem;
+            font-weight: 900;
+            padding: 2px 8px;
+            border-radius: 6px;
+            text-transform: uppercase;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+        }
+
+        .nav-btn {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.95rem;
+            font-weight: 600;
+            transition: color 0.2s;
+        }
+
+        .nav-btn:hover {
+            color: var(--accent-cyan);
+        }
+
+        /* Hero Section */
+        .hero {
+            padding: 80px 0 60px;
+            text-align: center;
+            position: relative;
+        }
+
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(0, 229, 255, 0.1);
+            border: 1px solid rgba(0, 229, 255, 0.3);
+            color: var(--accent-cyan);
+            padding: 6px 16px;
+            border-radius: 100px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            margin-bottom: 24px;
+        }
+
+        .hero-title {
+            font-size: clamp(2.5rem, 5vw, 4.2rem);
+            font-weight: 900;
+            line-height: 1.1;
+            letter-spacing: -1.5px;
+            margin-bottom: 24px;
+        }
+
+        .hero-title span.accent {
+            background: linear-gradient(135deg, #00E5FF, #3B82F6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .hero-title span.gr {
+            background: linear-gradient(135deg, #FF5252, #FF1744);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .hero-subtitle {
+            font-size: 1.25rem;
+            color: var(--text-secondary);
+            max-width: 720px;
+            margin: 0 auto 40px;
+            font-weight: 400;
+        }
+
+        .cta-group {
+            display: flex;
+            justify-content: center;
+            gap: 18px;
+            flex-wrap: wrap;
+            margin-bottom: 48px;
+        }
+
+        .btn-primary {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            background: linear-gradient(135deg, var(--accent-cyan), #0091EA);
+            color: #05101A;
+            font-weight: 800;
+            font-size: 1.1rem;
+            padding: 16px 36px;
+            border-radius: 16px;
+            text-decoration: none;
+            box-shadow: 0 10px 25px var(--accent-glow);
+            transition: all 0.25s ease;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-3px) scale(1.02);
+            box-shadow: 0 15px 35px rgba(0, 229, 255, 0.6);
+        }
+
+        .btn-secondary {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: var(--surface-dark);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            font-weight: 700;
+            font-size: 1.1rem;
+            padding: 16px 28px;
+            border-radius: 16px;
+            text-decoration: none;
+            transition: all 0.2s ease;
+        }
+
+        .btn-secondary:hover {
+            background: var(--card-bg);
+            border-color: var(--text-secondary);
+            transform: translateY(-2px);
+        }
+
+        .security-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--success-green);
+            font-size: 0.9rem;
+            font-weight: 600;
+            background: rgba(0, 230, 118, 0.08);
+            border: 1px solid rgba(0, 230, 118, 0.2);
+            padding: 8px 18px;
+            border-radius: 100px;
+        }
+
+        /* App Icon Display */
+        .hero-visual {
+            margin: 40px auto 0;
+            max-width: 240px;
+            position: relative;
+        }
+
+        .hero-visual img {
+            width: 100%;
+            height: auto;
+            border-radius: 42px;
+            box-shadow: 0 25px 60px rgba(0, 229, 255, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.1);
+            animation: float 4s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        /* Feature Grid */
+        .features {
+            padding: 80px 0;
+        }
+
+        .section-header {
+            text-align: center;
+            margin-bottom: 50px;
+        }
+
+        .section-title {
+            font-size: 2.2rem;
+            font-weight: 800;
+            margin-bottom: 12px;
+        }
+
+        .section-desc {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 24px;
+        }
+
+        .card {
+            background: var(--surface-dark);
+            border: 1px solid var(--border-color);
+            border-radius: 24px;
+            padding: 32px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            border-color: rgba(0, 229, 255, 0.4);
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.4);
+        }
+
+        .card-icon {
+            width: 52px;
+            height: 52px;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            margin-bottom: 20px;
+            background: rgba(0, 229, 255, 0.1);
+            color: var(--accent-cyan);
+            border: 1px solid rgba(0, 229, 255, 0.2);
+        }
+
+        .card-icon.red {
+            background: rgba(255, 42, 42, 0.1);
+            color: var(--gr-red);
+            border-color: rgba(255, 42, 42, 0.2);
+        }
+
+        .card-icon.green {
+            background: rgba(0, 230, 118, 0.1);
+            color: var(--success-green);
+            border-color: rgba(0, 230, 118, 0.2);
+        }
+
+        .card-title {
+            font-size: 1.35rem;
+            font-weight: 800;
+            margin-bottom: 12px;
+        }
+
+        .card-text {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+
+        .card-badge {
+            display: inline-block;
+            margin-top: 16px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            color: var(--accent-cyan);
+            background: rgba(0, 229, 255, 0.08);
+            padding: 4px 10px;
+            border-radius: 6px;
+        }
+
+        /* Tech Specs */
+        .specs {
+            background: var(--surface-dark);
+            border-top: 1px solid var(--border-color);
+            border-bottom: 1px solid var(--border-color);
+            padding: 70px 0;
+        }
+
+        .specs-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 24px;
+            text-align: center;
+        }
+
+        .spec-item {
+            padding: 20px;
+        }
+
+        .spec-val {
+            font-size: 2.2rem;
+            font-weight: 900;
+            color: var(--accent-cyan);
+            font-family: 'JetBrains Mono', monospace;
+            margin-bottom: 6px;
+        }
+
+        .spec-val.red {
+            color: var(--gr-red);
+        }
+
+        .spec-lbl {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Download Call to Action Box */
+        .download-box {
+            margin: 80px 0;
+            background: linear-gradient(135deg, rgba(18, 24, 36, 0.95), rgba(26, 34, 50, 0.95));
+            border: 1px solid rgba(0, 229, 255, 0.3);
+            border-radius: 32px;
+            padding: 50px 32px;
+            text-align: center;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), inset 0 0 30px rgba(0, 229, 255, 0.05);
+        }
+
+        .download-box h2 {
+            font-size: 2.4rem;
+            font-weight: 900;
+            margin-bottom: 16px;
+        }
+
+        .download-box p {
+            color: var(--text-secondary);
+            font-size: 1.15rem;
+            max-width: 600px;
+            margin: 0 auto 36px;
+        }
+
+        /* Footer */
+        footer {
+            padding: 40px 0;
+            border-top: 1px solid var(--border-color);
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        footer a {
+            color: var(--accent-cyan);
+            text-decoration: none;
+        }
+
+        @media (max-width: 768px) {
+            .hero { padding: 40px 0; }
+            .hero-title { font-size: 2.2rem; }
+            .btn-primary, .btn-secondary { width: 100%; justify-content: center; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header -->
+    <header>
+        <div class="container nav-content">
+            <a href="#" class="logo-group">
+                <img src="icon.jpg" alt="Logo" class="logo-img">
+                <span class="logo-text">Yaris HV Fan Optimizer</span>
+                <span class="logo-badge">GR Edition</span>
+            </a>
+            <div class="nav-links">
+                <a href="https://github.com/FrancescoCastaldi/yaris-hv-fan-optimizer" class="nav-btn" target="_blank">GitHub Repo</a>
+                <a href="YarisHvFanControl.apk" download class="nav-btn" style="color: var(--accent-cyan);">Scarica APK</a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="container">
+            <div class="hero-badge">
+                <span>⚡ TOYOTA YARIS MK4 HYBRID (TNGA-B)</span>
+            </div>
+            <h1 class="hero-title">
+                Sblocca il <span class="accent">100% della Potenza Elettrica</span> & Cruscotto <span class="gr">GR Cockpit</span>
+            </h1>
+            <p class="hero-subtitle">
+                Applicazione Android nativa per il controllo attivo della ventola batteria HV Denso, prevenzione del thermal derating, telemetria in tempo reale e cronometro accelerazione 0-100 km/h.
+            </p>
+
+            <div class="cta-group">
+                <a href="YarisHvFanControl.apk" download class="btn-primary">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Scarica APK v1.0.0 (Release)
+                </a>
+                <a href="https://github.com/FrancescoCastaldi/yaris-hv-fan-optimizer" target="_blank" class="btn-secondary">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+                    Codice Sorgente GitHub
+                </a>
+            </div>
+
+            <div>
+                <div class="security-badge">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+                    Firmato con Certificato Digitale RSA 2048-bit (APK V1/V2/V3) & Zero Pubblicità
+                </div>
+            </div>
+
+            <div class="hero-visual">
+                <img src="icon.jpg" alt="Yaris Hybrid Icon">
+            </div>
+        </div>
+    </section>
+
+    <!-- Specs Banner -->
+    <section class="specs">
+        <div class="container specs-grid">
+            <div class="spec-item">
+                <div class="spec-val">L6 (100%)</div>
+                <div class="spec-lbl">Forzatura Ventola HV</div>
+            </div>
+            <div class="spec-item">
+                <div class="spec-val red">59 kW</div>
+                <div class="spec-lbl">Boost Elettrico Costante</div>
+            </div>
+            <div class="spec-item">
+                <div class="spec-val">S0 ➔ S4</div>
+                <div class="spec-lbl">Warm-Up HSD Optimizer</div>
+            </div>
+            <div class="spec-item">
+                <div class="spec-val">0-100</div>
+                <div class="spec-lbl">Timer Dragy Integrato</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features -->
+    <section class="features">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">Funzionalità Ingegneristiche Avanzate</h2>
+                <p class="section-desc">Progettato su misura per il sistema ibrido 1.5L Dynamic Force della Yaris MK4.</p>
+            </div>
+
+            <div class="grid">
+                <!-- Card 1 -->
+                <div class="card">
+                    <div class="card-icon">🌀</div>
+                    <h3 class="card-title">Forzatura Attiva Ventola Batteria</h3>
+                    <p class="card-text">
+                        Invia ciclicamente comandi diagnostici Mode 30/2F IO Control (<code>300806</code>) ogni 1.5s per costringere la ventola a girare a 12V al 100% della velocità, mantenendo le celle al litio a 22°C–26°C.
+                    </p>
+                    <span class="card-badge">ECU 7E2 / 7EA Active Control</span>
+                </div>
+
+                <!-- Card 2 -->
+                <div class="card">
+                    <div class="card-icon red">🏁</div>
+                    <h3 class="card-title">GR Cockpit & Sprint Timer</h3>
+                    <p class="card-text">
+                        Tachimetro digitale gigante con Launch Control verde automatico. Misura automaticamente le accelerazioni 0-50 km/h e 0-100 km/h con salvataggio del Record Personale (Best Run).
+                    </p>
+                    <span class="card-badge">Precisione Centesimale OBD</span>
+                </div>
+
+                <!-- Card 3 -->
+                <div class="card">
+                    <div class="card-icon green">🌡️</div>
+                    <h3 class="card-title">Analisi Fasi Warm-Up (S0..S4)</h3>
+                    <p class="card-text">
+                        Traccia la temperatura del liquido di raffreddamento (ECT), aria aspirata (IAT) e giri motore (RPM). Fornisce consigli su clima e guida per raggiungere la fase S4 in metà tempo.
+                    </p>
+                    <span class="card-badge">Massima Efficienza Atkinson</span>
+                </div>
+
+                <!-- Card 4 -->
+                <div class="card">
+                    <div class="card-icon">📊</div>
+                    <h3 class="card-title">Anticipo Accensione & Carico</h3>
+                    <p class="card-text">
+                        Monitora l'anticipo reale in gradi (°BTDC) e il carico motore percentuale, rilevando se la centralina sta tagliando gradi o erogando la massima coppia disponibile.
+                    </p>
+                    <span class="card-badge">PID 010E / 0104 Live Telemetry</span>
+                </div>
+
+                <!-- Card 5 -->
+                <div class="card">
+                    <div class="card-icon green">📱</div>
+                    <h3 class="card-title">Auto-Connessione & Background</h3>
+                    <p class="card-text">
+                        Si connette automaticamente al dongle BLE salvato appena apri l'app. Il Foreground Service mantiene il raffreddamento attivo anche a schermo spento e con Google Maps/Waze aperti.
+                    </p>
+                    <span class="card-badge">Android Foreground Service</span>
+                </div>
+
+                <!-- Card 6 -->
+                <div class="card">
+                    <div class="card-icon">🔌</div>
+                    <h3 class="card-title">Compatibilità Universale BLE</h3>
+                    <p class="card-text">
+                        Supporta tutti i dongle Bluetooth Low Energy compatibili con standard ELM327, vLinker MC+, Veepeak OBDCheck BLE, Carista e profili GATT Nordic/ISSC.
+                    </p>
+                    <span class="card-badge">BLE 4.0+ / 247 MTU</span>
+                </div>
+            </div>
+
+            <!-- Download CTA Box -->
+            <div class="download-box">
+                <h2>Pronto a Potenziare la tua Yaris?</h2>
+                <p>Scarica l'APK firmato, installalo sul tuo smartphone Android e collegalo al tuo adattatore OBD BLE.</p>
+                <a href="YarisHvFanControl.apk" download class="btn-primary">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Scarica YarisHvFanControl.apk (15.8 MB)
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="container">
+            <p>Progetto Open Source realizzato da <a href="https://github.com/FrancescoCastaldi" target="_blank">Francesco Castaldi</a> • Distribuito sotto Licenza MIT</p>
+            <p style="margin-top: 8px; font-size: 0.8rem; color: #64748B;">Toyota, Yaris e HSD sono marchi registrati di Toyota Motor Corporation. Questa applicazione è un progetto indipendente.</p>
+        </div>
+    </footer>
+
+</body>
+</html>
