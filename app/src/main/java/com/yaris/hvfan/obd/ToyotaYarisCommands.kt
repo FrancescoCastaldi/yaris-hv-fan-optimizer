@@ -102,6 +102,24 @@ enum class ReverseBeepMode(val label: String, val code: String) {
     SINGLE("Singolo Bip (Comfort Silenzioso)", "00")
 }
 
+enum class KeylessBuzzerVolume(val label: String, val code: String) {
+    MUTE("Muto / Disattivato", "00"),
+    LOW("Basso (Volume 2)", "02"),
+    MEDIUM("Medio (Volume 4)", "04"),
+    HIGH("Alto (Volume 6)", "06")
+}
+
+enum class AutoRelockTime(val label: String, val seconds: Int, val code: String) {
+    SEC_30("30 Secondi", 30, "01"),
+    SEC_60("60 Secondi", 60, "02"),
+    SEC_120("120 Secondi", 120, "03")
+}
+
+enum class DoorUnlockMode(val label: String, val code: String) {
+    ALL_DOORS("Tutte le porte (1 tocco)", "00"),
+    DRIVER_FIRST("Solo guida (2 tocchi tutte)", "01")
+}
+
 enum class TurnSignalFlashes(val label: String, val flashes: Int, val code: String) {
     FLASHES_3("3 Lampeggi (Standard)", 3, "03"),
     FLASHES_4("4 Lampeggi", 4, "04"),
@@ -131,8 +149,26 @@ enum class FollowMeHomeDuration(val label: String, val seconds: Int, val code: S
     SEC_90("90 Secondi", 90, "03")
 }
 
+enum class InteriorLightDimTime(val label: String, val code: String) {
+    SEC_7_5("7.5 Secondi", "01"),
+    SEC_15("15 Secondi (Standard)", "02"),
+    SEC_30("30 Secondi", "03")
+}
+
+enum class LdaWarningVolume(val label: String, val code: String) {
+    LOW("Basso", "01"),
+    MEDIUM("Medio (Standard)", "02"),
+    HIGH("Alto", "03")
+}
+
+enum class BsmSensitivity(val label: String, val code: String) {
+    NEAR("Vicino", "01"),
+    NORMAL("Normale (Standard)", "02"),
+    FAR("Lontano / Anticipato", "03")
+}
+
 data class EcuCustomizationState(
-    // 0. Toyota Smart Connect & Digital Cockpit (MY2025 Exclusive)
+    // 0. Toyota Touch 3 & Smart Connect (Infotainment)
     val touch3OpeningAnimation: Touch3OpeningScreen = Touch3OpeningScreen.GAZOO_RACING,
     val aslVolumeMode: AslVolumeMode = AslVolumeMode.MID,
     val clusterTheme: DigitalClusterTheme = DigitalClusterTheme.SPORT_GR,
@@ -140,17 +176,42 @@ data class EcuCustomizationState(
     val touchScreenBeep: Boolean = false,
     val rearCameraDelay: CameraOffDelay = CameraOffDelay.SEC_5,
     val micGainDb: Int = 2,
+
+    // 1. Comfort & Cicalini di Bordo
     val reverseBeep: ReverseBeepMode = ReverseBeepMode.SINGLE,
     val driverSeatbeltBeep: Boolean = true,
     val passengerSeatbeltBeep: Boolean = true,
     val rearSeatbeltBeep: Boolean = true,
+
+    // 2. Smart Key & Chiusura Porte
+    val keylessBuzzerVolume: KeylessBuzzerVolume = KeylessBuzzerVolume.MEDIUM,
+    val autoRelockTime: AutoRelockTime = AutoRelockTime.SEC_60,
+    val doorUnlockMode: DoorUnlockMode = DoorUnlockMode.ALL_DOORS,
     val windowsWithKeyFob: Boolean = true,
     val autoDoorLock: AutoDoorLockMode = AutoDoorLockMode.BY_SPEED,
     val autoDoorUnlock: Boolean = true,
+
+    // 3. Tergicristalli & Sensore Pioggia
+    val rearWiperReverseLink: Boolean = true,
+    val dripWipeExtraPass: Boolean = true,
+    val wiperSpeedLink: Boolean = true,
+
+    // 4. Luci, Frecce & Plafoniera
     val turnSignalFlashes: TurnSignalFlashes = TurnSignalFlashes.FLASHES_5,
+    val interiorDimTime: InteriorLightDimTime = InteriorLightDimTime.SEC_15,
+    val footwellLightingInDrive: Boolean = true,
     val lightSensitivity: LightSensitivity = LightSensitivity.NORMAL,
     val followMeHome: FollowMeHomeDuration = FollowMeHomeDuration.SEC_30,
+
+    // 5. ADAS & TSS 2.5
+    val ldaWarningVolume: LdaWarningVolume = LdaWarningVolume.MEDIUM,
+    val bsmSensitivity: BsmSensitivity = BsmSensitivity.NORMAL,
+
+    // 6. Clima & Efficienza Eco
     val autoAcWithAutoButton: Boolean = false,
+    val ecoAirConEfficiencyMode: Boolean = true,
+
+    // State Tracking
     val isReadCompleted: Boolean = false,
     val isWriting: Boolean = false,
     val lastOperationStatus: String = "Pronto per la lettura"
@@ -162,9 +223,20 @@ object ToyotaYarisCommands {
     // CAN Headers & Filter IDs
     const val HEADER_BATTERY_ECU = "7E2"
     const val FILTER_BATTERY_ECU = "7EA"
+    const val CRA_BATTERY_ECU = "7EA"
 
     const val HEADER_ENGINE_ECU  = "7E0"
     const val FILTER_ENGINE_ECU  = "7E8"
+    const val CRA_ENGINE_ECU  = "7E8"
+
+    const val HEADER_BODY_ECU = "750"        // Main Body / Gateway ECU
+    const val CRA_BODY_ECU = "758"
+    const val HEADER_METER_ECU = "7C0"       // Combination Meter ECU
+    const val CRA_METER_ECU = "7C8"
+    const val HEADER_AIRCON_ECU = "7C4"      // Air Conditioning ECU
+    const val CRA_AIRCON_ECU = "7CC"
+    const val HEADER_ADAS_ECU = "7A0"        // TSS 2.5 Driving Assist / EPS
+    const val CRA_ADAS_ECU = "7A8"
 
     const val CMD_SET_HEADER_BATTERY_ECU = "AT SH 7E2"  // Toyota HV Battery Management ECU
     const val CMD_SET_HEADER_ENGINE_ECU  = "AT SH 7E0"  // Toyota Engine / Hybrid Main ECU
