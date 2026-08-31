@@ -8,6 +8,18 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)
 
 ---
 
+## [2.5.0] - 2026-08-31
+### 🔌 Supporto Totale Vgate iCar Pro BLE 4.0+ & Discovery Engine Potenziato
+#### Added
+- **Riconoscimento e Connessione Istantanea Vgate iCar Pro BLE 4.0+**:
+  - Parser avanzato dei byte di advertisement per identificare il nome anche su chip BLE 4.0 che omettono il nome broadcast (`IOS-Vlink`, `Android-Vlink`, `Vgate`).
+  - Mappatura completa UUID GATT per profili Microchip ISSC (`49535343-...`), HM-10 (`FFE0/FFE1`), e custom Vgate (`18F0`, `E0FF`).
+  - Fallback garantito per il service discovery che evita il blocco sui chip BLE a MTU fisso (23 byte).
+  - Caricamento istantaneo di tutti i dispositivi già associati su Android (`Bonded Devices`) con badge verde `[ASSOCIATO]`.
+  - Prompt di attivazione automatica del Bluetooth all'avvio se disattivato.
+
+---
+
 ## [2.3.1] - 2026-08-31
 ### 📺 Supporto Ufficiale Toyota Touch 3 (Display Audio - Senza Mappe)
 #### Added
