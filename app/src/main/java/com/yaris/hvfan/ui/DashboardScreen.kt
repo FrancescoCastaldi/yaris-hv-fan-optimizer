@@ -1,5 +1,7 @@
 package com.yaris.hvfan.ui
 
+import com.yaris.hvfan.BuildConfig
+
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
@@ -103,7 +105,7 @@ fun DashboardScreen(
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
                         Text(
-                            text = "YARIS HYBRID MK4 (MY2025)",
+                            text = "YARIS HV GR v${BuildConfig.VERSION_NAME}",
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Black,
                             color = TextPrimary,
