@@ -11,8 +11,13 @@ class AppPreferences(context: Context) {
         private const val KEY_SAVED_NAME = "saved_ble_name"
         private const val KEY_TARGET_TEMP = "target_temp_threshold"
         private const val KEY_AUTO_START = "auto_start_enabled"
+        private const val KEY_TRANSPORT = "saved_transport_type"
         private const val KEY_FAN_SPEED = "forced_fan_speed"
     }
+
+    var savedTransportType: String
+        get() = prefs.getString(KEY_TRANSPORT, "AUTO") ?: "AUTO"
+        set(value) = prefs.edit().putString(KEY_TRANSPORT, value).apply()
 
     var savedMacAddress: String?
         get() = prefs.getString(KEY_SAVED_MAC, null)
@@ -35,6 +40,6 @@ class AppPreferences(context: Context) {
         set(value) = prefs.edit().putInt(KEY_FAN_SPEED, value).apply()
 
     fun clearDevice() {
-        prefs.edit().remove(KEY_SAVED_MAC).remove(KEY_SAVED_NAME).apply()
+        prefs.edit().remove(KEY_SAVED_MAC).remove(KEY_SAVED_NAME).remove(KEY_TRANSPORT).apply()
     }
 }

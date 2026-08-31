@@ -114,7 +114,12 @@ class MainActivity : ComponentActivity() {
                         },
                         onReconnect = {
                             appPreferences.savedMacAddress?.let { mac ->
-                                service?.bleManager?.connect(mac)
+                                val transport = try {
+                                    com.yaris.hvfan.ble.BluetoothTransportType.valueOf(appPreferences.savedTransportType)
+                                } catch (e: Exception) {
+                                    com.yaris.hvfan.ble.BluetoothTransportType.AUTO
+                                }
+                                service?.bleManager?.connect(mac, transport)
                             }
                         },
                         onThresholdChanged = { temp ->
@@ -144,8 +149,9 @@ class MainActivity : ComponentActivity() {
                             onDeviceSelected = { selected ->
                                 appPreferences.savedMacAddress = selected.address
                                 appPreferences.savedDeviceName = selected.name
+                                appPreferences.savedTransportType = selected.transportType.name
                                 showDevicePicker = false
-                                service?.bleManager?.connect(selected.address)
+                                service?.bleManager?.connect(selected.address, selected.transportType)
                             },
                             onDismiss = {
                                 service?.bleManager?.stopScan()

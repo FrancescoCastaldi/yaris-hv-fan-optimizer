@@ -84,4 +84,34 @@ class ObdControllerIntegrationTest {
         assertEquals("03", oemTurnSignals.code)
         assertEquals("00", oemTouchScreen.code)
     }
+
+    @Test
+    fun testElm327ProtocolInitAndErrorHandling() {
+        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT Z"))
+        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT AT 2"))
+        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT SP 6"))
+        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT CAF 1"))
+        assertEquals("AT SP 0", Elm327Protocol.PROTOCOL_FALLBACK)
+
+        val rawWithGarbage = "SEARCHING...\r\n7E8 03 41 05 5A >"
+        val cleaned = Elm327Protocol.cleanResponse(rawWithGarbage)
+        assertEquals("7E80341055A", cleaned)
+
+        assertTrue(Elm327Protocol.isError("NO DATA"))
+        assertTrue(Elm327Protocol.isError("UNABLE TO CONNECT"))
+        assertTrue(Elm327Protocol.isError("CAN ERROR"))
+        assertTrue(Elm327Protocol.isError("BUFFER FULL"))
+        assertFalse(Elm327Protocol.isError("7EA 07 62 28 C1 28 00 00 >"))
+    }
+
+    @Test
+    fun testBluetoothTransportEnum() {
+        val ble = com.yaris.hvfan.ble.BluetoothTransportType.BLE
+        val classic = com.yaris.hvfan.ble.BluetoothTransportType.CLASSIC_SPP
+        val auto = com.yaris.hvfan.ble.BluetoothTransportType.AUTO
+
+        assertEquals("BLE", ble.name)
+        assertEquals("CLASSIC_SPP", classic.name)
+        assertEquals("AUTO", auto.name)
+    }
 }

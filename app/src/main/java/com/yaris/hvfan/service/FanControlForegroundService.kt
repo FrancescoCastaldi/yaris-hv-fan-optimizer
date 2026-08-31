@@ -68,7 +68,12 @@ class FanControlForegroundService : Service() {
                 // Auto connect to saved MAC if available
                 val savedMac = appPreferences.savedMacAddress
                 if (!savedMac.isNullOrBlank() && bleManager.connectionState.value is BleConnectionState.Disconnected) {
-                    bleManager.connect(savedMac)
+                    val transport = try {
+                        com.yaris.hvfan.ble.BluetoothTransportType.valueOf(appPreferences.savedTransportType)
+                    } catch (e: Exception) {
+                        com.yaris.hvfan.ble.BluetoothTransportType.AUTO
+                    }
+                    bleManager.connect(savedMac, transport)
                 }
             }
         }

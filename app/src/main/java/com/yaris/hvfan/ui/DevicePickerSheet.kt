@@ -12,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.yaris.hvfan.ble.DiscoveredBleDevice
 import com.yaris.hvfan.ui.theme.*
@@ -119,7 +120,7 @@ fun DevicePickerSheet(
                                             color = TextPrimary
                                         )
                                         if (device.isBonded) {
-                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
                                             Surface(
                                                 color = SuccessGreen.copy(alpha = 0.2f),
                                                 shape = RoundedCornerShape(4.dp)
@@ -128,14 +129,26 @@ fun DevicePickerSheet(
                                                     text = "ASSOCIATO",
                                                     style = Typography.labelSmall,
                                                     color = SuccessGreen,
-                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                                                 )
                                             }
+                                        }
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Surface(
+                                            color = if (device.transportType == com.yaris.hvfan.ble.BluetoothTransportType.CLASSIC_SPP) Color(0xFFE040FB).copy(alpha = 0.2f) else AccentCyan.copy(alpha = 0.2f),
+                                            shape = RoundedCornerShape(4.dp)
+                                        ) {
+                                            Text(
+                                                text = if (device.transportType == com.yaris.hvfan.ble.BluetoothTransportType.CLASSIC_SPP) "CLASSIC SPP" else "BLE 4.0/5.0",
+                                                style = Typography.labelSmall,
+                                                color = if (device.transportType == com.yaris.hvfan.ble.BluetoothTransportType.CLASSIC_SPP) Color(0xFFE040FB) else AccentCyan,
+                                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                            )
                                         }
                                     }
                                     Text(
                                         text = if (device.isBonded && device.rssi == 0) {
-                                            "${device.address} • Memoria Bluetooth"
+                                            "${device.address} • Memoria Bluetooth Android"
                                         } else {
                                             "${device.address} (${device.rssi} dBm)"
                                         },
