@@ -1,0 +1,621 @@
+﻿<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Live UI Simulator - Yaris HV Fan & GR Cockpit v2.6.1</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #0B0E14;
+            --surface-card: #121824;
+            --surface-inner: #181E2A;
+            --border-card: #1E293B;
+            --border-subtle: #2A3850;
+            --gr-red: #FF1801;
+            --accent-cyan: #00E5FF;
+            --accent-purple: #7C4DFF;
+            --text-primary: #FFFFFF;
+            --text-secondary: #94A3B8;
+            --success-green: #00E676;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Outfit', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background-color: #05070A;
+            background-image: 
+                radial-gradient(circle at 50% 10%, rgba(0, 229, 255, 0.08) 0%, transparent 40%),
+                radial-gradient(circle at 80% 80%, rgba(255, 24, 1, 0.06) 0%, transparent 40%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .preview-header {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+
+        .preview-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255, 24, 1, 0.12);
+            border: 1px solid rgba(255, 24, 1, 0.35);
+            padding: 6px 14px;
+            border-radius: 999px;
+            font-size: 0.8rem;
+            font-weight: 800;
+            color: var(--gr-red);
+            margin-bottom: 10px;
+            letter-spacing: 0.5px;
+        }
+
+        .preview-title {
+            font-size: 1.8rem;
+            font-weight: 900;
+            letter-spacing: -0.5px;
+        }
+
+        .preview-subtitle {
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        .phone-frame {
+            width: 100%;
+            max-width: 400px;
+            height: 820px;
+            background: var(--bg-dark);
+            border-radius: 44px;
+            border: 8px solid #1E293B;
+            box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.9), 0 0 40px rgba(0, 229, 255, 0.15);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .status-bar {
+            height: 38px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--text-secondary);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            flex-shrink: 0;
+        }
+
+        .app-topbar {
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(18, 24, 36, 0.7);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border-card);
+            flex-shrink: 0;
+        }
+
+        .app-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .connection-pill {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.7rem;
+            font-weight: 800;
+            background: rgba(0, 230, 118, 0.12);
+            color: var(--success-green);
+            border: 1px solid rgba(0, 230, 118, 0.3);
+            padding: 4px 10px;
+            border-radius: 999px;
+        }
+
+        .pulse-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--success-green);
+            box-shadow: 0 0 8px var(--success-green);
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(0.8); }
+        }
+
+        .app-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .app-content::-webkit-scrollbar {
+            width: 4px;
+        }
+        .app-content::-webkit-scrollbar-thumb {
+            background: var(--border-card);
+            border-radius: 4px;
+        }
+
+        .cyber-card {
+            background: var(--surface-card);
+            border: 1px solid var(--border-card);
+            border-radius: 20px;
+            padding: 18px;
+            position: relative;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+
+        .card-title {
+            font-size: 0.75rem;
+            font-weight: 900;
+            color: var(--accent-cyan);
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+        }
+
+        .speedo-wrap {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px 0 10px;
+            position: relative;
+        }
+
+        .speedo-circle {
+            width: 190px;
+            height: 190px;
+            border-radius: 50%;
+            background: radial-gradient(circle, #101622 60%, #151D2C 100%);
+            border: 6px solid #1E293B;
+            border-top-color: var(--accent-cyan);
+            border-right-color: var(--gr-red);
+            box-shadow: 0 0 25px rgba(0, 229, 255, 0.25), inset 0 0 20px rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .speedo-val {
+            font-size: 3.2rem;
+            font-weight: 900;
+            font-family: 'JetBrains Mono', monospace;
+            line-height: 1;
+            color: #FFFFFF;
+            text-shadow: 0 0 16px rgba(0, 229, 255, 0.5);
+        }
+
+        .speedo-unit {
+            font-size: 0.8rem;
+            font-weight: 800;
+            color: var(--accent-cyan);
+            letter-spacing: 1px;
+            margin-top: 4px;
+        }
+
+        .launch-badge {
+            margin-top: 14px;
+            background: rgba(0, 230, 118, 0.12);
+            border: 1px solid rgba(0, 230, 118, 0.4);
+            color: var(--success-green);
+            font-size: 0.75rem;
+            font-weight: 800;
+            padding: 6px 14px;
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .grid-2x2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .preset-btn {
+            background: var(--surface-inner);
+            border: 1px solid var(--border-subtle);
+            border-radius: 12px;
+            padding: 10px 8px;
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            min-height: 46px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1.2;
+        }
+
+        .preset-btn:hover {
+            border-color: rgba(255, 255, 255, 0.3);
+            color: #FFFFFF;
+        }
+
+        .preset-btn.active-cyan {
+            background: var(--accent-cyan);
+            border-color: #FFFFFF;
+            color: #0B0E14;
+            font-weight: 900;
+            box-shadow: 0 0 16px rgba(0, 229, 255, 0.5);
+        }
+
+        .preset-btn.active-red {
+            background: var(--gr-red);
+            border-color: #FFFFFF;
+            color: #FFFFFF;
+            font-weight: 900;
+            box-shadow: 0 0 16px rgba(255, 24, 1, 0.6);
+        }
+
+        .preset-btn.active-purple {
+            background: var(--accent-purple);
+            border-color: #FFFFFF;
+            color: #FFFFFF;
+            font-weight: 900;
+            box-shadow: 0 0 16px rgba(124, 77, 255, 0.6);
+        }
+
+        .switch-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 0;
+            gap: 16px;
+        }
+
+        .switch-label {
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            line-height: 1.3;
+        }
+
+        .toggle-switch {
+            width: 44px;
+            height: 24px;
+            background: #2A3850;
+            border-radius: 999px;
+            position: relative;
+            cursor: pointer;
+            transition: background 0.25s ease;
+            flex-shrink: 0;
+        }
+
+        .toggle-switch::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 20px;
+            height: 20px;
+            background: #FFFFFF;
+            border-radius: 50%;
+            transition: transform 0.25s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .toggle-switch.active {
+            background: var(--accent-cyan);
+        }
+
+        .toggle-switch.active::after {
+            transform: translateX(20px);
+        }
+
+        .app-navbar {
+            height: 64px;
+            background: #0B0E14;
+            border-top: 1px solid var(--border-card);
+            display: flex;
+            align-items: center;
+            justify-content: space-around;
+            padding: 0 10px;
+            flex-shrink: 0;
+        }
+
+        .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            color: #64748B;
+            font-size: 0.72rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            padding: 6px 12px;
+            border-radius: 12px;
+        }
+
+        .nav-item svg {
+            width: 20px;
+            height: 20px;
+            fill: currentColor;
+        }
+
+        .nav-item.active {
+            color: var(--accent-cyan);
+            background: rgba(0, 229, 255, 0.08);
+        }
+
+        .nav-item.active.tab-gr {
+            color: var(--gr-red);
+            background: rgba(255, 24, 1, 0.08);
+        }
+
+        .nav-item.active.tab-ecu {
+            color: var(--accent-purple);
+            background: rgba(124, 77, 255, 0.08);
+        }
+
+        .tab-panel {
+            display: none;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .tab-panel.active {
+            display: flex;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="preview-header">
+        <div class="preview-badge">⚡ LIVE INTERACTIVE SIMULATOR</div>
+        <h1 class="preview-title">Yaris HV Fan & GR Cockpit v2.6.1</h1>
+        <p class="preview-subtitle">Testa dal vivo la nuova interfaccia con griglie 2x2 e stile Gazoo Racing Cyber Neon</p>
+    </div>
+
+    <!-- Smartphone Mockup Frame -->
+    <div class="phone-frame">
+        <!-- Android Status Bar -->
+        <div class="status-bar">
+            <span>10:25</span>
+            <span>LTE • 100% 🔋</span>
+        </div>
+
+        <!-- Top Bar -->
+        <div class="app-topbar">
+            <div class="app-brand">
+                <svg width="42" height="18" viewBox="0 0 148.102 72.69"><g><polygon points="20.171,2.426 3.109,70.264 65.164,70.264 82.23,2.426" fill="#000000" stroke="#FFFFFF" stroke-width="2"/><polygon points="82.51,2.426 81.212,2.426 64.142,70.264 127.935,70.264 144.991,2.426" fill="#FF1801" stroke="#FFFFFF" stroke-width="2"/><path fill="#FFFFFF" d="M131.368,39.218c-0.525,2.771-1.106,4.365-2.019,6.198c-1.711,3.418-5.163,5.284-10.023,5.935c-1.905,0.242-4.451,0.169-4.451,0.169l10.162,14.436h-15.077l-14.11-20.089c0,0,12.289-0.038,13.564-0.038c2.948,0,6.833-0.862,7.918-2.887c0.327-0.607,0.801-1.65,0.813-2.74c0.006-1.368-1.315-2.514-3.566-2.514c-2.257,0-22.11-0.019-22.11-0.019l-6.993,27.899H71.214l8.957-34.761c0,0,33.813-0.006,40.845-0.006C128.66,30.801,132.247,34.651,131.368,39.218"/><path fill="#FFFFFF" d="M66.159,45.183L42.666,45.2l-2.211,6.594h11.678l-1.905,6.373H31.412c-4.103,0-5.825-0.999-5.41-3.884c0.464-3.271,1.686-6.038,2.795-9.071c2.266-6.133,5.534-7.688,19.138-7.688c7.22,0,20.375,0.004,20.375,0.004l2.156-6.904c0,0-19.42-0.006-24.476-0.006c-19.939,0-26.763,2.333-30.58,12.086c-1.286,3.313-3.222,9.42-4.082,14.449c-1.022,5.933,3.566,8.249,8.449,8.415c6.746,0.226,40.626,0.116,40.626,0.116L66.159,45.183z"/></g></svg>
+                <span style="font-weight: 800; font-size: 0.85rem;">Yaris HV Fan</span>
+            </div>
+            <div class="connection-pill">
+                <span class="pulse-dot"></span>
+                <span>OBD ATTIVO</span>
+            </div>
+        </div>
+
+        <!-- Scrollable Content -->
+        <div class="app-content">
+
+            <!-- TAB 1: GR COCKPIT -->
+            <div id="tab-gr-panel" class="tab-panel active">
+                <div class="cyber-card">
+                    <div class="card-header">
+                        <span class="card-title" style="color: var(--gr-red);">🏁 GR TELEMETRIA & SPEED</span>
+                        <span style="font-size: 0.75rem; color: var(--text-secondary);">TNGA-B HSD</span>
+                    </div>
+
+                    <div class="speedo-wrap">
+                        <div class="speedo-circle">
+                            <span class="speedo-val" id="live-speed">94</span>
+                            <span class="speedo-unit">KM / H</span>
+                        </div>
+                        <div class="launch-badge">
+                            <span class="pulse-dot"></span>
+                            <span>LAUNCH CONTROL READY</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="cyber-card">
+                    <div class="card-header">
+                        <span class="card-title">⏱️ DRAGY ACCELERATION TIMER</span>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <div style="background: var(--surface-inner); padding: 12px; border-radius: 12px; text-align: center;">
+                            <div style="font-size: 0.75rem; color: var(--text-secondary);">0-50 km/h</div>
+                            <div style="font-size: 1.5rem; font-weight: 900; font-family: 'JetBrains Mono'; color: var(--accent-cyan);">3.21s</div>
+                        </div>
+                        <div style="background: var(--surface-inner); padding: 12px; border-radius: 12px; text-align: center;">
+                            <div style="font-size: 0.75rem; color: var(--text-secondary);">0-100 km/h (BEST)</div>
+                            <div style="font-size: 1.5rem; font-weight: 900; font-family: 'JetBrains Mono'; color: var(--gr-red);">8.42s</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 2: VENTOLA HV -->
+            <div id="tab-fan-panel" class="tab-panel">
+                <div class="cyber-card">
+                    <div class="card-header">
+                        <span class="card-title">🌀 CONTROLLO VENTOLA HV DENSO</span>
+                        <span style="color: var(--accent-cyan); font-weight: 800; font-size: 0.75rem;">LIVELLO 6 (MAX)</span>
+                    </div>
+
+                    <div style="text-align: center; padding: 10px 0;">
+                        <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px;">Temperatura Batteria / Soglia Target</div>
+                        <div style="font-size: 2.2rem; font-weight: 900; font-family: 'JetBrains Mono'; color: #FFFFFF;">32.5°C <span style="font-size: 1.2rem; color: var(--accent-cyan);">/ 24°C</span></div>
+                    </div>
+
+                    <div style="margin-top: 10px;">
+                        <span style="font-size: 0.8rem; font-weight: 800; color: var(--text-secondary);">SOGLIA TERMICA PRESET (GRIGLIA 2x2):</span>
+                        <div class="grid-2x2">
+                            <button class="preset-btn" onclick="selectFanPreset(this, 'red')">20°C (Racing GR)</button>
+                            <button class="preset-btn active-cyan" onclick="selectFanPreset(this, 'cyan')">24°C (Aggressivo)</button>
+                            <button class="preset-btn" onclick="selectFanPreset(this, 'cyan')">27°C (Bilanciato)</button>
+                            <button class="preset-btn" onclick="selectFanPreset(this, 'cyan')">30°C (Silenzioso)</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="cyber-card">
+                    <div class="card-header">
+                        <span class="card-title">🔋 SENSORI 4 CELLE BATTERIA</span>
+                    </div>
+                    <div class="grid-2x2">
+                        <div style="background: var(--surface-inner); padding: 10px; border-radius: 10px; text-align: center;">
+                            <div style="font-size: 0.7rem; color: var(--text-secondary);">Cella 1</div>
+                            <div style="font-weight: 800; color: #FFF;">32.1°C</div>
+                        </div>
+                        <div style="background: var(--surface-inner); padding: 10px; border-radius: 10px; text-align: center;">
+                            <div style="font-size: 0.7rem; color: var(--text-secondary);">Cella 2</div>
+                            <div style="font-weight: 800; color: #FFF;">32.8°C</div>
+                        </div>
+                        <div style="background: var(--surface-inner); padding: 10px; border-radius: 10px; text-align: center;">
+                            <div style="font-size: 0.7rem; color: var(--text-secondary);">Cella 3</div>
+                            <div style="font-weight: 800; color: #FFF;">32.4°C</div>
+                        </div>
+                        <div style="background: var(--surface-inner); padding: 10px; border-radius: 10px; text-align: center;">
+                            <div style="font-size: 0.7rem; color: var(--text-secondary);">Cella 4</div>
+                            <div style="font-weight: 800; color: #FFF;">31.9°C</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 3: CODIFICHE ECU -->
+            <div id="tab-ecu-panel" class="tab-panel">
+                <div class="cyber-card">
+                    <div class="card-header">
+                        <span class="card-title" style="color: var(--accent-purple);">🖥️ DISPLAY TOUCH 3</span>
+                    </div>
+                    <div style="font-size: 0.8rem; font-weight: 700; color: var(--text-secondary);">Animazione di Avvio Schermo:</div>
+                    <div class="grid-2x2">
+                        <button class="preset-btn active-red" onclick="selectCodingBtn(this, 'red')">🏁 Gazoo Racing (GR)</button>
+                        <button class="preset-btn" onclick="selectCodingBtn(this, 'cyan')">⚡ Hybrid Synergy</button>
+                    </div>
+                    <button class="preset-btn" style="width: 100%; margin-top: 8px;" onclick="selectCodingBtn(this, 'purple')">Standard Toyota OEM</button>
+
+                    <div style="margin-top: 14px; font-size: 0.8rem; font-weight: 700; color: var(--text-secondary);">ASL Volume Automatico Velocità:</div>
+                    <div class="grid-2x2">
+                        <button class="preset-btn" onclick="selectCodingBtn(this, 'purple')">Disattivato (OFF)</button>
+                        <button class="preset-btn" onclick="selectCodingBtn(this, 'purple')">Basso</button>
+                        <button class="preset-btn active-purple" onclick="selectCodingBtn(this, 'purple')">Medio (Consigliato)</button>
+                        <button class="preset-btn" onclick="selectCodingBtn(this, 'purple')">Alto</button>
+                    </div>
+                </div>
+
+                <div class="cyber-card">
+                    <div class="card-header">
+                        <span class="card-title" style="color: var(--accent-cyan);">🔑 SMART KEY & SERRATURE</span>
+                    </div>
+                    <div class="switch-row">
+                        <span class="switch-label">Apertura Finestrini da Telecomando</span>
+                        <div class="toggle-switch active" onclick="this.classList.toggle('active')"></div>
+                    </div>
+                    <div class="switch-row">
+                        <span class="switch-label">Sblocco Porte inserendo marcia 'P'</span>
+                        <div class="toggle-switch active" onclick="this.classList.toggle('active')"></div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Tab Navigation -->
+        <div class="app-navbar">
+            <div id="nav-gr" class="nav-item active tab-gr" onclick="switchTab('tab-gr')">
+                <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/></svg>
+                <span>Cockpit GR</span>
+            </div>
+            <div id="nav-fan" class="nav-item" onclick="switchTab('tab-fan')">
+                <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 14.93V15a1 1 0 0 0-2 0v1.93A8 8 0 0 1 4.07 13H6a1 1 0 0 0 0-2H4.07A8 8 0 0 1 11 4.07V6a1 1 0 0 0 2 0V4.07A8 8 0 0 1 19.93 11H18a1 1 0 0 0 0 2h1.93A8 8 0 0 1 13 16.93z"/></svg>
+                <span>Ventola HV</span>
+            </div>
+            <div id="nav-ecu" class="nav-item" onclick="switchTab('tab-ecu')">
+                <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+                <span>Codifiche ECU</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+
+            if (tabId === 'tab-gr') {
+                document.getElementById('tab-gr-panel').classList.add('active');
+                document.getElementById('nav-gr').classList.add('active');
+            } else if (tabId === 'tab-fan') {
+                document.getElementById('tab-fan-panel').classList.add('active');
+                document.getElementById('nav-fan').classList.add('active');
+            } else if (tabId === 'tab-ecu') {
+                document.getElementById('tab-ecu-panel').classList.add('active');
+                document.getElementById('nav-ecu').classList.add('active');
+            }
+        }
+
+        function selectFanPreset(btn, color) {
+            btn.parentElement.querySelectorAll('.preset-btn').forEach(b => {
+                b.className = 'preset-btn';
+            });
+            btn.className = 'preset-btn active-' + color;
+        }
+
+        function selectCodingBtn(btn, color) {
+            const parent = btn.parentElement;
+            parent.querySelectorAll('.preset-btn').forEach(b => {
+                b.className = 'preset-btn';
+            });
+            btn.className = 'preset-btn active-' + color;
+        }
+
+        let speed = 94;
+        let dir = 1;
+        setInterval(() => {
+            speed += dir * (Math.floor(Math.random() * 3));
+            if (speed > 115) dir = -1;
+            if (speed < 85) dir = 1;
+            const el = document.getElementById('live-speed');
+            if (el) el.innerText = speed;
+        }, 800);
+    </script>
+</body>
+</html>

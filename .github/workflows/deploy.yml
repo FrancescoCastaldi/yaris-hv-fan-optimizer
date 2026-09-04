@@ -1,16 +1,13 @@
-name: Deploy Website & Latest APK to GitHub Pages
+name: Build Release APK & Deploy Website to GitHub Pages
 
 on:
   push:
     branches:
       - main
-    paths:
-      - 'docs/**'
-      - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -19,7 +16,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  build-and-deploy:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -27,6 +24,34 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.7'
+
+      - name: Build Signed Release APK & Run Unit Tests
+        run: |
+          gradle testReleaseUnitTest
+          gradle assembleRelease
+
+      - name: Copy Built APK to Distribution & Docs
+        run: |
+          mkdir -p docs
+          cp app/build/outputs/apk/release/app-release.apk YarisHvFanControl.apk
+          cp app/build/outputs/apk/release/app-release.apk docs/YarisHvFanControl.apk
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: YarisHvFanControl-Release-APK
+          path: app/build/outputs/apk/release/app-release.apk
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

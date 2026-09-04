@@ -8,6 +8,27 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)
 
 ---
 
+## [2.6.0] - 2026-09-04
+### 🏎️ MoTeC Motorsport UUXD, Semantica Connessione Rigorosa & Resilienza Bluetooth Backend
+#### Added & Improved
+- **Redesign UUXD MoTeC / Bosch Motorsport**:
+  - Interfaccia ad altissimo contrasto Dark/OLED senza glow artificiosi.
+  - Barra contagiri shift-light a 10 segmenti color-coded ispirata alla strumentazione da corsa.
+  - Card tachimetro Dragy stile corsa e matrice a 4 celle Denso per il pacco batterie.
+- **Semantica di Connessione Rigorosa a 2 Livelli (Zero Falsi Positivi)**:
+  - Stato `[● ECU READY]` solo in presenza di effettivi frame CAN decodificati dalle centraline Toyota negli ultimi 5 secondi.
+  - Stato `[▲ DONGLE OK - ATTESA ECU]` quando il dongle Bluetooth è associato ma l'auto ha il quadro spento o la centralina è in standby.
+  - Sostituzione di tutti i valori fittizi (`0 km/h`, `0.0°C`, delta termico e duty ventola) con placeholder rigorosi `--` o `--.-°C` a motore/quadro spento.
+  - Notifica Android trasparente in background: informa l'utente di avviare l'auto (spia READY) senza riportare temperature o stati fittizi.
+- **Resilienza di Connettività Backend a Prova di Bomba**:
+  - `BroadcastReceiver` di sistema per `BluetoothAdapter.ACTION_STATE_CHANGED`: gestione pulita della disattivazione Bluetooth e riconnessione automatica immediata appena il Bluetooth torna `STATE_ON`.
+  - Drenaggio preventivo dello stream di input SPP: eliminazione di byte orfani e residui seriali prima dell'invio di comandi UDS.
+  - Timeout di comando adattivo e differenziato (`timeoutMs`) in `BleManager.sendCommand`.
+  - Scanner con ordinamento prioritario dei dongle OBD (`Vgate`, `vLinker`, `OBDII`, `ELM327`) e dei dispositivi bonded in cima alla lista.
+  - Auto-Recovery CAN trasparente: Warm Start `AT WS` dell'ELM327 e ripristino ISO-TP Flow Control dopo 5 secondi di assenza di frame CAN senza interruzione della connessione Bluetooth.
+
+---
+
 ## [2.5.0] - 2026-08-31
 ### 🔌 Supporto Totale Vgate iCar Pro BLE 4.0+ & Discovery Engine Potenziato
 #### Added
