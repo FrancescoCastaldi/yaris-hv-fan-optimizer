@@ -32,6 +32,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.content.res.Configuration
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import com.yaris.hvfan.R
 import com.yaris.hvfan.ble.BleConnectionState
 import com.yaris.hvfan.obd.*
@@ -65,276 +69,530 @@ fun DashboardScreen(
     val isDeviceConnected = (connectionState is BleConnectionState.Ready || connectionState is BleConnectionState.Connected) &&
         liveState.isInitialized
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(DarkBackground)
-            .padding(14.dp)
-            .verticalScroll(scrollState)
-    ) {
-        // --- Top App Header Bar (MoTeC / Bosch Precision Header) ---
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(6.dp),
-            color = SurfaceDark,
-            border = BorderStroke(1.dp, CardBorder)
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+    if (isLandscape) {
+        // --- 🏁 OPPO A94 5G MOTORSPORT LANDSCAPE LAYOUT (20:9 DUAL-COLUMN COCKPIT) ---
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFF06080D)) // Pure deep OLED black to hide punch hole
+                .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp) // 32dp punch-hole safe margin
         ) {
-            Row(
+            // 1. VERTICAL COMPACT NAVIGATION SIDEBAR (Left Thumb Ergonomics)
+            Surface(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    .width(72.dp)
+                    .fillMaxHeight(),
+                shape = RoundedCornerShape(8.dp),
+                color = SurfaceDark,
+                border = BorderStroke(1.dp, CardBorder)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    GazooRacingLogoBadge()
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Column {
-                        Text(
-                            text = "YARIS HV GR v${BuildConfig.VERSION_NAME}",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Black,
-                            color = TextPrimary,
-                            letterSpacing = 1.sp
-                        )
-                        Text(
-                            text = savedDeviceName ?: "NESSUN DONGLE ASSOCIATO",
-                            fontSize = 10.sp,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold,
-                            color = if (savedDeviceName != null) AccentCyan else TextMuted
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(vertical = 8.dp, horizontal = 6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // GR Mini Badge
+                        GazooRacingLogoBadge()
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        // Tab 1: Cockpit
+                        val isGr = selectedTab == DashboardTab.GR_COCKPIT
+                        Surface(
+                            modifier = Modifier
+                                .size(56.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable { selectedTab = DashboardTab.GR_COCKPIT }
+                                .then(
+                                    if (isGr) Modifier.border(1.5.dp, GrRedPrimary, RoundedCornerShape(6.dp))
+                                    else Modifier
+                                ),
+                            color = if (isGr) DarkBackground else Color.Transparent,
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxSize(),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Icon(Icons.Default.Speed, contentDescription = null, tint = if (isGr) GrRedPrimary else TextSecondary, modifier = Modifier.size(20.dp))
+                                Text("COCKPIT", fontSize = 8.sp, fontWeight = FontWeight.Black, color = if (isGr) TextPrimary else TextSecondary)
+                            }
+                        }
+
+                        // Tab 2: Ventola
+                        val isFan = selectedTab == DashboardTab.FAN_CONTROL
+                        Surface(
+                            modifier = Modifier
+                                .size(56.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable { selectedTab = DashboardTab.FAN_CONTROL }
+                                .then(
+                                    if (isFan) Modifier.border(1.5.dp, AccentCyan, RoundedCornerShape(6.dp))
+                                    else Modifier
+                                ),
+                            color = if (isFan) DarkBackground else Color.Transparent,
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxSize(),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Icon(Icons.Default.Air, contentDescription = null, tint = if (isFan) AccentCyan else TextSecondary, modifier = Modifier.size(20.dp))
+                                Text("VENTOLA", fontSize = 8.sp, fontWeight = FontWeight.Black, color = if (isFan) TextPrimary else TextSecondary)
+                            }
+                        }
+
+                        // Tab 3: Codifiche
+                        val isEcu = selectedTab == DashboardTab.ECU_CODING
+                        Surface(
+                            modifier = Modifier
+                                .size(56.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable { selectedTab = DashboardTab.ECU_CODING }
+                                .then(
+                                    if (isEcu) Modifier.border(1.5.dp, AccentCyan, RoundedCornerShape(6.dp))
+                                    else Modifier
+                                ),
+                            color = if (isEcu) DarkBackground else Color.Transparent,
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxSize(),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Icon(Icons.Default.Tune, contentDescription = null, tint = if (isEcu) AccentCyan else TextSecondary, modifier = Modifier.size(20.dp))
+                                Text("CODIFICHE", fontSize = 8.sp, fontWeight = FontWeight.Black, color = if (isEcu) TextPrimary else TextSecondary)
+                            }
+                        }
+                    }
+
+                    // Bottom Quick Actions (OBD & Logs)
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Surface(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable { onOpenDevicePicker() },
+                            color = DarkBackground,
+                            border = BorderStroke(1.dp, CardBorder)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.Bluetooth, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(18.dp))
+                            }
+                        }
+
+                        Surface(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable { showLogs = !showLogs },
+                            color = DarkBackground,
+                            border = BorderStroke(1.dp, CardBorder)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.Terminal, contentDescription = null, tint = if (showLogs) AccentCyan else TextMuted, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.width(10.dp))
+
+            // 2. MAIN ADAPTIVE DASHBOARD WORKSPACE
+            Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                // Compact Top Telemetry Strip
+                Surface(
+                    modifier = Modifier.fillMaxWidth().height(42.dp),
+                    shape = RoundedCornerShape(6.dp),
+                    color = SurfaceDark,
+                    border = BorderStroke(1.dp, CardBorder)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "YARIS HV GR",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Black,
+                                color = TextPrimary,
+                                letterSpacing = 0.8.sp
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = savedDeviceName ?: "NO DONGLE",
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = AccentCyan
+                            )
+                        }
+
+                        ConnectionBadge(
+                            connectionState = connectionState,
+                            isInitialized = liveState.isInitialized,
+                            hasEcuCommunication = liveState.hasEcuCommunication
                         )
                     }
                 }
 
-                ConnectionBadge(
-                    connectionState = connectionState,
-                    isInitialized = liveState.isInitialized,
-                    hasEcuCommunication = liveState.hasEcuCommunication
-                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Split 2-Column Screen Workspace (Cockpit + Fan side-by-side or scrollable tab)
+                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    if (selectedTab == DashboardTab.GR_COCKPIT) {
+                        Row(
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            // Left Col: Engine & Speed
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .verticalScroll(rememberScrollState())
+                            ) {
+                                GrCockpitSection(
+                                    liveState = liveState,
+                                    isConnected = isDeviceConnected
+                                )
+                            }
+
+                            // Right Col: Live Battery Pack Denso Matrix & Fan Duty
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .verticalScroll(rememberScrollState())
+                            ) {
+                                FanManagementSection(
+                                    liveState = liveState,
+                                    isConnected = isDeviceConnected,
+                                    onThresholdChanged = onThresholdChanged,
+                                    onForcedFanToggle = onForcedFanToggle
+                                )
+                            }
+                        }
+                    } else if (selectedTab == DashboardTab.FAN_CONTROL) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            FanManagementSection(
+                                liveState = liveState,
+                                isConnected = isDeviceConnected,
+                                onThresholdChanged = onThresholdChanged,
+                                onForcedFanToggle = onForcedFanToggle
+                            )
+                        }
+                    } else {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            EcuCodingSection(
+                                codingState = liveState.ecuCodingState,
+                                isConnected = isDeviceConnected,
+                                onRead = onReadEcuCoding,
+                                onApply = onApplyEcuCoding,
+                                onRestoreFactory = onRestoreFactoryEcuCoding
+                            )
+                        }
+                    }
+                }
             }
         }
-
-        // --- Auto-Alert Banner for ECU Communication ---
-        if ((connectionState is BleConnectionState.Ready || connectionState is BleConnectionState.Connected) &&
-            !liveState.hasEcuCommunication && liveState.ecuAlertMessage != null) {
-            Spacer(modifier = Modifier.height(10.dp))
+    } else {
+        // --- 📱 PORTRAIT LAYOUT (Vertical Navigation) ---
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(DarkBackground)
+                .padding(14.dp)
+                .verticalScroll(scrollState)
+        ) {
+            // --- Top App Header Bar (MoTeC / Bosch Precision Header) ---
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(4.dp),
-                color = DarkBackground,
-                border = BorderStroke(1.dp, WarningOrange)
+                shape = RoundedCornerShape(6.dp),
+                color = SurfaceDark,
+                border = BorderStroke(1.dp, CardBorder)
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Warning,
-                        contentDescription = null,
-                        tint = WarningOrange,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "CENTRALINA NON RISPONDE",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Black,
-                            color = WarningOrange,
-                            letterSpacing = 0.8.sp
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = liveState.ecuAlertMessage ?: "Verifica che il quadro dell'auto sia su READY (spia verde accesa) e che l'adattatore OBD sia ben inserito.",
-                            fontSize = 10.sp,
-                            color = TextSecondary,
-                            lineHeight = 14.sp
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        GazooRacingLogoBadge()
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "YARIS HV GR v${BuildConfig.VERSION_NAME}",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Black,
+                                color = TextPrimary,
+                                letterSpacing = 1.sp
+                            )
+                            Text(
+                                text = savedDeviceName ?: "NESSUN DONGLE ASSOCIATO",
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                color = if (savedDeviceName != null) AccentCyan else TextMuted
+                            )
+                        }
                     }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    OutlinedButton(
-                        onClick = onReconnect,
-                        shape = RoundedCornerShape(4.dp),
-                        border = BorderStroke(1.dp, WarningOrange),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = WarningOrange),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-                        modifier = Modifier.height(30.dp)
+
+                    ConnectionBadge(
+                        connectionState = connectionState,
+                        isInitialized = liveState.isInitialized,
+                        hasEcuCommunication = liveState.hasEcuCommunication
+                    )
+                }
+            }
+
+            // --- Auto-Alert Banner for ECU Communication ---
+            if ((connectionState is BleConnectionState.Ready || connectionState is BleConnectionState.Connected) &&
+                !liveState.hasEcuCommunication && liveState.ecuAlertMessage != null) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(4.dp),
+                    color = DarkBackground,
+                    border = BorderStroke(1.dp, WarningOrange)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(text = "RIPROVA", fontSize = 10.sp, fontWeight = FontWeight.Black)
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = WarningOrange,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "CENTRALINA NON RISPONDE",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Black,
+                                color = WarningOrange,
+                                letterSpacing = 0.8.sp
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = liveState.ecuAlertMessage ?: "Verifica che il quadro dell'auto sia su READY (spia verde accesa) e che l'adattatore OBD sia ben inserito.",
+                                fontSize = 10.sp,
+                                color = TextSecondary,
+                                lineHeight = 14.sp
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        OutlinedButton(
+                            onClick = onReconnect,
+                            shape = RoundedCornerShape(4.dp),
+                            border = BorderStroke(1.dp, WarningOrange),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = WarningOrange),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                            modifier = Modifier.height(30.dp)
+                        ) {
+                            Text(text = "RIPROVA", fontSize = 10.sp, fontWeight = FontWeight.Black)
+                        }
                     }
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-        // --- Clean Segmented Tab Control (No neon pills) ---
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(46.dp),
-            shape = RoundedCornerShape(6.dp),
-            color = SurfaceDark,
-            border = BorderStroke(1.dp, CardBorder)
-        ) {
-            Row(
+            // --- Clean Segmented Tab Control (No neon pills) ---
+            Surface(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(3.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    .fillMaxWidth()
+                    .height(46.dp),
+                shape = RoundedCornerShape(6.dp),
+                color = SurfaceDark,
+                border = BorderStroke(1.dp, CardBorder)
             ) {
-                // Tab 1: GR Cockpit
-                val isGrSelected = selectedTab == DashboardTab.GR_COCKPIT
-                Surface(
+                Row(
                     modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .clip(RoundedCornerShape(4.dp))
-                        .clickable { selectedTab = DashboardTab.GR_COCKPIT }
-                        .then(
-                            if (isGrSelected) Modifier.border(BorderStroke(1.dp, GrRedPrimary), RoundedCornerShape(4.dp))
-                            else Modifier
-                        ),
-                    color = if (isGrSelected) DarkBackground else Color.Transparent,
-                    shape = RoundedCornerShape(4.dp)
+                        .fillMaxSize()
+                        .padding(3.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxSize(),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
+                    // Tab 1: GR Cockpit
+                    val isGrSelected = selectedTab == DashboardTab.GR_COCKPIT
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(4.dp))
+                            .clickable { selectedTab = DashboardTab.GR_COCKPIT }
+                            .then(
+                                if (isGrSelected) Modifier.border(BorderStroke(1.dp, GrRedPrimary), RoundedCornerShape(4.dp))
+                                else Modifier
+                            ),
+                        color = if (isGrSelected) DarkBackground else Color.Transparent,
+                        shape = RoundedCornerShape(4.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Speed,
-                            contentDescription = null,
-                            tint = if (isGrSelected) GrRedPrimary else TextSecondary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "COCKPIT",
-                            fontSize = 11.sp,
-                            fontWeight = if (isGrSelected) FontWeight.Black else FontWeight.Bold,
-                            color = if (isGrSelected) TextPrimary else TextSecondary,
-                            letterSpacing = 0.8.sp
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Speed,
+                                contentDescription = null,
+                                tint = if (isGrSelected) GrRedPrimary else TextSecondary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "COCKPIT",
+                                fontSize = 11.sp,
+                                fontWeight = if (isGrSelected) FontWeight.Black else FontWeight.Bold,
+                                color = if (isGrSelected) TextPrimary else TextSecondary,
+                                letterSpacing = 0.8.sp
+                            )
+                        }
+                    }
+
+                    // Tab 2: Controllo Ventola & Batteria
+                    val isFanSelected = selectedTab == DashboardTab.FAN_CONTROL
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(4.dp))
+                            .clickable { selectedTab = DashboardTab.FAN_CONTROL }
+                            .then(
+                                if (isFanSelected) Modifier.border(BorderStroke(1.dp, AccentCyan), RoundedCornerShape(4.dp))
+                                else Modifier
+                            ),
+                        color = if (isFanSelected) DarkBackground else Color.Transparent,
+                        shape = RoundedCornerShape(4.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Air,
+                                contentDescription = null,
+                                tint = if (isFanSelected) AccentCyan else TextSecondary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "VENTOLA",
+                                fontSize = 11.sp,
+                                fontWeight = if (isFanSelected) FontWeight.Black else FontWeight.Bold,
+                                color = if (isFanSelected) TextPrimary else TextSecondary,
+                                letterSpacing = 0.8.sp
+                            )
+                        }
+                    }
+
+                    // Tab 3: Codifiche Centralina ECU
+                    val isEcuSelected = selectedTab == DashboardTab.ECU_CODING
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(4.dp))
+                            .clickable { selectedTab = DashboardTab.ECU_CODING }
+                            .then(
+                                if (isEcuSelected) Modifier.border(BorderStroke(1.dp, AccentCyan), RoundedCornerShape(4.dp))
+                                else Modifier
+                            ),
+                        color = if (isEcuSelected) DarkBackground else Color.Transparent,
+                        shape = RoundedCornerShape(4.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Tune,
+                                contentDescription = null,
+                                tint = if (isEcuSelected) AccentCyan else TextSecondary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "CODIFICHE",
+                                fontSize = 11.sp,
+                                fontWeight = if (isEcuSelected) FontWeight.Black else FontWeight.Bold,
+                                color = if (isEcuSelected) TextPrimary else TextSecondary,
+                                letterSpacing = 0.8.sp
+                            )
+                        }
                     }
                 }
+            }
 
-                // Tab 2: Controllo Ventola & Batteria
-                val isFanSelected = selectedTab == DashboardTab.FAN_CONTROL
-                Surface(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .clip(RoundedCornerShape(4.dp))
-                        .clickable { selectedTab = DashboardTab.FAN_CONTROL }
-                        .then(
-                            if (isFanSelected) Modifier.border(BorderStroke(1.dp, AccentCyan), RoundedCornerShape(4.dp))
-                            else Modifier
-                        ),
-                    color = if (isFanSelected) DarkBackground else Color.Transparent,
-                    shape = RoundedCornerShape(4.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxSize(),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Air,
-                            contentDescription = null,
-                            tint = if (isFanSelected) AccentCyan else TextSecondary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "VENTOLA",
-                            fontSize = 11.sp,
-                            fontWeight = if (isFanSelected) FontWeight.Black else FontWeight.Bold,
-                            color = if (isFanSelected) TextPrimary else TextSecondary,
-                            letterSpacing = 0.8.sp
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // --- Content Based on Selected Tab ---
+            AnimatedContent(
+                targetState = selectedTab,
+                transitionSpec = {
+                    fadeIn(animationSpec = tween(150)) togetherWith fadeOut(animationSpec = tween(120))
+                },
+                label = "TabContentTransition"
+            ) { tab ->
+                when (tab) {
+                    DashboardTab.GR_COCKPIT -> {
+                        GrCockpitSection(
+                            liveState = liveState,
+                            isConnected = isDeviceConnected
                         )
                     }
-                }
-
-                // Tab 3: Codifiche Centralina ECU
-                val isEcuSelected = selectedTab == DashboardTab.ECU_CODING
-                Surface(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .clip(RoundedCornerShape(4.dp))
-                        .clickable { selectedTab = DashboardTab.ECU_CODING }
-                        .then(
-                            if (isEcuSelected) Modifier.border(BorderStroke(1.dp, AccentCyan), RoundedCornerShape(4.dp))
-                            else Modifier
-                        ),
-                    color = if (isEcuSelected) DarkBackground else Color.Transparent,
-                    shape = RoundedCornerShape(4.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxSize(),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Tune,
-                            contentDescription = null,
-                            tint = if (isEcuSelected) AccentCyan else TextSecondary,
-                            modifier = Modifier.size(16.dp)
+                    DashboardTab.FAN_CONTROL -> {
+                        FanManagementSection(
+                            liveState = liveState,
+                            isConnected = isDeviceConnected,
+                            onThresholdChanged = onThresholdChanged,
+                            onForcedFanToggle = onForcedFanToggle
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "CODIFICHE",
-                            fontSize = 11.sp,
-                            fontWeight = if (isEcuSelected) FontWeight.Black else FontWeight.Bold,
-                            color = if (isEcuSelected) TextPrimary else TextSecondary,
-                            letterSpacing = 0.8.sp
+                    }
+                    DashboardTab.ECU_CODING -> {
+                        EcuCodingSection(
+                            codingState = liveState.ecuCodingState,
+                            isConnected = isDeviceConnected,
+                            onRead = onReadEcuCoding,
+                            onApply = onApplyEcuCoding,
+                            onRestoreFactory = onRestoreFactoryEcuCoding
                         )
                     }
                 }
             }
-        }
-
-        Spacer(modifier = Modifier.height(14.dp))
-
-        // --- Content Based on Selected Tab ---
-        AnimatedContent(
-            targetState = selectedTab,
-            transitionSpec = {
-                fadeIn(animationSpec = tween(150)) togetherWith fadeOut(animationSpec = tween(120))
-            },
-            label = "TabContentTransition"
-        ) { tab ->
-            when (tab) {
-                DashboardTab.GR_COCKPIT -> {
-                    GrCockpitSection(
-                        liveState = liveState,
-                        isConnected = isDeviceConnected
-                    )
-                }
-                DashboardTab.FAN_CONTROL -> {
-                    FanManagementSection(
-                        liveState = liveState,
-                        isConnected = isDeviceConnected,
-                        onThresholdChanged = onThresholdChanged,
-                        onForcedFanToggle = onForcedFanToggle
-                    )
-                }
-                DashboardTab.ECU_CODING -> {
-                    EcuCodingSection(
-                        codingState = liveState.ecuCodingState,
-                        isConnected = isDeviceConnected,
-                        onRead = onReadEcuCoding,
-                        onApply = onApplyEcuCoding,
-                        onRestoreFactory = onRestoreFactoryEcuCoding
-                    )
-                }
-            }
-        }
 
         Spacer(modifier = Modifier.height(14.dp))
 
@@ -470,6 +728,7 @@ fun DashboardScreen(
 
         Spacer(modifier = Modifier.height(20.dp))
     }
+}
 }
 
 /**
@@ -892,9 +1151,13 @@ fun FanManagementSection(
                         )
                     }
 
+                    val haptic = LocalHapticFeedback.current
                     Switch(
                         checked = liveState.fanForcedMax,
-                        onCheckedChange = { onForcedFanToggle(it) },
+                        onCheckedChange = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onForcedFanToggle(it)
+                        },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = Color.White,
                             checkedTrackColor = AccentCyan,
@@ -1954,17 +2217,22 @@ fun CodingSwitchRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
+    val haptic = LocalHapticFeedback.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .defaultMinSize(minHeight = 52.dp)
             .padding(vertical = 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(text = label, fontSize = 12.sp, color = TextPrimary, modifier = Modifier.weight(1f))
+        Text(text = label, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = TextPrimary, modifier = Modifier.weight(1f))
         Switch(
             checked = checked,
-            onCheckedChange = onCheckedChange,
+            onCheckedChange = {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                onCheckedChange(it)
+            },
             colors = SwitchDefaults.colors(
                 checkedThumbColor = Color.White,
                 checkedTrackColor = AccentCyan,
@@ -2066,28 +2334,35 @@ fun PresetButton(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
+    val haptic = LocalHapticFeedback.current
     Surface(
         modifier = modifier
-            .height(40.dp)
-            .clip(RoundedCornerShape(4.dp))
-            .clickable { onClick() }
+            .defaultMinSize(minHeight = 52.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .clickable {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                onClick()
+            }
             .then(
-                if (isSelected) Modifier.border(BorderStroke(1.dp, AccentCyan), RoundedCornerShape(4.dp))
-                else Modifier.border(BorderStroke(1.dp, CardBorder), RoundedCornerShape(4.dp))
+                if (isSelected) Modifier.border(BorderStroke(1.5.dp, AccentCyan), RoundedCornerShape(6.dp))
+                else Modifier.border(BorderStroke(1.dp, CardBorder), RoundedCornerShape(6.dp))
             ),
-        color = if (isSelected) AccentCyan.copy(alpha = 0.16f) else SurfaceDark,
-        shape = RoundedCornerShape(4.dp)
+        color = if (isSelected) AccentCyan.copy(alpha = 0.18f) else SurfaceDark,
+        shape = RoundedCornerShape(6.dp)
     ) {
         Box(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 8.dp, vertical = 10.dp),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 text = label,
-                fontSize = 11.sp,
-                fontWeight = if (isSelected) FontWeight.Black else FontWeight.Medium,
+                fontSize = 12.sp,
+                fontWeight = if (isSelected) FontWeight.Black else FontWeight.Bold,
                 color = if (isSelected) AccentCyan else TextSecondary,
-                textAlign = TextAlign.Center
+                textAlign = TextAlign.Center,
+                lineHeight = 16.sp
             )
         }
     }
