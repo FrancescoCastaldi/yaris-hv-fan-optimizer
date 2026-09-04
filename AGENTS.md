@@ -4,7 +4,7 @@
 Ad ogni modifica, fix, push o rilascio:
 1. **Incremento di Versione Obbligatorio e Mai Riciclato**:
    - **MAI** riutilizzare la stessa versione o tag usati in precedenza.
-   - Incrementare SEMPRE `versionName` (SemVer) e `versionCode` in `app/build.gradle.kts`.
+   - Incrementare SEMPRE `versionName` nel formato numerico standard `num.num.num` (es. `2.8.0` -> `2.8.1` -> `2.8.2`...) e incrementare `versionCode` in `app/build.gradle.kts`.
 2. **Sito Web (`docs/`) e Root sempre sincronizzati con l'APK**:
    - `YarisHvFanControl.apk` (link rolling sempre all'ultima versione)
    - `YarisHvFanControl-vX.Y.Z.apk` (file con nuova versione incrementata)
