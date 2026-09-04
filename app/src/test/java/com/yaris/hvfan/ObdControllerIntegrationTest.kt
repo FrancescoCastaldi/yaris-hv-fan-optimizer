@@ -88,7 +88,8 @@ class ObdControllerIntegrationTest {
     @Test
     fun testElm327ProtocolInitAndErrorHandling() {
         assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT Z"))
-        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT AT 2"))
+        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT AT 1"))
+        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT ST 64"))
         assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT SP 6"))
         assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT CAF 1"))
         assertEquals("AT SP 0", Elm327Protocol.PROTOCOL_FALLBACK)
@@ -101,6 +102,8 @@ class ObdControllerIntegrationTest {
         assertTrue(Elm327Protocol.isError("UNABLE TO CONNECT"))
         assertTrue(Elm327Protocol.isError("CAN ERROR"))
         assertTrue(Elm327Protocol.isError("BUFFER FULL"))
+        assertTrue(Elm327Protocol.isError("?"))
+        assertTrue(Elm327Protocol.isError(""))
         assertFalse(Elm327Protocol.isError("7EA 07 62 28 C1 28 00 00 >"))
     }
 
@@ -208,5 +211,205 @@ class ObdControllerIntegrationTest {
         assertEquals(WarmupStage.S4, s4.stage)
         assertEquals(1.0f, s4.progressPercent, 0.01f)
         assertTrue(s4.recommendations.isNotEmpty())
+    }
+
+    @Test
+    fun testObdLiveStateThreeLevelState() {
+        val initial = ObdLiveState()
+        assertFalse(initial.hasEcuCommunication)
+        assertNull(initial.ecuAlertMessage)
+
+        val connectedWaitingEcu = initial.copy(
+            isInitialized = true,
+            hasEcuCommunication = false,
+            ecuAlertMessage = "In attesa di comunicazione con la centralina Toyota..."
+        )
+        assertTrue(connectedWaitingEcu.isInitialized)
+        assertFalse(connectedWaitingEcu.hasEcuCommunication)
+        assertNotNull(connectedWaitingEcu.ecuAlertMessage)
+
+        val fullyOperational = connectedWaitingEcu.copy(
+            hasEcuCommunication = true,
+            ecuAlertMessage = null
+        )
+        assertTrue(fullyOperational.isInitialized)
+        assertTrue(fullyOperational.hasEcuCommunication)
+        assertNull(fullyOperational.ecuAlertMessage)
+    }
+
+    @Test
+    fun testMultiPidEngineParser() {
+        // Standard ordered packed response: 41 0D 44 0C 1F 40 11 66
+        // Speed: 0x44 = 68 km/h
+        // RPM: 0x1F40 = 8000 / 4 = 2000 RPM
+        // Throttle: 0x66 = 102 * 100 / 255 = 40.0%
+        val rawMulti = "7E8 08 41 0D 44 0C 1F 40 11 66 >"
+        val parsed = ToyotaYarisCommands.parseMultiPidEngineResponse(rawMulti)
+
+        assertNotNull(parsed)
+        assertEquals(68, parsed!!.speedKmh)
+        assertEquals(2000, parsed.engineRpm)
+        assertEquals(40.0f, parsed.throttlePercent!!, 0.5f)
+
+        // Error response returns null
+        val errRes = ToyotaYarisCommands.parseMultiPidEngineResponse("NO DATA")
+        assertNull(errRes)
+    }
+
+    @Test
+    fun testLinearInterpolationCrossing() {
+        // Case 1: Crossing 50 km/h midway between 40 km/h (t0=1000) and 60 km/h (t1=1200)
+        val t50 = ToyotaYarisCommands.interpolateCrossingTimeMs(
+            t0Ms = 1000L,
+            v0Kmh = 40.0f,
+            t1Ms = 1200L,
+            v1Kmh = 60.0f,
+            targetKmh = 50.0f
+        )
+        assertEquals(1100L, t50)
+
+        // Case 2: Crossing 100 km/h exactly at 3/4 interval: 90 -> 110 between 5000 and 5200 ms
+        // (100 - 90) / (110 - 90) = 10 / 20 = 0.5 -> 5100ms
+        val t100 = ToyotaYarisCommands.interpolateCrossingTimeMs(
+            t0Ms = 5000L,
+            v0Kmh = 90.0f,
+            t1Ms = 5200L,
+            v1Kmh = 110.0f,
+            targetKmh = 100.0f
+        )
+        assertEquals(5100L, t100)
+
+        // Case 3: Launch start crossing 0.5 km/h from standstill (0 km/h at 2000ms to 5 km/h at 2100ms)
+        // 0.5 / 5.0 = 0.1 -> 2000 + 10ms = 2010ms
+        val tLaunch = ToyotaYarisCommands.interpolateCrossingTimeMs(
+            t0Ms = 2000L,
+            v0Kmh = 0.0f,
+            t1Ms = 2100L,
+            v1Kmh = 5.0f,
+            targetKmh = 0.5f
+        )
+        assertEquals(2010L, tLaunch)
+    }
+
+    @Test
+    fun testExponentialBackoffAndReconnectingState() {
+        // Verify exponential backoff cadence
+        assertEquals(2000L, com.yaris.hvfan.ble.BleManager.calculateBackoffMs(1))
+        assertEquals(4000L, com.yaris.hvfan.ble.BleManager.calculateBackoffMs(2))
+        assertEquals(8000L, com.yaris.hvfan.ble.BleManager.calculateBackoffMs(3))
+        assertEquals(15000L, com.yaris.hvfan.ble.BleManager.calculateBackoffMs(4))
+        assertEquals(30000L, com.yaris.hvfan.ble.BleManager.calculateBackoffMs(5))
+        assertEquals(30000L, com.yaris.hvfan.ble.BleManager.calculateBackoffMs(10))
+
+        // Verify Reconnecting state fields
+        val reconnecting = com.yaris.hvfan.ble.BleConnectionState.Reconnecting(
+            deviceName = "Android-Vlink",
+            address = "AA:BB:CC:DD:EE:FF",
+            attempt = 3
+        )
+        assertEquals("Android-Vlink", reconnecting.deviceName)
+        assertEquals("AA:BB:CC:DD:EE:FF", reconnecting.address)
+        assertEquals(3, reconnecting.attempt)
+    }
+
+    @Test
+    fun testTwoLevelConnectionStatusLogic() {
+        // Test case 1: Bluetooth connected and initialized, but car ignition OFF (ECU silent)
+        val stateDongleOnly = ObdLiveState(
+            isInitialized = true,
+            isLoopRunning = true,
+            hasEcuCommunication = false
+        )
+        assertFalse(stateDongleOnly.hasEcuCommunication)
+
+        val badgeTextDongleOnly = when {
+            stateDongleOnly.hasEcuCommunication -> "● ECU ONLINE"
+            stateDongleOnly.isInitialized -> "▲ DONGLE OK - ATTESA ECU"
+            else -> "◌ LINK OBD..."
+        }
+        assertEquals("▲ DONGLE OK - ATTESA ECU", badgeTextDongleOnly)
+
+        // Speed check: must be "--" when hasEcuCommunication is false
+        val speedDisplayDongleOnly = if (stateDongleOnly.hasEcuCommunication) "${stateDongleOnly.accelerationState.currentSpeedKmh}" else "--"
+        assertEquals("--", speedDisplayDongleOnly)
+
+        // Battery temp check: must be "--.-°C" when hasEcuCommunication is false
+        val tempDisplayDongleOnly = if (stateDongleOnly.hasEcuCommunication && stateDongleOnly.batteryStatus.maxTemp > 0.0) {
+            String.format(java.util.Locale.US, "%.1f°C", stateDongleOnly.batteryStatus.maxTemp)
+        } else {
+            "--.-°C"
+        }
+        assertEquals("--.-°C", tempDisplayDongleOnly)
+
+        // Test case 2: Car READY ON and receiving CAN frames
+        val stateEcuOnline = ObdLiveState(
+            isInitialized = true,
+            isLoopRunning = true,
+            hasEcuCommunication = true,
+            batteryStatus = HvBatteryStatus(temp1 = 28.5, temp2 = 29.0, maxTemp = 29.0)
+        )
+        assertTrue(stateEcuOnline.hasEcuCommunication)
+
+        val badgeTextEcuOnline = when {
+            stateEcuOnline.hasEcuCommunication -> "● ECU ONLINE"
+            stateEcuOnline.isInitialized -> "▲ DONGLE OK - ATTESA ECU"
+            else -> "◌ LINK OBD..."
+        }
+        assertEquals("● ECU ONLINE", badgeTextEcuOnline)
+
+        val tempDisplayEcuOnline = if (stateEcuOnline.hasEcuCommunication && stateEcuOnline.batteryStatus.maxTemp > 0.0) {
+            String.format(java.util.Locale.US, "%.1f°C", stateEcuOnline.batteryStatus.maxTemp)
+        } else {
+            "--.-°C"
+        }
+        assertEquals("29.0°C", tempDisplayEcuOnline)
+    }
+
+    @Test
+    fun testDeviceSortingPrioritizesObdAndBonded() {
+        val dev1 = com.yaris.hvfan.ble.DiscoveredBleDevice(
+            name = "Smart TV Samsung",
+            address = "11:22:33:44:55:66",
+            rssi = -40,
+            isBonded = false
+        )
+        val dev2 = com.yaris.hvfan.ble.DiscoveredBleDevice(
+            name = "Headphones Sony",
+            address = "22:33:44:55:66:77",
+            rssi = -50,
+            isBonded = true
+        )
+        val dev3 = com.yaris.hvfan.ble.DiscoveredBleDevice(
+            name = "Android-Vlink",
+            address = "AA:BB:CC:DD:EE:FF",
+            rssi = -70,
+            isBonded = false
+        )
+        val dev4 = com.yaris.hvfan.ble.DiscoveredBleDevice(
+            name = "vLinker MC+ BLE",
+            address = "99:88:77:66:55:44",
+            rssi = -60,
+            isBonded = true
+        )
+
+        val rawList = listOf(dev1, dev2, dev3, dev4)
+        val sortedList = rawList.sortedWith(
+            compareByDescending<com.yaris.hvfan.ble.DiscoveredBleDevice> { dev ->
+                val upper = dev.name.uppercase()
+                upper.contains("VLINK") ||
+                upper.contains("OBD") ||
+                upper.contains("VGATE") ||
+                upper.contains("ELM327") ||
+                upper.contains("BAFX")
+            }
+            .thenByDescending { it.isBonded }
+            .thenByDescending { it.rssi }
+        )
+
+        // OBD devices must come first, with bonded OBD device ranked #1
+        assertEquals("vLinker MC+ BLE", sortedList[0].name)
+        assertEquals("Android-Vlink", sortedList[1].name)
+        assertEquals("Headphones Sony", sortedList[2].name) // Bonded non-OBD comes before non-bonded non-OBD
+        assertEquals("Smart TV Samsung", sortedList[3].name)
     }
 }

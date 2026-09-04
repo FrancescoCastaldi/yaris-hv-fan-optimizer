@@ -10,6 +10,9 @@ import kotlinx.coroutines.flow.StateFlow
 data class ObdLiveState(
     val isInitialized: Boolean = false,
     val isLoopRunning: Boolean = false,
+    val hasEcuCommunication: Boolean = false, // True solo quando arrivano frame CAN validi dalla ECU dell'auto
+    val ecuAlertMessage: String? = null,      // Avviso visivo per l'utente quando la centralina non risponde
+    val lastDataReceivedTimestamp: Long = 0L,
     val batteryStatus: HvBatteryStatus = HvBatteryStatus(),
     val warmupStatus: HybridWarmupStatus = HybridWarmupStatus(),
     val performanceStatus: EnginePerformanceStatus = EnginePerformanceStatus(),
@@ -24,19 +27,35 @@ data class ObdLiveState(
 
 class ObdController(
     private val bleManager: BleManager,
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
+    private val appPreferences: com.yaris.hvfan.data.AppPreferences? = null
 ) {
     companion object {
         private const val TAG = "ObdController"
-        private const val POLL_INTERVAL_MS = 1500L
+        private const val BATTERY_POLL_INTERVAL_MS = 3500L
+        private const val COOLANT_POLL_INTERVAL_MS = 4000L
     }
 
-    private val _liveState = MutableStateFlow(ObdLiveState())
+    private val _liveState = MutableStateFlow(
+        ObdLiveState(
+            accelerationState = AccelerationRunState(
+                best0to50TimeSec = appPreferences?.best0to50TimeSec,
+                best0to100TimeSec = appPreferences?.best0to100TimeSec
+            )
+        )
+    )
     val liveState: StateFlow<ObdLiveState> = _liveState
 
     private var loopJob: Job? = null
     private var isProtocolInitialized = false
-    private var cycleCounter = 0
+    private var isMultiPidSupported = false
+    private var consecutiveCanErrors = 0
+    private var lastValidCanTimestamp = 0L
+    private var lastBatteryCheckTimestamp = 0L
+    private var lastCoolantCheckTimestamp = 0L
+    private var pendingBatterySafetyCheck = false
+    private var fastCycleCounter = 0
+
     private var lastKnownCoolant = 0f
     private var lastKnownAmbient = 0f
     private var lastKnownRpm = 0
@@ -44,30 +63,35 @@ class ObdController(
     private var lastKnownLoad = 0f
     private var lastKnownThrottle = 0f
     private var lastKnownSpeed = 0
+    private var prevSpeedKmh = 0
+    private var prevSpeedTimestampMs = 0L
 
-    // Acceleration Timer State Machine
+    // Acceleration Timer State Machine (Dragy Precise Interpolation)
     private var launchStartTimeMs = 0L
     private var isTimingInProgress = false
     private var isLaunchArmed = false
     private var run0to50Sec: Float? = null
     private var run0to100Sec: Float? = null
-    private var best0to50Sec: Float? = null
-    private var best0to100Sec: Float? = null
+    private var best0to50Sec: Float? = appPreferences?.best0to50TimeSec
+    private var best0to100Sec: Float? = appPreferences?.best0to100TimeSec
 
     fun startController() {
         scope.launch {
             bleManager.connectionState.collect { state ->
                 when (state) {
                     is BleConnectionState.Ready -> {
-                        addLog("Dispositivo BLE pronto. Avvio inizializzazione ECU Toyota Yaris...")
+                        addLog("Dispositivo pronto. Avvio inizializzazione ECU Toyota Yaris...")
                         initializeAndStartLoop()
                     }
                     is BleConnectionState.Disconnected, is BleConnectionState.Error -> {
                         stopLoop()
                         isProtocolInitialized = false
+                        consecutiveCanErrors = 0
                         _liveState.value = _liveState.value.copy(
                             isInitialized = false,
                             isLoopRunning = false,
+                            hasEcuCommunication = false,
+                            ecuAlertMessage = null,
                             lastLogMessage = if (state is BleConnectionState.Error) state.message else "Disconnesso"
                         )
                     }
@@ -93,8 +117,23 @@ class ObdController(
         loopJob?.cancel()
         loopJob = scope.launch(Dispatchers.IO) {
             try {
-                // 1. Send ELM327 Multi-Phase Intelligent Handshake
+                consecutiveCanErrors = 0
+                _liveState.value = _liveState.value.copy(
+                    isInitialized = false,
+                    isLoopRunning = false,
+                    hasEcuCommunication = false,
+                    ecuAlertMessage = null
+                )
+
+                // 1. Send ELM327 / Vgate Reset con attesa dedicata di riavvio chip
+                addLog("Avvio handshake ELM327 / Vgate...")
+                val resZ = bleManager.sendCommand("AT Z")
+                addLog("AT Z: ${Elm327Protocol.cleanResponse(resZ)}")
+                delay(800) // Fondamentale per il riavvio del firmware di Vgate iCar Pro
+
+                // 2. Invio sequenza di configurazione parametri seriali e protocollo CAN
                 for (cmd in Elm327Protocol.INIT_COMMANDS) {
+                    if (cmd == "AT Z") continue
                     addLog("CMD: $cmd")
                     val res = bleManager.sendCommand(cmd)
                     val cleanRes = Elm327Protocol.cleanResponse(res)
@@ -103,31 +142,77 @@ class ObdController(
                         addLog("Fallback protocollo su AT SP 0 (Auto)...")
                         bleManager.sendCommand(Elm327Protocol.PROTOCOL_FALLBACK)
                     }
-                    delay(50)
+                    delay(60)
                 }
 
-                // 2. Set Toyota Yaris Denso HV Battery CAN Header
+                // Verifica che il chip ELM sia responsivo leggendo la tensione batteria
+                val voltRes = bleManager.sendCommand("AT RV")
+                val cleanVolt = Elm327Protocol.cleanResponse(voltRes)
+                addLog("Tensione Batteria Dongle (AT RV): $cleanVolt")
+
+                // 3. Configura Header centralina batteria HV Denso (7E2 / 7EA) e Flow Control ISO-TP
                 addLog("CMD: ${ToyotaYarisCommands.CMD_SET_HEADER_BATTERY_ECU}")
                 val resHeader = bleManager.sendCommand(ToyotaYarisCommands.CMD_SET_HEADER_BATTERY_ECU)
                 addLog("RES: ${Elm327Protocol.cleanResponse(resHeader)}")
-                delay(50)
+                delay(60)
 
                 addLog("CMD: ${ToyotaYarisCommands.CMD_SET_RECEIVE_FILTER}")
                 val resFilter = bleManager.sendCommand(ToyotaYarisCommands.CMD_SET_RECEIVE_FILTER)
                 addLog("RES: ${Elm327Protocol.cleanResponse(resFilter)}")
-                delay(50)
+                delay(60)
+
+                bleManager.sendCommand("AT FC SH ${ToyotaYarisCommands.HEADER_BATTERY_ECU}")
+                bleManager.sendCommand("AT FC SD 300000")
+                bleManager.sendCommand("AT FC SM 1")
+                currentCanHeader = ToyotaYarisCommands.HEADER_BATTERY_ECU
+
+                // 4. Test di reattività iniziale CAN bus su batteria HV
+                addLog("Verifica connessione CAN centralina auto (PID 2228C1)...")
+                val testCanRes = bleManager.sendCommand(ToyotaYarisCommands.PID_READ_BATTERY_DATA_TNGA)
+                val cleanTestCan = Elm327Protocol.cleanResponse(testCanRes)
+                addLog("CAN Test Response: $cleanTestCan")
+
+                val canResOk = cleanTestCan.contains("6228C1") || (!Elm327Protocol.isError(cleanTestCan) && cleanTestCan.length >= 8)
+                if (canResOk) {
+                    addLog("✅ CAN Bus Toyota ONLINE! Dati batteria ricevuti correttamente.")
+                    lastValidCanTimestamp = System.currentTimeMillis()
+                } else {
+                    addLog("Dongle collegato, in attesa di comunicazione con la centralina...")
+                }
+
+                // 5. Test supporto Multi-PID per telemetria motore e Dragy
+                addLog("Verifica supporto Multi-PID (010D0C11)...")
+                ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU, ToyotaYarisCommands.FILTER_ENGINE_ECU)
+                val testMultiRes = bleManager.sendCommand(ToyotaYarisCommands.CMD_MULTI_PID_ENGINE)
+                val cleanMulti = Elm327Protocol.cleanResponse(testMultiRes)
+                val parsedMulti = ToyotaYarisCommands.parseMultiPidEngineResponse(cleanMulti)
+                if (parsedMulti != null && (parsedMulti.speedKmh != null || parsedMulti.engineRpm != null)) {
+                    isMultiPidSupported = true
+                    addLog("✅ Multi-PID supportato nativamente (010D0C11)! Loop rapido 10Hz attivo.")
+                } else {
+                    isMultiPidSupported = false
+                    addLog("ℹ️ Multi-PID non disponibile: fallback su query pipelinate veloci.")
+                }
+
+                // Ottimizzazione timeout chip ELM327 per massimizzare il frame-rate CAN
+                bleManager.sendCommand("AT ST 20") // ~80ms timeout per latenza minima
 
                 isProtocolInitialized = true
                 _liveState.value = _liveState.value.copy(
                     isInitialized = true,
-                    isLoopRunning = true
+                    isLoopRunning = true,
+                    hasEcuCommunication = canResOk,
+                    ecuAlertMessage = if (canResOk) null else "In attesa di risposta dalla centralina Toyota..."
                 )
-                addLog("Inizializzazione completata! Avvio loop monitoraggio e controllo ventola...")
+                addLog("Inizializzazione completata! Avvio scheduler Dual-Rate ad alta frequenza...")
 
-                // 3. Main Loop
+                // 6. Dual-Rate Adaptive Loop
+                lastBatteryCheckTimestamp = 0L
+                lastCoolantCheckTimestamp = 0L
                 while (isActive) {
-                    executeFanControlCycle()
-                    delay(POLL_INTERVAL_MS)
+                    executeDualRateCycle()
+                    val loopDelayMs = if (isTimingInProgress || lastKnownSpeed > 0) 60L else 140L
+                    delay(loopDelayMs)
                 }
 
             } catch (e: CancellationException) {
@@ -136,7 +221,9 @@ class ObdController(
                 Log.e(TAG, "Errore durante ciclo OBD", e)
                 addLog("Errore: ${e.localizedMessage}")
                 _liveState.value = _liveState.value.copy(
-                    errorCount = _liveState.value.errorCount + 1
+                    errorCount = _liveState.value.errorCount + 1,
+                    hasEcuCommunication = false,
+                    ecuAlertMessage = "Errore di comunicazione: ${e.localizedMessage}"
                 )
             }
         }
@@ -148,22 +235,63 @@ class ObdController(
         if (currentCanHeader != header) {
             bleManager.sendCommand("AT SH $header")
             bleManager.sendCommand("AT CRA $filter")
+            bleManager.sendCommand("AT FC SH $header")
+            bleManager.sendCommand("AT FC SD 300000")
+            bleManager.sendCommand("AT FC SM 1")
             currentCanHeader = header
-            delay(40)
+            delay(30)
         }
     }
 
     private var isEcuOperationInProgress = false
+    private var lastAutoRecoveryTimestamp = 0L
 
-    private suspend fun executeFanControlCycle() {
-        if (isEcuOperationInProgress) {
-            return
+    private suspend fun executeCanBusAutoRecovery() {
+        addLog("⚠️ Nessun dato CAN ricevuto da > 5s: avvio procedura auto-recovery chip ELM327...")
+        // Reset rapido dello stack seriale ELM327 senza perdita connessione BLE
+        bleManager.sendCommand("AT WS") // Warm Start
+        delay(100)
+        bleManager.sendCommand("AT E0")
+        bleManager.sendCommand("AT L0")
+        bleManager.sendCommand("AT S0")
+        bleManager.sendCommand("AT H0")
+        bleManager.sendCommand("AT SP 6")
+        bleManager.sendCommand("AT ST 20")
+        currentCanHeader = "" // Forza riapplicazione degli header
+        ensureCanHeader(ToyotaYarisCommands.HEADER_BATTERY_ECU, ToyotaYarisCommands.FILTER_BATTERY_ECU)
+        addLog("✅ Procedura auto-recovery completata. Ripristino polling CAN.")
+    }
+
+    private suspend fun executeDualRateCycle() {
+        if (isEcuOperationInProgress) return
+
+        val now = System.currentTimeMillis()
+
+        // 0. Auto-Recovery se il bus CAN è silente da oltre 5000ms (e sono passati almeno 10s dall'ultimo recovery)
+        if (isProtocolInitialized && (now - lastValidCanTimestamp > 5000L) && (now - lastAutoRecoveryTimestamp > 10000L)) {
+            lastAutoRecoveryTimestamp = now
+            executeCanBusAutoRecovery()
         }
 
-        val currentState = _liveState.value
-        cycleCounter++
+        // 1. Safe Interruption o ciclo periodico lento (ogni 3.5s) per batteria HV Denso
+        val isBatteryDue = pendingBatterySafetyCheck || (now - lastBatteryCheckTimestamp >= BATTERY_POLL_INTERVAL_MS)
+        if (isBatteryDue) {
+            pendingBatterySafetyCheck = false
+            lastBatteryCheckTimestamp = now
+            executeBatteryThermalCycle()
+        }
 
-        // Step A: Switch to Battery ECU (7E2 / 7EA) & Read Battery Temperatures (Mode 22 / Mode 21)
+        // 2. Loop veloce per telemetria motore e Dragy (100-200ms)
+        executeEngineTelemetryFastCycle()
+
+        // 3. Ciclo periodico di sfondo per liquido di raffreddamento (ECT) ed aspirazione (IAT) (ogni 4s)
+        if (now - lastCoolantCheckTimestamp >= COOLANT_POLL_INTERVAL_MS) {
+            lastCoolantCheckTimestamp = now
+            executeCoolantWarmupCycle()
+        }
+    }
+
+    private suspend fun executeBatteryThermalCycle() {
         ensureCanHeader(ToyotaYarisCommands.HEADER_BATTERY_ECU, ToyotaYarisCommands.FILTER_BATTERY_ECU)
 
         var rawResponse = bleManager.sendCommand(ToyotaYarisCommands.PID_READ_BATTERY_DATA_TNGA)
@@ -171,14 +299,17 @@ class ObdController(
             rawResponse = bleManager.sendCommand(ToyotaYarisCommands.PID_READ_BATTERY_DATA_LEGACY)
         }
 
+        val currentState = _liveState.value
         val parsedStatus = ToyotaYarisCommands.parseBatteryResponse(rawResponse, currentState.fanForcedMax)
         val updatedBattery = if (parsedStatus != null) {
+            lastValidCanTimestamp = System.currentTimeMillis()
+            consecutiveCanErrors = 0
             parsedStatus
         } else {
             currentState.batteryStatus.copy(timestamp = System.currentTimeMillis())
         }
 
-        // Step B: Thermal threshold evaluation & Active Test Fan Control
+        // Valutazione soglia termica & override ventola Mode 30
         val shouldForceFan = currentState.fanForcedMax || (updatedBattery.maxTemp >= currentState.targetThreshold)
         if (shouldForceFan) {
             val fanCmdRes = bleManager.sendCommand(ToyotaYarisCommands.CMD_FAN_MAX_SPEED_UDS)
@@ -186,128 +317,168 @@ class ObdController(
             if (cleanFanRes.contains("7F30") || cleanFanRes.contains("ERROR")) {
                 bleManager.sendCommand(ToyotaYarisCommands.CMD_FAN_MAX_SPEED_ALT)
             }
-            addLog("Ventola HV MAX (L6) | Batt: ${String.format("%.1f", updatedBattery.maxTemp)}°C")
+            addLog("Ventola HV MAX (L6) | Batt: ${String.format(java.util.Locale.US, "%.1f", updatedBattery.maxTemp)}°C")
         } else {
             bleManager.sendCommand(ToyotaYarisCommands.CMD_TESTER_PRESENT)
-            addLog("Batt: ${String.format("%.1f", updatedBattery.maxTemp)}°C (sotto soglia ${currentState.targetThreshold}°C)")
         }
 
-        // Step C: Interleave Engine ECU (7E0 / 7E8) for REAL Coolant, Ambient, RPM, Speed & Performance
-        var updatedWarmup = currentState.warmupStatus
-        var updatedPerformance = currentState.performanceStatus
-        var updatedAcceleration = currentState.accelerationState
-
-        if (cycleCounter % 2 == 0) {
-            ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU, ToyotaYarisCommands.FILTER_ENGINE_ECU)
-
-            // Read Real Physical Vehicle Speed (km/h)
-            val rawSpeed = bleManager.sendCommand(ToyotaYarisCommands.PID_VEHICLE_SPEED)
-            val parsedSpeed = ToyotaYarisCommands.parseVehicleSpeed(rawSpeed)
-            if (parsedSpeed != null) {
-                lastKnownSpeed = parsedSpeed
-            }
-
-            // Read Real Physical Coolant Temp (ECT)
-            val rawCoolant = bleManager.sendCommand(ToyotaYarisCommands.PID_COOLANT_TEMP)
-            val parsedCoolant = ToyotaYarisCommands.parseCoolantTemp(rawCoolant)
-            if (parsedCoolant != null) {
-                lastKnownCoolant = parsedCoolant
-            }
-
-            // Read Real Physical Intake/Ambient Air Temp (IAT)
-            val rawAmbient = bleManager.sendCommand(ToyotaYarisCommands.PID_INTAKE_AIR_TEMP)
-            val parsedAmbient = ToyotaYarisCommands.parseIntakeAirTemp(rawAmbient)
-            if (parsedAmbient != null) {
-                lastKnownAmbient = parsedAmbient
-            }
-
-            // Read Real Physical Engine RPM
-            val rawRpm = bleManager.sendCommand(ToyotaYarisCommands.PID_ENGINE_RPM)
-            val parsedRpm = ToyotaYarisCommands.parseEngineRpm(rawRpm)
-            if (parsedRpm != null) {
-                lastKnownRpm = parsedRpm
-            }
-
-            // Read Real Timing Advance (°BTDC)
-            val rawAdvance = bleManager.sendCommand(ToyotaYarisCommands.PID_TIMING_ADVANCE)
-            val parsedAdvance = ToyotaYarisCommands.parseTimingAdvance(rawAdvance)
-            if (parsedAdvance != null) {
-                lastKnownAdvance = parsedAdvance
-            }
-
-            // Read Engine Load (%)
-            val rawLoad = bleManager.sendCommand(ToyotaYarisCommands.PID_ENGINE_LOAD)
-            val parsedLoad = ToyotaYarisCommands.parseEngineLoad(rawLoad)
-            if (parsedLoad != null) {
-                lastKnownLoad = parsedLoad
-            }
-
-            // Read Throttle / Accelerator Position (%)
-            val rawThrottle = bleManager.sendCommand(ToyotaYarisCommands.PID_THROTTLE_POS)
-            val parsedThrottle = ToyotaYarisCommands.parseThrottlePos(rawThrottle)
-            if (parsedThrottle != null) {
-                lastKnownThrottle = parsedThrottle
-            }
-
-            if (parsedCoolant != null || lastKnownCoolant > 0f) {
-                updatedWarmup = ToyotaYarisCommands.evaluateWarmupStatus(
-                    coolantTemp = lastKnownCoolant,
-                    ambientTemp = lastKnownAmbient,
-                    rpm = lastKnownRpm
-                )
-            }
-
-            val hasPerfData = parsedAdvance != null || parsedLoad != null || lastKnownLoad > 0f
-            updatedPerformance = EnginePerformanceStatus(
-                timingAdvance = lastKnownAdvance,
-                engineLoadPercent = lastKnownLoad,
-                throttlePercent = lastKnownThrottle,
-                isOptimalAdvance = lastKnownAdvance >= 15.0f,
-                isHighPowerReady = !updatedBattery.isThermalThrottled && updatedWarmup.stage == WarmupStage.S4,
-                hasLiveData = hasPerfData
+        _liveState.value = _liveState.value.copy(
+            batteryStatus = updatedBattery.copy(
+                isFanForced = shouldForceFan,
+                fanSpeedLevel = if (shouldForceFan) 6 else updatedBattery.fanSpeedLevel
             )
+        )
+    }
 
-            // --- Acceleration Sprint Timer Logic ---
-            var elapsedRunMs = 0L
-            if (lastKnownSpeed == 0) {
-                isLaunchArmed = true
-                if (isTimingInProgress) {
-                    isTimingInProgress = false
+    private suspend fun executeEngineTelemetryFastCycle() {
+        ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU, ToyotaYarisCommands.FILTER_ENGINE_ECU)
+
+        val sampleTimestamp = System.currentTimeMillis()
+        var currentSpeed: Int? = null
+        var currentRpm: Int? = null
+        var currentThrottle: Float? = null
+
+        if (isMultiPidSupported) {
+            val raw = bleManager.sendCommand(ToyotaYarisCommands.CMD_MULTI_PID_ENGINE)
+            val multiData = ToyotaYarisCommands.parseMultiPidEngineResponse(raw)
+            if (multiData != null) {
+                currentSpeed = multiData.speedKmh
+                currentRpm = multiData.engineRpm
+                currentThrottle = multiData.throttlePercent
+            } else {
+                // Fallback trasparente
+                val rawSpd = bleManager.sendCommand(ToyotaYarisCommands.PID_VEHICLE_SPEED)
+                currentSpeed = ToyotaYarisCommands.parseVehicleSpeed(rawSpd)
+                val rawRpm = bleManager.sendCommand(ToyotaYarisCommands.PID_ENGINE_RPM)
+                currentRpm = ToyotaYarisCommands.parseEngineRpm(rawRpm)
+            }
+        } else {
+            val rawSpd = bleManager.sendCommand(ToyotaYarisCommands.PID_VEHICLE_SPEED)
+            currentSpeed = ToyotaYarisCommands.parseVehicleSpeed(rawSpd)
+
+            val rawRpm = bleManager.sendCommand(ToyotaYarisCommands.PID_ENGINE_RPM)
+            currentRpm = ToyotaYarisCommands.parseEngineRpm(rawRpm)
+
+            if (fastCycleCounter % 2 == 0) {
+                val rawThr = bleManager.sendCommand(ToyotaYarisCommands.PID_THROTTLE_POS)
+                currentThrottle = ToyotaYarisCommands.parseThrottlePos(rawThr)
+            }
+        }
+
+        fastCycleCounter++
+        if (fastCycleCounter % 6 == 0) {
+            val rawAdv = bleManager.sendCommand(ToyotaYarisCommands.PID_TIMING_ADVANCE)
+            val adv = ToyotaYarisCommands.parseTimingAdvance(rawAdv)
+            if (adv != null) lastKnownAdvance = adv
+
+            val rawLd = bleManager.sendCommand(ToyotaYarisCommands.PID_ENGINE_LOAD)
+            val ld = ToyotaYarisCommands.parseEngineLoad(rawLd)
+            if (ld != null) lastKnownLoad = ld
+        }
+
+        if (currentSpeed != null) lastKnownSpeed = currentSpeed
+        if (currentRpm != null) lastKnownRpm = currentRpm
+        if (currentThrottle != null) lastKnownThrottle = currentThrottle
+
+        val anyData = currentSpeed != null || currentRpm != null
+        if (anyData) {
+            consecutiveCanErrors = 0
+            lastValidCanTimestamp = sampleTimestamp
+        } else {
+            consecutiveCanErrors++
+        }
+
+        // Elaborazione Dragy con interpolazione lineare ad alta precisione
+        processDragyTelemetry(sampleTimestamp, lastKnownSpeed, lastKnownThrottle)
+
+        val currentState = _liveState.value
+        val hasRecentCanData = (sampleTimestamp - lastValidCanTimestamp <= 5000L) && lastValidCanTimestamp > 0L
+        val isEcuAlive = hasRecentCanData && isProtocolInitialized
+        val alertBanner = if (!isEcuAlive && isProtocolInitialized) {
+            "Nessuna risposta dalla centralina Toyota: verifica che la spia verde READY sia accesa e che il dongle sia ben inserito."
+        } else {
+            null
+        }
+
+        val updatedPerformance = EnginePerformanceStatus(
+            timingAdvance = lastKnownAdvance,
+            engineLoadPercent = lastKnownLoad,
+            throttlePercent = lastKnownThrottle,
+            isOptimalAdvance = lastKnownAdvance >= 15.0f,
+            isHighPowerReady = !currentState.batteryStatus.isThermalThrottled && currentState.warmupStatus.stage == WarmupStage.S4,
+            hasLiveData = anyData || lastKnownAdvance != 0f
+        )
+
+        _liveState.value = _liveState.value.copy(
+            hasEcuCommunication = isEcuAlive,
+            ecuAlertMessage = alertBanner,
+            lastDataReceivedTimestamp = if (anyData) sampleTimestamp else currentState.lastDataReceivedTimestamp,
+            performanceStatus = updatedPerformance
+        )
+    }
+
+    private fun processDragyTelemetry(sampleTimestamp: Long, currentSpeed: Int, currentThrottle: Float) {
+        val v0 = prevSpeedKmh.toFloat()
+        val v1 = currentSpeed.toFloat()
+        val t0 = if (prevSpeedTimestampMs > 0L) prevSpeedTimestampMs else sampleTimestamp
+        val t1 = sampleTimestamp
+
+        if (currentSpeed == 0) {
+            isLaunchArmed = true
+            if (isTimingInProgress) {
+                isTimingInProgress = false
+            }
+        } else if (isLaunchArmed && currentSpeed > 0 && currentThrottle > 15f) {
+            isLaunchArmed = false
+            isTimingInProgress = true
+            launchStartTimeMs = ToyotaYarisCommands.interpolateCrossingTimeMs(t0, v0, t1, v1, 0.5f)
+            run0to50Sec = null
+            run0to100Sec = null
+            addLog("🏁 SCATTO AVVIATO! (Dragy armed & precision timing attivo)")
+        }
+
+        var elapsedRunMs = 0L
+        if (isTimingInProgress && launchStartTimeMs > 0L) {
+            elapsedRunMs = sampleTimestamp - launchStartTimeMs
+
+            if (currentSpeed >= 50 && run0to50Sec == null) {
+                val t50Ms = ToyotaYarisCommands.interpolateCrossingTimeMs(t0, v0, t1, v1, 50.0f)
+                val calculated0to50 = (t50Ms - launchStartTimeMs).coerceAtLeast(100L) / 1000.0f
+                run0to50Sec = calculated0to50
+                if (best0to50Sec == null || run0to50Sec!! < best0to50Sec!!) {
+                    best0to50Sec = run0to50Sec
+                    appPreferences?.best0to50TimeSec = best0to50Sec
                 }
-            } else if (isLaunchArmed && lastKnownSpeed > 0 && lastKnownThrottle > 15f) {
-                // Launch started!
-                isLaunchArmed = false
-                isTimingInProgress = true
-                launchStartTimeMs = System.currentTimeMillis()
-                run0to50Sec = null
-                run0to100Sec = null
-                addLog("🏁 SCATTO AVVIATO! Rilevamento 0-50 / 0-100 km/h in corso...")
+                addLog("⚡ 0-50 km/h: ${String.format(java.util.Locale.US, "%.2f", run0to50Sec)}s (Record: ${String.format(java.util.Locale.US, "%.2f", best0to50Sec)}s)")
             }
 
-            if (isTimingInProgress && launchStartTimeMs > 0L) {
-                elapsedRunMs = System.currentTimeMillis() - launchStartTimeMs
-
-                if (lastKnownSpeed >= 50 && run0to50Sec == null) {
-                    run0to50Sec = elapsedRunMs / 1000.0f
-                    if (best0to50Sec == null || run0to50Sec!! < best0to50Sec!!) {
-                        best0to50Sec = run0to50Sec
-                    }
-                    addLog("⚡ TRAGUARDO 0-50 km/h: ${String.format("%.2f", run0to50Sec)}s (Record: ${String.format("%.2f", best0to50Sec)}s)")
+            if (currentSpeed >= 100 && run0to100Sec == null) {
+                val t100Ms = ToyotaYarisCommands.interpolateCrossingTimeMs(t0, v0, t1, v1, 100.0f)
+                val calculated0to100 = (t100Ms - launchStartTimeMs).coerceAtLeast(500L) / 1000.0f
+                run0to100Sec = calculated0to100
+                if (best0to100Sec == null || run0to100Sec!! < best0to100Sec!!) {
+                    best0to100Sec = run0to100Sec
+                    appPreferences?.best0to100TimeSec = best0to100Sec
                 }
+                isTimingInProgress = false
 
-                if (lastKnownSpeed >= 100 && run0to100Sec == null) {
-                    run0to100Sec = elapsedRunMs / 1000.0f
-                    if (best0to100Sec == null || run0to100Sec!! < best0to100Sec!!) {
-                        best0to100Sec = run0to100Sec
-                    }
-                    isTimingInProgress = false
-                    addLog("🏆 TRAGUARDO 0-100 km/h: ${String.format("%.2f", run0to100Sec)}s (Record: ${String.format("%.2f", best0to100Sec)}s)")
-                }
+                // Salvataggio persistente dello sprint in AppPreferences
+                appPreferences?.lastSprintTimestamp = System.currentTimeMillis()
+                appPreferences?.lastSprint0to100Sec = run0to100Sec
+                appPreferences?.lastSprintBatteryTemp = _liveState.value.batteryStatus.maxTemp.toFloat()
+                appPreferences?.lastSprintCoolantTemp = lastKnownCoolant
+
+                addLog("🏆 0-100 km/h: ${String.format(java.util.Locale.US, "%.2f", run0to100Sec)}s (Record: ${String.format(java.util.Locale.US, "%.2f", best0to100Sec)}s)")
             }
+        }
 
-            updatedAcceleration = AccelerationRunState(
-                currentSpeedKmh = lastKnownSpeed,
-                isLaunchReady = isLaunchArmed && lastKnownSpeed == 0,
+        prevSpeedKmh = currentSpeed
+        prevSpeedTimestampMs = sampleTimestamp
+
+        _liveState.value = _liveState.value.copy(
+            accelerationState = AccelerationRunState(
+                currentSpeedKmh = currentSpeed,
+                isLaunchReady = isLaunchArmed && currentSpeed == 0,
                 isTimingActive = isTimingInProgress,
                 elapsedMs = elapsedRunMs,
                 last0to50TimeSec = run0to50Sec,
@@ -316,25 +487,43 @@ class ObdController(
                 best0to100TimeSec = best0to100Sec,
                 lastRunCompleted = run0to100Sec != null || (run0to50Sec != null && !isTimingInProgress)
             )
+        )
+    }
 
-            addLog("GR Telemetry: ${lastKnownSpeed} km/h | Advance=${String.format("%.1f", lastKnownAdvance)}° | Load=${lastKnownLoad.toInt()}%")
+    private suspend fun executeCoolantWarmupCycle() {
+        ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU, ToyotaYarisCommands.FILTER_ENGINE_ECU)
+
+        val rawCoolant = bleManager.sendCommand(ToyotaYarisCommands.PID_COOLANT_TEMP)
+        val parsedCoolant = ToyotaYarisCommands.parseCoolantTemp(rawCoolant)
+        if (parsedCoolant != null) {
+            lastKnownCoolant = parsedCoolant
         }
 
-        _liveState.value = _liveState.value.copy(
-            batteryStatus = updatedBattery.copy(isFanForced = shouldForceFan, fanSpeedLevel = if (shouldForceFan) 6 else updatedBattery.fanSpeedLevel),
-            warmupStatus = updatedWarmup,
-            performanceStatus = updatedPerformance,
-            accelerationState = updatedAcceleration
-        )
+        val rawAmbient = bleManager.sendCommand(ToyotaYarisCommands.PID_INTAKE_AIR_TEMP)
+        val parsedAmbient = ToyotaYarisCommands.parseIntakeAirTemp(rawAmbient)
+        if (parsedAmbient != null) {
+            lastKnownAmbient = parsedAmbient
+        }
+
+        if (parsedCoolant != null || lastKnownCoolant > 0f) {
+            val updatedWarmup = ToyotaYarisCommands.evaluateWarmupStatus(
+                coolantTemp = lastKnownCoolant,
+                ambientTemp = lastKnownAmbient,
+                rpm = lastKnownRpm
+            )
+            _liveState.value = _liveState.value.copy(warmupStatus = updatedWarmup)
+        }
     }
 
     fun setTargetThreshold(temp: Int) {
         _liveState.value = _liveState.value.copy(targetThreshold = temp)
+        pendingBatterySafetyCheck = true
         addLog("Soglia temperatura impostata a ${temp}°C")
     }
 
     fun setForcedFan(forced: Boolean) {
         _liveState.value = _liveState.value.copy(fanForcedMax = forced)
+        pendingBatterySafetyCheck = true
         addLog(if (forced) "Forzatura ventola 100% ABILITATA" else "Forzatura ventola DISABILITATA (solo soglia)")
     }
 

@@ -251,6 +251,7 @@ object ToyotaYarisCommands {
     const val PID_TIMING_ADVANCE   = "010E" // Formula: (A / 2.0) - 64 (°BTDC)
     const val PID_ENGINE_LOAD      = "0104" // Formula: (A * 100) / 255 (%)
     const val PID_THROTTLE_POS     = "0111" // Formula: (A * 100) / 255 (%)
+    const val CMD_MULTI_PID_ENGINE = "010D0C11" // Batched: Speed (0D), RPM (0C), Throttle (11)
 
     // Toyota Enhanced PID (Mode 22 UDS / Mode 21 KWP)
     const val PID_READ_BATTERY_DATA_TNGA = "2228C1"
@@ -260,6 +261,85 @@ object ToyotaYarisCommands {
     const val CMD_FAN_MAX_SPEED_UDS = "300806"       // Mode 30 IO Control (Fan Level 6)
     const val CMD_FAN_MAX_SPEED_ALT = "2F580306"     // Mode 2F IO Control Short Term Adjustment to 6
     const val CMD_TESTER_PRESENT     = "3E00"         // Tester Present keep-alive
+
+    data class MultiPidEngineData(
+        val speedKmh: Int? = null,
+        val engineRpm: Int? = null,
+        val throttlePercent: Float? = null
+    )
+
+    fun parseMultiPidEngineResponse(raw: String): MultiPidEngineData? {
+        val clean = Elm327Protocol.cleanResponse(raw).uppercase().replace(" ", "").replace("\r", "").replace("\n", "")
+        if (Elm327Protocol.isError(clean) || !clean.contains("41")) {
+            return null
+        }
+
+        var speed: Int? = null
+        var rpm: Int? = null
+        var throttle: Float? = null
+
+        val p41 = clean.indexOf("41")
+        val payload = clean.substring(p41 + 2)
+
+        // Case 1: Standard ordered packed payload: 0D [2 hex] 0C [4 hex] 11 [2 hex]
+        if (payload.startsWith("0D") && payload.length >= 14) {
+            speed = payload.substring(2, 4).toIntOrNull(16)
+            if (payload.substring(4, 6) == "0C") {
+                val a = payload.substring(6, 8).toIntOrNull(16)
+                val b = payload.substring(8, 10).toIntOrNull(16)
+                if (a != null && b != null) rpm = ((a * 256) + b) / 4
+            }
+            if (payload.length >= 14 && payload.substring(10, 12) == "11") {
+                val t = payload.substring(12, 14).toIntOrNull(16)
+                if (t != null) throttle = (t * 100.0f) / 255.0f
+            }
+        } else {
+            // Case 2: Tagged search fallback (non-standard formatting or partial frames)
+            val idx0D = payload.indexOf("0D")
+            if (idx0D >= 0 && payload.length >= idx0D + 4) {
+                speed = payload.substring(idx0D + 2, idx0D + 4).toIntOrNull(16)
+            }
+
+            val idx0C = payload.indexOf("0C")
+            if (idx0C >= 0 && payload.length >= idx0C + 6) {
+                val a = payload.substring(idx0C + 2, idx0C + 4).toIntOrNull(16)
+                val b = payload.substring(idx0C + 4, idx0C + 6).toIntOrNull(16)
+                if (a != null && b != null) {
+                    rpm = ((a * 256) + b) / 4
+                }
+            }
+
+            val idx11 = payload.indexOf("11")
+            if (idx11 >= 0 && payload.length >= idx11 + 4) {
+                val t = payload.substring(idx11 + 2, idx11 + 4).toIntOrNull(16)
+                if (t != null) {
+                    throttle = (t * 100.0f) / 255.0f
+                }
+            }
+        }
+
+        if (speed != null || rpm != null || throttle != null) {
+            return MultiPidEngineData(speedKmh = speed, engineRpm = rpm, throttlePercent = throttle)
+        }
+        return null
+    }
+
+    /**
+     * Calcola il timestamp esatto di superamento della velocità target (es. 0, 50 o 100 km/h)
+     * tramite interpolazione lineare tra due campioni successivi CAN.
+     */
+    fun interpolateCrossingTimeMs(
+        t0Ms: Long,
+        v0Kmh: Float,
+        t1Ms: Long,
+        v1Kmh: Float,
+        targetKmh: Float
+    ): Long {
+        if (t1Ms <= t0Ms || v1Kmh == v0Kmh) return t1Ms
+        val fraction = (targetKmh - v0Kmh) / (v1Kmh - v0Kmh)
+        val clampedFraction = fraction.coerceIn(0f, 1f)
+        return (t0Ms + (t1Ms - t0Ms) * clampedFraction).toLong()
+    }
 
     fun parseVehicleSpeed(raw: String): Int? {
         val clean = Elm327Protocol.cleanResponse(raw).uppercase()

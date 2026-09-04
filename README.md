@@ -1,7 +1,7 @@
 # Toyota Yaris MK4 Hybrid - HV Battery Cooling, GR Cockpit & ECU Coding Suite 🏎️⚡
 
 [![Website](https://img.shields.io/badge/Website-Live%20Portal-00E5FF.svg?style=for-the-badge&logo=googlechrome)](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/)
-[![Download APK](https://img.shields.io/badge/Download-APK%20Release%20(v2.5.0)-FF1801.svg?style=for-the-badge&logo=android)](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisHvFanControl.apk)
+[![Download APK](https://img.shields.io/badge/Download-APK%20Release%20(v2.6.0)-FF1801.svg?style=for-the-badge&logo=android)](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisHvFanControl.apk)
 [![Android](https://img.shields.io/badge/Platform-Android%208.0%2B%20(API%2026%2B)-3DDC84.svg?style=flat&logo=android)](https://www.android.com/)
 [![Kotlin](https://img.shields.io/badge/Kotlin-1.9.24-7F52FF.svg?style=flat&logo=kotlin)](https://kotlinlang.org/)
 [![Jetpack Compose](https://img.shields.io/badge/UI-Jetpack%20Compose%20M3-4285F4.svg?style=flat&logo=jetpackcompose)](https://developer.android.com/jetpack/compose)
@@ -9,21 +9,22 @@
 [![RSA Signed](https://img.shields.io/badge/Signature-RSA%202048--bit%20(V1/V2/V3)-00E676.svg?style=flat&logo=letsencrypt)](yaris_release.keystore)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Applicazione Android nativa ad altissime prestazioni per **Toyota Yaris MK4 Hybrid (Piattaforma XP210 / TNGA-B, MY2020 - MY2025+)**. Interagisce via Bluetooth Low Energy (BLE) con l'infrastruttura CAN bus dell'auto per offrire:
-1. **Telemetria Gazoo Racing & Cronometro Dragy 0-100 km/h**;
+Applicazione Android nativa ad altissime prestazioni per **Toyota Yaris MK4 Hybrid (Piattaforma XP210 / TNGA-B, MY2020 - MY2025+)**. Interagisce via Bluetooth Low Energy (BLE) o Bluetooth Classic SPP con l'infrastruttura CAN bus dell'auto per offrire:
+1. **Telemetria MoTeC / Gazoo Racing & Cronometro Dragy 0-100 km/h**;
 2. **Gestione Termica Attiva & Forzatura Ventola Batteria HV Denso** (100% Boost elettrico costante);
-3. **Suite Completa di Codifiche Centralina ECU UDS** (Toyota Touch 3, Bip retromarcia comfort, Chiusura porte, Alzacristalli da chiave, Frecce comfort e ADAS).
+3. **Suite Completa di Codifiche Centralina ECU UDS** (Toyota Touch 3, Bip retromarcia comfort, Chiusura porte, Alzacristalli da chiave, Frecce comfort e ADAS);
+4. **Resilienza di Connettività Backend a Prova di Bomba & Auto-Recovery CAN Bus Trasparente**.
 
 ---
 
 ## 🌐 Sito Web Ufficiale & Download Diretto
 - **Portale Web Ufficiale**: 👉 **[https://francescocastaldi.github.io/yaris-hv-fan-optimizer/](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/)**
-- **Download Diretto Ultimo APK (v2.5.0)**: 👉 **[Scarica YarisHvFanControl.apk](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisHvFanControl.apk)**
+- **Download Diretto Ultimo APK (v2.6.0)**: 👉 **[Scarica YarisHvFanControl.apk](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisHvFanControl.apk)**
 - **Deploy su Vercel (1-Click)**: 👉 **[Deploy Vercel](https://vercel.com/new/clone?repository-url=https://github.com/FrancescoCastaldi/yaris-hv-fan-optimizer&root-directory=docs)**
 
 ---
 
-## 🌟 Architettura a 3 Schede (Release v2.5.0 Gazoo Racing Edition)
+## 🌟 Architettura a 3 Schede (Release v2.6.0 MoTeC Motorsport Edition)
 
 ### 1. 🏁 Scheda `COCKPIT` (Telemetria & Prestazioni)
 - **Logo Ufficiale Toyota Gazoo Racing "GR"**: Badge vettoriale originale ad alto contrasto con contorni bianchi nitidi su sfondo Dark/OLED.

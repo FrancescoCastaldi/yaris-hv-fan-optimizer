@@ -13,6 +13,12 @@ class AppPreferences(context: Context) {
         private const val KEY_AUTO_START = "auto_start_enabled"
         private const val KEY_TRANSPORT = "saved_transport_type"
         private const val KEY_FAN_SPEED = "forced_fan_speed"
+        private const val KEY_BEST_0_50 = "dragy_best_0_50"
+        private const val KEY_BEST_0_100 = "dragy_best_0_100"
+        private const val KEY_LAST_SPRINT_TS = "dragy_last_sprint_ts"
+        private const val KEY_LAST_0_100 = "dragy_last_0_100"
+        private const val KEY_LAST_SPRINT_BATT_TEMP = "dragy_last_batt_temp"
+        private const val KEY_LAST_SPRINT_ECT = "dragy_last_ect"
     }
 
     var savedTransportType: String
@@ -38,6 +44,30 @@ class AppPreferences(context: Context) {
     var forcedFanSpeed: Int
         get() = prefs.getInt(KEY_FAN_SPEED, 6) // Max level 6
         set(value) = prefs.edit().putInt(KEY_FAN_SPEED, value).apply()
+
+    var best0to50TimeSec: Float?
+        get() = if (prefs.contains(KEY_BEST_0_50)) prefs.getFloat(KEY_BEST_0_50, 0f) else null
+        set(value) = if (value != null) prefs.edit().putFloat(KEY_BEST_0_50, value).apply() else prefs.edit().remove(KEY_BEST_0_50).apply()
+
+    var best0to100TimeSec: Float?
+        get() = if (prefs.contains(KEY_BEST_0_100)) prefs.getFloat(KEY_BEST_0_100, 0f) else null
+        set(value) = if (value != null) prefs.edit().putFloat(KEY_BEST_0_100, value).apply() else prefs.edit().remove(KEY_BEST_0_100).apply()
+
+    var lastSprintTimestamp: Long
+        get() = prefs.getLong(KEY_LAST_SPRINT_TS, 0L)
+        set(value) = prefs.edit().putLong(KEY_LAST_SPRINT_TS, value).apply()
+
+    var lastSprint0to100Sec: Float?
+        get() = if (prefs.contains(KEY_LAST_0_100)) prefs.getFloat(KEY_LAST_0_100, 0f) else null
+        set(value) = if (value != null) prefs.edit().putFloat(KEY_LAST_0_100, value).apply() else prefs.edit().remove(KEY_LAST_0_100).apply()
+
+    var lastSprintBatteryTemp: Float
+        get() = prefs.getFloat(KEY_LAST_SPRINT_BATT_TEMP, 0f)
+        set(value) = prefs.edit().putFloat(KEY_LAST_SPRINT_BATT_TEMP, value).apply()
+
+    var lastSprintCoolantTemp: Float
+        get() = prefs.getFloat(KEY_LAST_SPRINT_ECT, 0f)
+        set(value) = prefs.edit().putFloat(KEY_LAST_SPRINT_ECT, value).apply()
 
     fun clearDevice() {
         prefs.edit().remove(KEY_SAVED_MAC).remove(KEY_SAVED_NAME).remove(KEY_TRANSPORT).apply()

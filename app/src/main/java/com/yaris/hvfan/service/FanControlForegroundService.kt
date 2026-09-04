@@ -1,5 +1,6 @@
 package com.yaris.hvfan.service
 
+import android.annotation.SuppressLint
 import android.app.*
 import android.content.Context
 import android.content.Intent
@@ -7,6 +8,8 @@ import android.content.pm.ServiceInfo
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.yaris.hvfan.MainActivity
 import com.yaris.hvfan.R
@@ -35,6 +38,7 @@ class FanControlForegroundService : Service() {
 
     private val binder = LocalBinder()
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private var wakeLock: PowerManager.WakeLock? = null
 
     lateinit var bleManager: BleManager
         private set
@@ -43,11 +47,30 @@ class FanControlForegroundService : Service() {
     lateinit var appPreferences: AppPreferences
         private set
 
+    @SuppressLint("WakelockTimeout")
+    private fun updateWakeLock(isConnected: Boolean) {
+        if (isConnected) {
+            if (wakeLock == null || wakeLock?.isHeld != true) {
+                val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
+                wakeLock = powerManager?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "YarisHvFan::CpuWakeLock")?.apply {
+                    setReferenceCounted(false)
+                    acquire()
+                    Log.i("HvFanService", "CPU WakeLock acquisito: protezione termica batteria HV attiva in background")
+                }
+            }
+        } else {
+            if (wakeLock?.isHeld == true) {
+                wakeLock?.release()
+                Log.i("HvFanService", "CPU WakeLock rilasciato (auto disconnessa, risparmio batteria smartphone)")
+            }
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         appPreferences = AppPreferences(this)
         bleManager = BleManager(this)
-        obdController = ObdController(bleManager, serviceScope)
+        obdController = ObdController(bleManager, serviceScope, appPreferences)
         obdController.setTargetThreshold(appPreferences.targetTempThreshold)
         obdController.setForcedFan(appPreferences.forcedFanSpeed == 6)
 
@@ -135,44 +158,66 @@ class FanControlForegroundService : Service() {
 
     private fun observeStateForNotification() {
         serviceScope.launch {
-            obdController.liveState.collect { state ->
-                val title: String
-                val content: String
-
-                val connState = bleManager.connectionState.value
-                when (connState) {
-                    is BleConnectionState.Ready -> {
-                        val fanText = if (state.batteryStatus.isFanForced) "Ventola MAX (Lvl 6)" else "Ventola Auto (Lvl ${state.batteryStatus.fanSpeedLevel})"
-                        val tempText = "Temp HV: ${String.format("%.1f", state.batteryStatus.maxTemp)}°C"
-                        title = "Toyota Yaris: $fanText"
-                        content = "$tempText | Target: ${state.targetThreshold}°C"
-                    }
-                    is BleConnectionState.Connected -> {
-                        title = "Toyota Yaris: Connesso a OBD"
-                        content = "Inizializzazione protocollo CAN Denso..."
-                    }
-                    is BleConnectionState.Connecting -> {
-                        title = "Toyota Yaris: Connessione in corso..."
-                        content = "Collegamento all'adattatore BLE..."
-                    }
-                    is BleConnectionState.Scanning -> {
-                        title = "Toyota Yaris: Scansione BLE..."
-                        content = "Ricerca dispositivi nei paraggi..."
-                    }
-                    else -> {
-                        title = "Toyota Yaris Fan Controller"
-                        content = "Disconnesso"
-                    }
-                }
-
-                val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                notificationManager.notify(NOTIFICATION_ID, buildNotification(title, content))
+            bleManager.connectionState.collect { connState ->
+                updateWakeLock(connState is BleConnectionState.Ready || connState is BleConnectionState.Connected)
+                updateNotification()
+            }
+        }
+        serviceScope.launch {
+            obdController.liveState.collect {
+                updateNotification()
             }
         }
     }
 
+    private fun updateNotification() {
+        val state = obdController.liveState.value
+        val connState = bleManager.connectionState.value
+        val title: String
+        val content: String
+
+        when (connState) {
+            is BleConnectionState.Ready -> {
+                if (!state.hasEcuCommunication) {
+                    title = "Toyota Yaris: In attesa centralina"
+                    content = "Dongle connesso. Accendi la vettura (spia READY) per visualizzare i dati"
+                } else {
+                    val fanText = if (state.batteryStatus.isFanForced) "Ventola MAX (Lvl 6)" else "Ventola Auto (Lvl ${state.batteryStatus.fanSpeedLevel})"
+                    val tempText = "Temp HV: ${String.format(java.util.Locale.US, "%.1f", state.batteryStatus.maxTemp)}°C"
+                    title = "Toyota Yaris: $fanText"
+                    content = "$tempText | Target: ${state.targetThreshold}°C"
+                }
+            }
+            is BleConnectionState.Connected -> {
+                title = "Toyota Yaris: Connesso a OBD"
+                content = "Inizializzazione protocollo CAN Denso..."
+            }
+            is BleConnectionState.Connecting -> {
+                title = "Toyota Yaris: Connessione in corso..."
+                content = "Collegamento a ${connState.deviceName}..."
+            }
+            is BleConnectionState.Reconnecting -> {
+                title = "Toyota Yaris: In attesa vettura"
+                content = "Riconnessione automatica a ${connState.deviceName} (tentativo #${connState.attempt})..."
+            }
+            is BleConnectionState.Scanning -> {
+                title = "Toyota Yaris: Scansione BLE..."
+                content = "Ricerca dispositivi nei paraggi..."
+            }
+            else -> {
+                title = "Toyota Yaris Fan Controller"
+                content = "Disconnesso"
+            }
+        }
+
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.notify(NOTIFICATION_ID, buildNotification(title, content))
+    }
+
     private fun stopService() {
         isRunning = false
+        updateWakeLock(false)
+        wakeLock = null
         bleManager.disconnect()
         obdController.stopLoop()
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -189,7 +234,9 @@ class FanControlForegroundService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         isRunning = false
-        bleManager.disconnect()
+        updateWakeLock(false)
+        wakeLock = null
+        bleManager.cleanup()
         obdController.stopLoop()
         serviceScope.cancel()
     }

@@ -62,17 +62,6 @@ fun DashboardScreen(
     var showLogs by remember { mutableStateOf(false) }
     val scrollState = rememberScrollState()
 
-    val infiniteTransition = rememberInfiniteTransition(label = "PulseTransition")
-    val pulseScale by infiniteTransition.animateFloat(
-        initialValue = 0.96f,
-        targetValue = 1.04f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(700, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "PulseScale"
-    )
-
     val isDeviceConnected = (connectionState is BleConnectionState.Ready || connectionState is BleConnectionState.Connected) &&
         liveState.isInitialized
 
@@ -80,65 +69,122 @@ fun DashboardScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(DarkBackground)
-            .padding(16.dp)
+            .padding(14.dp)
             .verticalScroll(scrollState)
     ) {
-        // --- Top App Header Bar (Cyber Glassmorphism) ---
+        // --- Top App Header Bar (MoTeC / Bosch Precision Header) ---
         Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(BorderStroke(1.dp, CardBorder), RoundedCornerShape(22.dp)),
-            shape = RoundedCornerShape(22.dp),
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(6.dp),
             color = SurfaceDark,
-            tonalElevation = 6.dp
+            border = BorderStroke(1.dp, CardBorder)
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 18.dp, vertical = 14.dp),
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     GazooRacingLogoBadge()
-                    Spacer(modifier = Modifier.width(12.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
                     Column {
                         Text(
                             text = "YARIS HV GR v${BuildConfig.VERSION_NAME}",
-                            fontSize = 17.sp,
+                            fontSize = 15.sp,
                             fontWeight = FontWeight.Black,
                             color = TextPrimary,
-                            letterSpacing = 0.8.sp
+                            letterSpacing = 1.sp
                         )
                         Text(
-                            text = savedDeviceName ?: "Nessun dongle associato",
-                            fontSize = 12.sp,
-                            color = if (savedDeviceName != null) AccentCyan else TextSecondary
+                            text = savedDeviceName ?: "NESSUN DONGLE ASSOCIATO",
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            color = if (savedDeviceName != null) AccentCyan else TextMuted
                         )
                     }
                 }
 
-                ConnectionBadge(connectionState = connectionState)
+                ConnectionBadge(
+                    connectionState = connectionState,
+                    isInitialized = liveState.isInitialized,
+                    hasEcuCommunication = liveState.hasEcuCommunication
+                )
             }
         }
 
-        Spacer(modifier = Modifier.height(14.dp))
+        // --- Auto-Alert Banner for ECU Communication ---
+        if ((connectionState is BleConnectionState.Ready || connectionState is BleConnectionState.Connected) &&
+            !liveState.hasEcuCommunication && liveState.ecuAlertMessage != null) {
+            Spacer(modifier = Modifier.height(10.dp))
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(4.dp),
+                color = DarkBackground,
+                border = BorderStroke(1.dp, WarningOrange)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = WarningOrange,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "CENTRALINA NON RISPONDE",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black,
+                            color = WarningOrange,
+                            letterSpacing = 0.8.sp
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = liveState.ecuAlertMessage ?: "Verifica che il quadro dell'auto sia su READY (spia verde accesa) e che l'adattatore OBD sia ben inserito.",
+                            fontSize = 10.sp,
+                            color = TextSecondary,
+                            lineHeight = 14.sp
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    OutlinedButton(
+                        onClick = onReconnect,
+                        shape = RoundedCornerShape(4.dp),
+                        border = BorderStroke(1.dp, WarningOrange),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = WarningOrange),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                        modifier = Modifier.height(30.dp)
+                    ) {
+                        Text(text = "RIPROVA", fontSize = 10.sp, fontWeight = FontWeight.Black)
+                    }
+                }
+            }
+        }
 
-        // --- Custom Segmented Tab Bar (Gazoo Racing Racing Pills) ---
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // --- Clean Segmented Tab Control (No neon pills) ---
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp)
-                .border(BorderStroke(1.dp, CardBorder), RoundedCornerShape(18.dp)),
-            shape = RoundedCornerShape(18.dp),
+                .height(46.dp),
+            shape = RoundedCornerShape(6.dp),
             color = SurfaceDark,
-            tonalElevation = 4.dp
+            border = BorderStroke(1.dp, CardBorder)
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(5.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    .padding(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 // Tab 1: GR Cockpit
                 val isGrSelected = selectedTab == DashboardTab.GR_COCKPIT
@@ -146,12 +192,14 @@ fun DashboardScreen(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(4.dp))
                         .clickable { selectedTab = DashboardTab.GR_COCKPIT }
-                        .then(if (isGrSelected) Modifier.border(BorderStroke(1.dp, GrRedGlow.copy(alpha = 0.6f)), RoundedCornerShape(14.dp)) else Modifier),
-                    color = if (isGrSelected) GrRedPrimary else Color.Transparent,
-                    shape = RoundedCornerShape(14.dp),
-                    tonalElevation = if (isGrSelected) 8.dp else 0.dp
+                        .then(
+                            if (isGrSelected) Modifier.border(BorderStroke(1.dp, GrRedPrimary), RoundedCornerShape(4.dp))
+                            else Modifier
+                        ),
+                    color = if (isGrSelected) DarkBackground else Color.Transparent,
+                    shape = RoundedCornerShape(4.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxSize(),
@@ -161,15 +209,15 @@ fun DashboardScreen(
                         Icon(
                             imageVector = Icons.Default.Speed,
                             contentDescription = null,
-                            tint = if (isGrSelected) Color.White else TextSecondary,
-                            modifier = Modifier.size(18.dp)
+                            tint = if (isGrSelected) GrRedPrimary else TextSecondary,
+                            modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = "COCKPIT",
-                            fontSize = 12.sp,
+                            fontSize = 11.sp,
                             fontWeight = if (isGrSelected) FontWeight.Black else FontWeight.Bold,
-                            color = if (isGrSelected) Color.White else TextSecondary,
+                            color = if (isGrSelected) TextPrimary else TextSecondary,
                             letterSpacing = 0.8.sp
                         )
                     }
@@ -181,12 +229,14 @@ fun DashboardScreen(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(4.dp))
                         .clickable { selectedTab = DashboardTab.FAN_CONTROL }
-                        .then(if (isFanSelected) Modifier.border(BorderStroke(1.dp, AccentCyan.copy(alpha = 0.6f)), RoundedCornerShape(14.dp)) else Modifier),
-                    color = if (isFanSelected) AccentCyan else Color.Transparent,
-                    shape = RoundedCornerShape(14.dp),
-                    tonalElevation = if (isFanSelected) 8.dp else 0.dp
+                        .then(
+                            if (isFanSelected) Modifier.border(BorderStroke(1.dp, AccentCyan), RoundedCornerShape(4.dp))
+                            else Modifier
+                        ),
+                    color = if (isFanSelected) DarkBackground else Color.Transparent,
+                    shape = RoundedCornerShape(4.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxSize(),
@@ -196,15 +246,15 @@ fun DashboardScreen(
                         Icon(
                             imageVector = Icons.Default.Air,
                             contentDescription = null,
-                            tint = if (isFanSelected) DarkBackground else TextSecondary,
-                            modifier = Modifier.size(18.dp)
+                            tint = if (isFanSelected) AccentCyan else TextSecondary,
+                            modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = "VENTOLA",
-                            fontSize = 12.sp,
+                            fontSize = 11.sp,
                             fontWeight = if (isFanSelected) FontWeight.Black else FontWeight.Bold,
-                            color = if (isFanSelected) DarkBackground else TextSecondary,
+                            color = if (isFanSelected) TextPrimary else TextSecondary,
                             letterSpacing = 0.8.sp
                         )
                     }
@@ -216,12 +266,14 @@ fun DashboardScreen(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(4.dp))
                         .clickable { selectedTab = DashboardTab.ECU_CODING }
-                        .then(if (isEcuSelected) Modifier.border(BorderStroke(1.dp, Color(0xFF9E7AFF)), RoundedCornerShape(14.dp)) else Modifier),
-                    color = if (isEcuSelected) Color(0xFF7C4DFF) else Color.Transparent,
-                    shape = RoundedCornerShape(14.dp),
-                    tonalElevation = if (isEcuSelected) 8.dp else 0.dp
+                        .then(
+                            if (isEcuSelected) Modifier.border(BorderStroke(1.dp, AccentCyan), RoundedCornerShape(4.dp))
+                            else Modifier
+                        ),
+                    color = if (isEcuSelected) DarkBackground else Color.Transparent,
+                    shape = RoundedCornerShape(4.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxSize(),
@@ -231,15 +283,15 @@ fun DashboardScreen(
                         Icon(
                             imageVector = Icons.Default.Tune,
                             contentDescription = null,
-                            tint = if (isEcuSelected) Color.White else TextSecondary,
-                            modifier = Modifier.size(18.dp)
+                            tint = if (isEcuSelected) AccentCyan else TextSecondary,
+                            modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = "CODIFICHE",
-                            fontSize = 12.sp,
+                            fontSize = 11.sp,
                             fontWeight = if (isEcuSelected) FontWeight.Black else FontWeight.Bold,
-                            color = if (isEcuSelected) Color.White else TextSecondary,
+                            color = if (isEcuSelected) TextPrimary else TextSecondary,
                             letterSpacing = 0.8.sp
                         )
                     }
@@ -247,13 +299,13 @@ fun DashboardScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
         // --- Content Based on Selected Tab ---
         AnimatedContent(
             targetState = selectedTab,
             transitionSpec = {
-                fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(180))
+                fadeIn(animationSpec = tween(150)) togetherWith fadeOut(animationSpec = tween(120))
             },
             label = "TabContentTransition"
         ) { tab ->
@@ -261,15 +313,13 @@ fun DashboardScreen(
                 DashboardTab.GR_COCKPIT -> {
                     GrCockpitSection(
                         liveState = liveState,
-                        isConnected = isDeviceConnected,
-                        pulseScale = pulseScale
+                        isConnected = isDeviceConnected
                     )
                 }
                 DashboardTab.FAN_CONTROL -> {
                     FanManagementSection(
                         liveState = liveState,
                         isConnected = isDeviceConnected,
-                        pulseScale = pulseScale,
                         onThresholdChanged = onThresholdChanged,
                         onForcedFanToggle = onForcedFanToggle
                     )
@@ -286,66 +336,79 @@ fun DashboardScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
         // --- Bottom Connection Actions ---
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Button(
+            OutlinedButton(
                 onClick = onOpenDevicePicker,
                 modifier = Modifier
                     .weight(1.2f)
-                    .height(50.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = CardBackground)
+                    .height(44.dp),
+                shape = RoundedCornerShape(4.dp),
+                border = BorderStroke(1.dp, CardBorder),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = TextPrimary,
+                    containerColor = SurfaceDark
+                )
             ) {
-                Icon(Icons.Default.Bluetooth, contentDescription = null, tint = AccentCyan)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("CAMBIA OBD", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                Icon(Icons.Default.Bluetooth, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("CAMBIA OBD", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 11.sp)
             }
 
             if (connectionState is BleConnectionState.Connected || connectionState is BleConnectionState.Ready) {
-                Button(
+                OutlinedButton(
                     onClick = onDisconnect,
                     modifier = Modifier
                         .weight(1f)
-                        .height(50.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = DangerRed.copy(alpha = 0.2f))
+                        .height(44.dp),
+                    shape = RoundedCornerShape(4.dp),
+                    border = BorderStroke(1.dp, DangerRed),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = DangerRed,
+                        containerColor = DarkBackground
+                    )
                 ) {
-                    Text("DISCONNETTI", color = DangerRed, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Text("DISCONNETTI", color = DangerRed, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                 }
             } else {
-                Button(
+                OutlinedButton(
                     onClick = onReconnect,
                     modifier = Modifier
                         .weight(1f)
-                        .height(50.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = AccentCyan.copy(alpha = 0.2f))
+                        .height(44.dp),
+                    shape = RoundedCornerShape(4.dp),
+                    border = BorderStroke(1.dp, AccentCyan),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = AccentCyan,
+                        containerColor = DarkBackground
+                    )
                 ) {
-                    Text("RICONNETTI", color = AccentCyan, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Text("RICONNETTI", color = AccentCyan, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(14.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
         // --- Embedded Diagnostic Log Section ---
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(18.dp))
+                .clip(RoundedCornerShape(4.dp))
                 .clickable { showLogs = !showLogs },
             color = SurfaceDark,
-            shape = RoundedCornerShape(18.dp)
+            border = BorderStroke(1.dp, CardBorder),
+            shape = RoundedCornerShape(4.dp)
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -353,20 +416,23 @@ fun DashboardScreen(
                     Icon(
                         imageVector = Icons.Default.Terminal,
                         contentDescription = null,
-                        tint = TextSecondary
+                        tint = TextSecondary,
+                        modifier = Modifier.size(16.dp)
                     )
-                    Spacer(modifier = Modifier.width(10.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Terminale Diagnostica CAN / OBD",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = TextPrimary
+                        text = "TERMINALE DIAGNOSTICO CAN / OBD",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary,
+                        letterSpacing = 0.5.sp
                     )
                 }
                 Icon(
                     imageVector = if (showLogs) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                     contentDescription = null,
-                    tint = TextSecondary
+                    tint = TextSecondary,
+                    modifier = Modifier.size(18.dp)
                 )
             }
         }
@@ -382,25 +448,27 @@ fun DashboardScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(200.dp)
-                    .padding(top = 8.dp)
-                    .background(Color.Black, RoundedCornerShape(16.dp))
-                    .padding(12.dp)
+                    .height(180.dp)
+                    .padding(top = 6.dp)
+                    .background(DarkBackground, RoundedCornerShape(4.dp))
+                    .border(1.dp, CardBorder, RoundedCornerShape(4.dp))
+                    .padding(10.dp)
             ) {
                 LazyColumn(state = listState) {
                     items(liveState.logs) { logLine ->
                         Text(
                             text = logLine,
                             color = AccentCyan,
-                            fontSize = 11.sp,
-                            fontFamily = FontFamily.Monospace
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                            lineHeight = 14.sp
                         )
                     }
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(20.dp))
     }
 }
 
@@ -412,26 +480,28 @@ fun DashboardScreen(
 @Composable
 fun GrCockpitSection(
     liveState: ObdLiveState,
-    isConnected: Boolean,
-    pulseScale: Float
+    isConnected: Boolean
 ) {
     val perf = liveState.performanceStatus
     val accel = liveState.accelerationState
+    val warmup = liveState.warmupStatus
     val isFullBoost = isConnected && !liveState.batteryStatus.isThermalThrottled && (liveState.warmupStatus.stage == WarmupStage.S4 || liveState.warmupStatus.stage == WarmupStage.S2)
 
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
 
-        // --- GR Hero Speedometer & Sprint Timer Card ---
-        Card(
+        // --- 1. MoTeC / BOSCH DIGITAL SPEEDOMETER & SHIFT-LIGHT CLUSTER ---
+        Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(26.dp),
-            colors = CardDefaults.cardColors(containerColor = CardBackground), border = BorderStroke(1.dp, CardBorder)
+            shape = RoundedCornerShape(6.dp),
+            color = SurfaceDark,
+            border = BorderStroke(1.dp, CardBorder)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(20.dp)
+                    .padding(16.dp)
             ) {
+                // Header Row
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -442,98 +512,155 @@ fun GrCockpitSection(
                             painter = painterResource(id = R.drawable.ic_gr_logo),
                             contentDescription = "Gazoo Racing Logo",
                             modifier = Modifier
-                                .width(38.dp)
-                                .height(19.dp)
+                                .width(36.dp)
+                                .height(18.dp)
                         )
-                        Spacer(modifier = Modifier.width(10.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "GAZOO RACING TELEMETRY",
-                            fontSize = 12.sp,
+                            text = "TELEMETRIA GAZOORACING",
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Black,
-                            color = if (isConnected) Color(0xFFFF5252) else TextSecondary,
+                            color = TextPrimary,
                             letterSpacing = 1.sp
                         )
                     }
 
-                    // Strict Disconnected / Connected State Handling
-                    val (badgeColor, badgeText) = when {
-                        !isConnected -> Pair(TextSecondary, "🔌 IN ATTESA OBD")
-                        accel.isLaunchReady -> Pair(SuccessGreen, "🟢 LAUNCH READY")
-                        accel.isTimingActive -> Pair(WarningOrange, "⏱️ SCATTO ATTIVO")
-                        isFullBoost -> Pair(AccentCyan, "⚡ 59 kW FULL BOOST")
-                        liveState.batteryStatus.isThermalThrottled -> Pair(DangerRed, "⚠️ TAGLIO TERMICO")
-                        else -> Pair(AccentCyan, "⚡ IBRIDO PRONTO")
+                    // Hybrid Powertrain Status Indicator
+                    val (statusColor, statusText) = when {
+                        !isConnected -> Pair(TextMuted, "DISCONNESSO")
+                        !liveState.hasEcuCommunication -> Pair(WarningOrange, "ATTESA READY")
+                        accel.isLaunchReady -> Pair(SuccessGreen, "LAUNCH READY")
+                        accel.isTimingActive -> Pair(WarningOrange, "SCATTO ATTIVO")
+                        isFullBoost -> Pair(AccentCyan, "FULL BOOST 59kW")
+                        liveState.batteryStatus.isThermalThrottled -> Pair(DangerRed, "TAGLIO TERMICO")
+                        else -> Pair(SuccessGreen, "IBRIDO PRONTO")
                     }
 
                     Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = badgeColor.copy(alpha = 0.15f)
+                        shape = RoundedCornerShape(4.dp),
+                        color = DarkBackground,
+                        border = BorderStroke(1.dp, statusColor)
                     ) {
                         Text(
-                            text = badgeText,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                            fontSize = 11.sp,
+                            text = statusText,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            fontSize = 10.sp,
                             fontWeight = FontWeight.Black,
-                            color = badgeColor
+                            fontFamily = FontFamily.Monospace,
+                            color = statusColor
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
-                // Digital Speedometer & Live Timer Centerpiece (Gazoo Cyber-Glow)
+                // 10-Segment Discrete Shift-Light LED Bar (Bosch Motorsport style)
+                val currentRpm = if (isConnected && warmup.hasLiveData) warmup.engineRpm else 0
+                val rpmFrac = (currentRpm.coerceIn(0, 5600) / 5600f)
+                val activeSegments = (rpmFrac * 10).toInt()
+
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "REGIME MOTORE",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextSecondary,
+                            letterSpacing = 0.8.sp
+                        )
+                        Text(
+                            text = if (isConnected && warmup.hasLiveData) {
+                                if (currentRpm > 0) "$currentRpm RPM" else "EV / 0 RPM"
+                            } else "-- RPM",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black,
+                            fontFamily = FontFamily.Monospace,
+                            color = if (isConnected && currentRpm > 0) TextPrimary else TextMuted
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        for (i in 1..10) {
+                            val isLit = isConnected && i <= activeSegments
+                            val segColor = when {
+                                i <= 5 -> SuccessGreen
+                                i <= 8 -> WarningOrange
+                                else -> GrRedPrimary
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(10.dp)
+                                    .background(
+                                        if (isLit) segColor else DarkBackground,
+                                        RoundedCornerShape(2.dp)
+                                    )
+                                    .border(1.dp, if (isLit) segColor else CardBorder, RoundedCornerShape(2.dp))
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Primary Speedometer & Sprint Timer Console
                 Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(
-                            BorderStroke(
-                                1.5.dp,
-                                if (isConnected && accel.currentSpeedKmh > 0) CardBorderActive else CardBorder
-                            ),
-                            RoundedCornerShape(22.dp)
-                        ),
-                    shape = RoundedCornerShape(22.dp),
-                    color = DarkBackground
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(4.dp),
+                    color = DarkBackground,
+                    border = BorderStroke(1.dp, CardBorder)
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(20.dp),
+                            .padding(horizontal = 20.dp, vertical = 16.dp),
                         horizontalArrangement = Arrangement.SpaceAround,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Digital Speedometer
+                        // Monospace Speedometer
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
                                 text = "VELOCITÀ",
-                                fontSize = 11.sp,
+                                fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = TextSecondary,
                                 letterSpacing = 1.sp
                             )
+                            Spacer(modifier = Modifier.height(2.dp))
                             Row(verticalAlignment = Alignment.Bottom) {
                                 Text(
-                                    text = if (isConnected) "${accel.currentSpeedKmh}" else "--",
-                                    fontSize = 52.sp,
+                                    text = if (isConnected && liveState.hasEcuCommunication) "${accel.currentSpeedKmh}" else "--",
+                                    fontSize = 56.sp,
                                     fontWeight = FontWeight.Black,
-                                    color = if (isConnected && accel.currentSpeedKmh > 0) Color.White else TextSecondary,
+                                    color = if (isConnected && liveState.hasEcuCommunication && accel.currentSpeedKmh > 0) TextPrimary else TextMuted,
                                     fontFamily = FontFamily.Monospace
                                 )
                                 Text(
                                     text = " km/h",
-                                    fontSize = 14.sp,
+                                    fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (isConnected) Color(0xFFFF5252) else TextSecondary,
-                                    modifier = Modifier.padding(bottom = 8.dp)
+                                    color = TextSecondary,
+                                    fontFamily = FontFamily.Monospace,
+                                    modifier = Modifier.padding(bottom = 10.dp)
                                 )
                             }
                         }
 
+                        // Divider hairline
                         Box(
                             modifier = Modifier
                                 .width(1.dp)
-                                .height(60.dp)
-                                .background(DividerColor)
+                                .height(64.dp)
+                                .background(CardBorder)
                         )
 
                         // Live Sprint Timer
@@ -544,23 +671,24 @@ fun GrCockpitSection(
                                     accel.isTimingActive -> "SCATTO IN CORSO"
                                     else -> "ULTIMO TEMPO"
                                 },
-                                fontSize = 11.sp,
+                                fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (accel.isTimingActive) WarningOrange else TextSecondary,
                                 letterSpacing = 1.sp
                             )
+                            Spacer(modifier = Modifier.height(6.dp))
                             Text(
                                 text = when {
                                     accel.isTimingActive -> String.format("%.2fs", accel.elapsedMs / 1000f)
                                     accel.last0to100TimeSec != null -> String.format("%.2fs", accel.last0to100TimeSec)
                                     else -> "--.--s"
                                 },
-                                fontSize = 36.sp,
+                                fontSize = 34.sp,
                                 fontWeight = FontWeight.Black,
                                 color = when {
                                     accel.isTimingActive -> WarningOrange
                                     accel.last0to100TimeSec != null -> SuccessGreen
-                                    else -> TextSecondary
+                                    else -> TextMuted
                                 },
                                 fontFamily = FontFamily.Monospace
                             )
@@ -568,12 +696,12 @@ fun GrCockpitSection(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 // Sprint Dragy-style Times (0-50 & 0-100 km/h)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     SprintScoreCard(
                         title = "0-50 km/h (Città)",
@@ -591,32 +719,45 @@ fun GrCockpitSection(
             }
         }
 
-        // --- Engine Dynamics & Power Split Card ---
-        Card(
+        // --- 2. ENGINE DYNAMICS & COMBUSTION TELEMETRY (2x2 Matrix) ---
+        Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = CardBackground), border = BorderStroke(1.dp, CardBorder)
+            shape = RoundedCornerShape(6.dp),
+            color = SurfaceDark,
+            border = BorderStroke(1.dp, CardBorder)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(20.dp)
+                    .padding(16.dp)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Tune,
-                        contentDescription = null,
-                        tint = if (isConnected) AccentCyan else TextSecondary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
-                        text = "RENDIMENTO TERMICO & ANTICIPO",
-                        fontSize = 12.sp,
+                        text = "DINAMICA MOTORE TERMICO (M15A-FXE)",
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Black,
-                        color = TextSecondary,
-                        letterSpacing = 0.8.sp
+                        color = TextPrimary,
+                        letterSpacing = 1.sp
                     )
+
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = DarkBackground,
+                        border = BorderStroke(1.dp, CardBorder)
+                    ) {
+                        Text(
+                            text = "LIVE UDS",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            color = AccentCyan,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
@@ -627,19 +768,19 @@ fun GrCockpitSection(
                 ) {
                     TelemetryChip(
                         label = "Anticipo (°BTDC)",
-                        value = if (isConnected && perf.hasLiveData) "${String.format("%.1f", perf.timingAdvance)}°" else "--",
+                        value = if (isConnected && perf.hasLiveData) String.format("%.1f°", perf.timingAdvance) else "--.-°",
                         highlight = isConnected && perf.hasLiveData && perf.timingAdvance >= 15f,
                         modifier = Modifier.weight(1f)
                     )
                     TelemetryChip(
-                        label = "Carico Termico",
-                        value = if (isConnected && perf.hasLiveData) "${perf.engineLoadPercent.toInt()}%" else "--",
+                        label = "Carico Motore",
+                        value = if (isConnected && perf.hasLiveData) "${perf.engineLoadPercent.toInt()}%" else "--%",
                         highlight = isConnected && perf.hasLiveData && perf.engineLoadPercent > 70f,
                         modifier = Modifier.weight(1f)
                     )
                     TelemetryChip(
-                        label = "Pedale Gas",
-                        value = if (isConnected && perf.hasLiveData) "${perf.throttlePercent.toInt()}%" else "--",
+                        label = "Farfalla Gas",
+                        value = if (isConnected && perf.hasLiveData) "${perf.throttlePercent.toInt()}%" else "--%",
                         highlight = isConnected && perf.hasLiveData && perf.throttlePercent > 50f,
                         modifier = Modifier.weight(1f)
                     )
@@ -649,29 +790,30 @@ fun GrCockpitSection(
 
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp),
-                    color = CardBackground
+                    shape = RoundedCornerShape(4.dp),
+                    color = DarkBackground,
+                    border = BorderStroke(1.dp, CardBorder)
                 ) {
                     Row(
-                        modifier = Modifier.padding(12.dp),
+                        modifier = Modifier.padding(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
                             imageVector = if (isConnected) Icons.Default.CheckCircle else Icons.Default.Info,
                             contentDescription = null,
-                            tint = if (isConnected) SuccessGreen else TextSecondary,
-                            modifier = Modifier.size(18.dp)
+                            tint = if (isConnected) SuccessGreen else TextMuted,
+                            modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = if (isConnected) {
-                                "Raffreddamento forzato attivo: zero calo di tensione per la batteria e 100% di coppia elettrica MG2 pronta."
+                                "Raffreddamento forzato attivo: minima resistenza interna batteria e 100% coppia MG2 pronta."
                             } else {
-                                "Collega il dongle OBD-II per attivare il monitoraggio dell'anticipo e il controllo della ventola."
+                                "Connetti l'adattatore OBD per attivare il monitoraggio dell'anticipo e della coppia."
                             },
                             fontSize = 11.sp,
                             lineHeight = 15.sp,
-                            color = TextPrimary
+                            color = TextSecondary
                         )
                     }
                 }
@@ -689,89 +831,65 @@ fun GrCockpitSection(
 fun FanManagementSection(
     liveState: ObdLiveState,
     isConnected: Boolean,
-    pulseScale: Float,
     onThresholdChanged: (Int) -> Unit,
     onForcedFanToggle: (Boolean) -> Unit
 ) {
-    val isFanMax = isConnected && (liveState.batteryStatus.isFanForced || liveState.fanForcedMax)
-    val activeBgGradient = Brush.horizontalGradient(
-        colors = listOf(Color(0xFF0066FF), Color(0xFF00E5FF))
-    )
-    val inactiveBgGradient = Brush.horizontalGradient(
-        colors = listOf(CardBackground, SurfaceDark)
-    )
+    val isFanMax = isConnected && liveState.hasEcuCommunication && (liveState.batteryStatus.isFanForced || liveState.fanForcedMax)
+    val bat = liveState.batteryStatus
+    val deltaT = if (isConnected && liveState.hasEcuCommunication && bat.maxTemp > 0.0) {
+        val temps = listOf(bat.temp1, bat.temp2, bat.temp3, bat.temp4).filter { it > 0.0 }
+        if (temps.isNotEmpty()) (temps.maxOrNull() ?: 0.0) - (temps.minOrNull() ?: 0.0) else 0.0
+    } else 0.0
 
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
 
-        // --- HUGE FAN OVERRIDE BUTTON ---
+        // --- 1. FAN OVERRIDE & DISCRETE 6-LEVEL GAUGE (MoTeC Style) ---
         Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(115.dp)
-                .clip(RoundedCornerShape(24.dp))
-                .border(
-                    width = if (isFanMax) 2.dp else 1.dp,
-                    color = if (isFanMax) AccentCyan else DividerColor,
-                    shape = RoundedCornerShape(24.dp)
-                )
-                .clickable { onForcedFanToggle(!liveState.fanForcedMax) },
-            color = Color.Transparent
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(6.dp),
+            color = SurfaceDark,
+            border = BorderStroke(1.dp, if (isFanMax) AccentCyan else CardBorder)
         ) {
-            Box(
+            Column(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .background(if (isFanMax) activeBgGradient else inactiveBgGradient)
-                    .padding(horizontal = 20.dp, vertical = 16.dp),
-                contentAlignment = Alignment.Center
+                    .fillMaxWidth()
+                    .padding(16.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(64.dp)
-                                .clip(CircleShape)
-                                .background(if (isFanMax) Color.White.copy(alpha = 0.2f) else CardBackground),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Air,
-                                contentDescription = null,
-                                tint = if (isFanMax) Color.White else TextSecondary,
-                                modifier = Modifier.size(38.dp)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.width(16.dp))
-
-                        Column {
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = when {
-                                    !isConnected && liveState.fanForcedMax -> "FORZATURA ARMATA (IN ATTESA LINK)"
-                                    isFanMax -> "VENTOLA HV AL 100%"
-                                    else -> "VENTOLA AUTOMATICA"
-                                },
-                                fontSize = 17.sp,
+                                text = "OVERDRIVE VENTOLA HV",
+                                fontSize = 11.sp,
                                 fontWeight = FontWeight.Black,
-                                color = if (isFanMax) Color.White else TextPrimary,
-                                letterSpacing = 0.5.sp
+                                color = TextPrimary,
+                                letterSpacing = 1.sp
                             )
-                            Text(
-                                text = when {
-                                    !isConnected -> "Si attiverà al Livello 6 appena connesso"
-                                    isFanMax -> "Forzatura Livello 6 Attiva (Mode 30/2F)"
-                                    else -> "Attiva oltre la soglia impostata"
-                                },
-                                fontSize = 12.sp,
-                                color = if (isFanMax) Color.White.copy(alpha = 0.85f) else TextSecondary
-                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Surface(
+                                shape = RoundedCornerShape(3.dp),
+                                color = DarkBackground,
+                                border = BorderStroke(1.dp, if (isFanMax) AccentCyan else CardBorder)
+                            ) {
+                                Text(
+                                    text = if (isFanMax) "MODE 30 ACTIVE" else "AUTO OEM",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = if (isFanMax) AccentCyan else TextSecondary,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
                         }
+                        Text(
+                            text = if (isFanMax) "Forzatura 100% (Duty 6/6 UDS) attiva" else "Intervento automatico alla soglia",
+                            fontSize = 11.sp,
+                            color = TextSecondary
+                        )
                     }
 
                     Switch(
@@ -779,155 +897,252 @@ fun FanManagementSection(
                         onCheckedChange = { onForcedFanToggle(it) },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = Color.White,
-                            checkedTrackColor = Color(0xFF003399),
-                            uncheckedThumbColor = TextSecondary,
-                            uncheckedTrackColor = SurfaceDark
+                            checkedTrackColor = AccentCyan,
+                            uncheckedThumbColor = TextMuted,
+                            uncheckedTrackColor = DarkBackground
                         )
                     )
                 }
-            }
-        }
 
-        // --- BATTERY THERMALS & SENSORS CARD ---
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = CardBackground), border = BorderStroke(1.dp, CardBorder)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp)
-            ) {
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Discrete 6-Segment Level Indicator
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "TEMPERATURE BATTERIA TRAZIONE",
-                        style = Typography.labelSmall,
+                        text = "LIVELLO VENTOLA",
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         color = TextSecondary,
-                        letterSpacing = 1.sp
+                        letterSpacing = 0.8.sp
                     )
-
-                    val (batBadgeColor, batBadgeText) = when {
-                        !isConnected -> Pair(TextSecondary, "IN ATTESA DATI")
-                        liveState.batteryStatus.maxTemp >= 36.0 -> Pair(DangerRed, "⚠️ TAGLIO TERMICO (>36°)")
-                        liveState.batteryStatus.maxTemp > 30.0 -> Pair(WarningOrange, "CALORE ELEVATO")
-                        else -> Pair(SuccessGreen, "STATO OTTIMALE")
-                    }
-
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = batBadgeColor.copy(alpha = 0.2f)
-                    ) {
-                        Text(
-                            text = batBadgeText,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = batBadgeColor
-                        )
-                    }
+                    Text(
+                        text = if (isConnected && liveState.hasEcuCommunication) "DUTY ${bat.fanSpeedLevel} / 6" else "DUTY -- / 6",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = FontFamily.Monospace,
+                        color = if (isConnected && liveState.hasEcuCommunication && bat.fanSpeedLevel > 0) AccentCyan else TextMuted
+                    )
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
+                // 6 Segment bars
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceAround,
-                    verticalAlignment = Alignment.CenterVertically
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = if (isConnected && liveState.batteryStatus.maxTemp > 0.0) {
-                                "${String.format("%.1f", liveState.batteryStatus.maxTemp)}°C"
-                            } else "--",
-                            fontSize = 38.sp,
-                            fontWeight = FontWeight.Black,
-                            color = when {
-                                !isConnected -> TextSecondary
-                                liveState.batteryStatus.maxTemp >= 35.0 -> WarningOrange
-                                else -> AccentCyan
-                            },
-                            fontFamily = FontFamily.Monospace
-                        )
-                        Text(
-                            text = "Temperatura Max",
-                            style = Typography.labelSmall,
-                            color = TextSecondary
+                    for (level in 1..6) {
+                        val isActive = isConnected && liveState.hasEcuCommunication && bat.fanSpeedLevel >= level
+                        val activeColor = when {
+                            level <= 2 -> SuccessGreen
+                            level <= 4 -> AccentCyan
+                            else -> WarningOrange
+                        }
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(12.dp)
+                                .background(
+                                    if (isActive) activeColor else DarkBackground,
+                                    RoundedCornerShape(2.dp)
+                                )
+                                .border(1.dp, if (isActive) activeColor else CardBorder, RoundedCornerShape(2.dp))
                         )
                     }
-
-                    Box(
-                        modifier = Modifier
-                            .width(1.dp)
-                            .height(50.dp)
-                            .background(DividerColor)
-                    )
-
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = if (isConnected) "LIVELLO ${liveState.batteryStatus.fanSpeedLevel}" else "OFF",
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isConnected && liveState.batteryStatus.fanSpeedLevel > 0) SuccessGreen else TextSecondary,
-                            fontFamily = FontFamily.Monospace
-                        )
-                        Text(
-                            text = "Velocità Ventola",
-                            style = Typography.labelSmall,
-                            color = TextSecondary
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(20.dp))
-                HorizontalDivider(color = DividerColor)
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Text(
-                    text = "Singoli Moduli Batteria & Canale Aspirazione:",
-                    style = Typography.labelSmall,
-                    color = TextSecondary,
-                    modifier = Modifier.padding(bottom = 10.dp)
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    SensorItem(label = "Mod. 1", value = liveState.batteryStatus.temp1, isReady = isConnected && liveState.batteryStatus.temp1 > 0.0)
-                    SensorItem(label = "Mod. 2", value = liveState.batteryStatus.temp2, isReady = isConnected && liveState.batteryStatus.temp2 > 0.0)
-                    SensorItem(label = "Mod. 3", value = liveState.batteryStatus.temp3, isReady = isConnected && liveState.batteryStatus.temp3 > 0.0)
-                    SensorItem(label = "Mod. 4", value = liveState.batteryStatus.temp4, isReady = isConnected && liveState.batteryStatus.temp4 > 0.0)
-                    SensorItem(label = "Aspiraz.", value = liveState.batteryStatus.intakeTemp, isReady = isConnected && liveState.batteryStatus.intakeTemp > 0.0)
                 }
             }
         }
 
-        // --- WARM-UP STAGES & EFFICIENCY TIPS CARD ---
-        val warmup = liveState.warmupStatus
-        val stageColor = when {
-            !isConnected || !warmup.hasLiveData -> TextSecondary
-            warmup.stage == WarmupStage.S0 || warmup.stage == WarmupStage.S1A -> WarningOrange
-            warmup.stage == WarmupStage.S1B || warmup.stage == WarmupStage.S2 -> Color(0xFFFFEB3B)
-            warmup.stage == WarmupStage.S3 -> AccentCyan
-            warmup.stage == WarmupStage.S4 -> SuccessGreen
-            else -> TextSecondary
-        }
-
-        Card(
+        // --- 2. DENSO TRACTION BATTERY 4-MODULE MATRIX WITH THERMAL DELTA ---
+        Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = CardBackground), border = BorderStroke(1.dp, CardBorder)
+            shape = RoundedCornerShape(6.dp),
+            color = SurfaceDark,
+            border = BorderStroke(1.dp, CardBorder)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(20.dp)
+                    .padding(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "BATTERIA TRAZIONE DENSO 177V",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black,
+                            color = TextPrimary,
+                            letterSpacing = 1.sp
+                        )
+                        Text(
+                            text = "Matrice 4 Sonde Modulo + Condotto Aspirazione",
+                            fontSize = 11.sp,
+                            color = TextSecondary
+                        )
+                    }
+
+                    val (batBadgeColor, batBadgeText) = when {
+                        !isConnected -> Pair(TextMuted, "STANDBY")
+                        !liveState.hasEcuCommunication -> Pair(WarningOrange, "ATTESA ECU")
+                        bat.maxTemp >= 36.0 -> Pair(DangerRed, "TAGLIO TERMICO")
+                        bat.maxTemp >= 31.0 -> Pair(WarningOrange, "ATTENZIONE")
+                        else -> Pair(SuccessGreen, "TERMICA OTTIMALE")
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = DarkBackground,
+                        border = BorderStroke(1.dp, batBadgeColor)
+                    ) {
+                        Text(
+                            text = batBadgeText,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Black,
+                            fontFamily = FontFamily.Monospace,
+                            color = batBadgeColor,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Big Hero Temperature & Thermal Delta Grid
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Surface(
+                        modifier = Modifier.weight(1.3f),
+                        shape = RoundedCornerShape(4.dp),
+                        color = DarkBackground,
+                        border = BorderStroke(1.dp, CardBorder)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = "TEMP MASSIMA",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextSecondary,
+                                letterSpacing = 0.8.sp
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = if (isConnected && liveState.hasEcuCommunication && bat.maxTemp > 0.0) String.format("%.1f°C", bat.maxTemp) else "--.-°C",
+                                fontSize = 32.sp,
+                                fontWeight = FontWeight.Black,
+                                color = when {
+                                    !isConnected || !liveState.hasEcuCommunication -> TextMuted
+                                    bat.maxTemp >= 35.0 -> DangerRed
+                                    bat.maxTemp >= 30.0 -> WarningOrange
+                                    else -> AccentCyan
+                                },
+                                fontFamily = FontFamily.Monospace
+                            )
+                            Text(
+                                text = "LIMITE TAGLIO: 36.0°C",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextMuted,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    }
+
+                    Surface(
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(4.dp),
+                        color = DarkBackground,
+                        border = BorderStroke(1.dp, CardBorder)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = "DELTA T MODULI",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextSecondary,
+                                letterSpacing = 0.8.sp
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = if (isConnected && liveState.hasEcuCommunication && bat.maxTemp > 0.0) String.format("Δ %.1f°C", deltaT) else "Δ --.-°C",
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.Black,
+                                color = if (isConnected && liveState.hasEcuCommunication && deltaT > 3.0) WarningOrange else if (isConnected && liveState.hasEcuCommunication) SuccessGreen else TextMuted,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            Text(
+                                text = "BILANCIAMENTO",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextMuted,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // 4 Cell Modules + Intake Air Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        SensorItem(label = "Cella 1", value = bat.temp1, isReady = isConnected && liveState.hasEcuCommunication && bat.temp1 > 0.0)
+                    }
+                    Box(modifier = Modifier.weight(1f)) {
+                        SensorItem(label = "Cella 2", value = bat.temp2, isReady = isConnected && liveState.hasEcuCommunication && bat.temp2 > 0.0)
+                    }
+                    Box(modifier = Modifier.weight(1f)) {
+                        SensorItem(label = "Cella 3", value = bat.temp3, isReady = isConnected && liveState.hasEcuCommunication && bat.temp3 > 0.0)
+                    }
+                    Box(modifier = Modifier.weight(1f)) {
+                        SensorItem(label = "Cella 4", value = bat.temp4, isReady = isConnected && liveState.hasEcuCommunication && bat.temp4 > 0.0)
+                    }
+                    Box(modifier = Modifier.weight(1.1f)) {
+                        SensorItem(label = "Aspiraz.", value = bat.intakeTemp, isReady = isConnected && liveState.hasEcuCommunication && bat.intakeTemp > 0.0)
+                    }
+                }
+            }
+        }
+
+        // --- 3. WARM-UP STAGES & EFFICIENCY TIMELINE CARD ---
+        val warmup = liveState.warmupStatus
+        val stageColor = when {
+            !isConnected || !warmup.hasLiveData -> TextMuted
+            warmup.stage == WarmupStage.S0 || warmup.stage == WarmupStage.S1A -> WarningOrange
+            warmup.stage == WarmupStage.S1B || warmup.stage == WarmupStage.S2 -> Color(0xFFFFD54F)
+            warmup.stage == WarmupStage.S3 -> AccentCyan
+            warmup.stage == WarmupStage.S4 -> SuccessGreen
+            else -> TextMuted
+        }
+
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(6.dp),
+            color = SurfaceDark,
+            border = BorderStroke(1.dp, CardBorder)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -935,56 +1150,51 @@ fun FanManagementSection(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(12.dp)
-                                .clip(CircleShape)
-                                .background(stageColor)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "FASE WARM-UP TERMICO",
-                            style = Typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = TextSecondary,
+                            text = "STADIO WARM-UP HSD",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black,
+                            color = TextPrimary,
                             letterSpacing = 1.sp
                         )
                     }
 
                     Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = stageColor.copy(alpha = 0.2f)
+                        shape = RoundedCornerShape(4.dp),
+                        color = DarkBackground,
+                        border = BorderStroke(1.dp, stageColor)
                     ) {
                         Text(
                             text = if (isConnected && warmup.hasLiveData) warmup.stage.name else "STANDBY",
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            fontSize = 12.sp,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            fontSize = 10.sp,
                             fontWeight = FontWeight.Black,
+                            fontFamily = FontFamily.Monospace,
                             color = stageColor
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 Text(
                     text = if (isConnected && warmup.hasLiveData) warmup.stage.title else "In attesa telemetria termica...",
-                    fontSize = 18.sp,
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Black,
                     color = TextPrimary
                 )
                 Text(
                     text = if (isConnected && warmup.hasLiveData) {
-                        "${warmup.stage.subtitle} (${warmup.stage.targetTempDescription})"
+                        "${warmup.stage.subtitle} • Target: ${warmup.stage.targetTempDescription}"
                     } else {
-                        "Accendi il quadro vettura o connetti l'adattatore OBD per rilevare la fase HSD."
+                        "Accendi il quadro vettura su READY per rilevare lo stadio HSD."
                     },
-                    fontSize = 12.sp,
+                    fontSize = 11.sp,
                     color = TextSecondary,
-                    lineHeight = 16.sp
+                    lineHeight = 15.sp
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -992,58 +1202,50 @@ fun FanManagementSection(
                 ) {
                     TelemetryChip(
                         label = "Liquido (ECT)",
-                        value = if (isConnected && warmup.hasLiveData) "${warmup.coolantTemp.toInt()}°C" else "--",
+                        value = if (isConnected && warmup.hasLiveData) "${warmup.coolantTemp.toInt()}°C" else "--°C",
                         highlight = isConnected && warmup.hasLiveData && warmup.coolantTemp >= 73f,
                         modifier = Modifier.weight(1f)
                     )
                     TelemetryChip(
-                        label = "Aria Est. (IAT)",
-                        value = if (isConnected && warmup.hasLiveData) "${warmup.ambientTemp.toInt()}°C" else "--",
+                        label = "Aria Esterna",
+                        value = if (isConnected && warmup.hasLiveData) "${warmup.ambientTemp.toInt()}°C" else "--°C",
                         highlight = false,
                         modifier = Modifier.weight(1f)
                     )
                     TelemetryChip(
                         label = "Giri Motore",
                         value = if (isConnected && warmup.hasLiveData) {
-                            if (warmup.engineRpm > 0) "${warmup.engineRpm}" else "EV / Spento"
-                        } else "--",
+                            if (warmup.engineRpm > 0) "${warmup.engineRpm}" else "EV / 0 RPM"
+                        } else "-- RPM",
                         highlight = isConnected && warmup.hasLiveData && warmup.engineRpm == 0 && warmup.stage == WarmupStage.S4,
                         modifier = Modifier.weight(1.1f)
                     )
                 }
 
                 if (isConnected && warmup.recommendations.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(14.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
-                        color = CardBackground
+                        shape = RoundedCornerShape(4.dp),
+                        color = DarkBackground,
+                        border = BorderStroke(1.dp, CardBorder)
                     ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.FlashOn,
-                                    contentDescription = null,
-                                    tint = AccentCyan,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "CONSIGLI DI RISCALDAMENTO RAPIDO",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = AccentCyan,
-                                    letterSpacing = 0.8.sp
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(6.dp))
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                text = "PROTOCOLLO EFFICIENZA TOYOTA",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Black,
+                                color = AccentCyan,
+                                letterSpacing = 0.8.sp
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
                             warmup.recommendations.forEach { tip ->
                                 Text(
                                     text = "• $tip",
-                                    fontSize = 12.sp,
-                                    lineHeight = 16.sp,
-                                    color = TextPrimary,
-                                    modifier = Modifier.padding(vertical = 2.dp)
+                                    fontSize = 11.sp,
+                                    lineHeight = 15.sp,
+                                    color = TextSecondary,
+                                    modifier = Modifier.padding(vertical = 1.dp)
                                 )
                             }
                         }
@@ -1052,16 +1254,17 @@ fun FanManagementSection(
             }
         }
 
-        // --- TARGET THRESHOLD SLIDER & PRESETS ---
-        Card(
+        // --- 4. TARGET THRESHOLD SLIDER & PRESETS CARD ---
+        Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = CardBackground), border = BorderStroke(1.dp, CardBorder)
+            shape = RoundedCornerShape(6.dp),
+            color = SurfaceDark,
+            border = BorderStroke(1.dp, CardBorder)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(20.dp)
+                    .padding(16.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1069,22 +1272,22 @@ fun FanManagementSection(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "SOGLIA AUTOMATICA ATTIVAZIONE",
-                        style = Typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = TextSecondary,
+                        text = "SOGLIA ATTIVAZIONE AUTOMATICA",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black,
+                        color = TextPrimary,
                         letterSpacing = 1.sp
                     )
                     Text(
                         text = "${liveState.targetThreshold}°C",
-                        fontSize = 20.sp,
+                        fontSize = 18.sp,
                         fontWeight = FontWeight.Black,
                         color = AccentCyan,
                         fontFamily = FontFamily.Monospace
                     )
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 Slider(
                     value = liveState.targetThreshold.toFloat(),
@@ -1094,12 +1297,12 @@ fun FanManagementSection(
                     colors = SliderDefaults.colors(
                         thumbColor = AccentCyan,
                         activeTrackColor = AccentCyan,
-                        inactiveTrackColor = CardBackground
+                        inactiveTrackColor = DarkBackground
                     ),
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1112,13 +1315,13 @@ fun FanManagementSection(
                         onClick = { onThresholdChanged(20) }
                     )
                     PresetButton(
-                        label = "25°C (Ideale)",
+                        label = "25°C (Bilanciato)",
                         isSelected = liveState.targetThreshold == 25,
                         modifier = Modifier.weight(1f),
                         onClick = { onThresholdChanged(25) }
                     )
                     PresetButton(
-                        label = "30°C (Silenzio)",
+                        label = "30°C (Silenzioso)",
                         isSelected = liveState.targetThreshold == 30,
                         modifier = Modifier.weight(1f),
                         onClick = { onThresholdChanged(30) }
@@ -1144,18 +1347,19 @@ fun EcuCodingSection(
 ) {
     var stateDraft by remember(codingState) { mutableStateOf(codingState) }
 
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
 
         // --- Top Control & Safety Backup Card ---
-        Card(
+        Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = CardBackground), border = BorderStroke(1.dp, CardBorder)
+            shape = RoundedCornerShape(6.dp),
+            color = SurfaceDark,
+            border = BorderStroke(1.dp, CardBorder)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(20.dp)
+                    .padding(16.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1166,29 +1370,31 @@ fun EcuCodingSection(
                         Icon(
                             imageVector = Icons.Default.Security,
                             contentDescription = null,
-                            tint = Color(0xFF7C4DFF),
-                            modifier = Modifier.size(20.dp)
+                            tint = AccentCyan,
+                            modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = "CENTRALINA BODY (UDS/TDS)",
-                            fontSize = 12.sp,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Black,
-                            color = Color(0xFFB388FF),
-                            letterSpacing = 0.8.sp
+                            color = TextPrimary,
+                            letterSpacing = 1.sp
                         )
                     }
 
                     Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = if (isConnected) Color(0xFF7C4DFF).copy(alpha = 0.2f) else DividerColor
+                        shape = RoundedCornerShape(4.dp),
+                        color = DarkBackground,
+                        border = BorderStroke(1.dp, if (isConnected) AccentCyan else CardBorder)
                     ) {
                         Text(
                             text = if (isConnected) (if (codingState.isReadCompleted) "BACKUP ATTIVO" else "PRONTO") else "IN ATTESA OBD",
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isConnected) Color(0xFFB388FF) else TextSecondary
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Black,
+                            fontFamily = FontFamily.Monospace,
+                            color = if (isConnected) AccentCyan else TextMuted
                         )
                     }
                 }
@@ -1196,29 +1402,34 @@ fun EcuCodingSection(
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
                     text = codingState.lastOperationStatus,
-                    fontSize = 12.sp,
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace,
                     color = if (codingState.lastOperationStatus.contains("✅")) SuccessGreen else TextSecondary,
-                    lineHeight = 16.sp
+                    lineHeight = 15.sp
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Button(
+                    OutlinedButton(
                         onClick = onRead,
                         enabled = isConnected && !codingState.isWriting,
                         modifier = Modifier
                             .weight(1f)
-                            .height(46.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = CardBackground)
+                            .height(42.dp),
+                        shape = RoundedCornerShape(4.dp),
+                        border = BorderStroke(1.dp, if (isConnected) AccentCyan else CardBorder),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = AccentCyan,
+                            containerColor = DarkBackground
+                        )
                     ) {
-                        Icon(Icons.Default.Refresh, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(14.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("LEGGI ECU", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                        Text("LEGGI ECU", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
 
                     Button(
@@ -1226,38 +1437,41 @@ fun EcuCodingSection(
                         enabled = isConnected && !codingState.isWriting,
                         modifier = Modifier
                             .weight(1.3f)
-                            .height(46.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C4DFF))
+                            .height(42.dp),
+                        shape = RoundedCornerShape(4.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = GrRedPrimary,
+                            disabledContainerColor = CardBorder
+                        )
                     ) {
-                        Icon(Icons.Default.Save, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Save, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("APPLICA IN ECU", fontSize = 11.sp, fontWeight = FontWeight.Black, color = Color.White)
+                        Text("SCRIVI SU ECU", fontSize = 11.sp, fontWeight = FontWeight.Black, color = Color.White)
                     }
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
                 TextButton(
                     onClick = onRestoreFactory,
                     enabled = isConnected && !codingState.isWriting,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Ripristina Impostazioni di Fabbrica (OEM Toyota)", fontSize = 11.sp, color = TextSecondary)
+                    Text("Ripristina configurazione originale Toyota OEM", fontSize = 11.sp, color = TextMuted)
                 }
             }
         }
 
-                        // --- Category 0: 📺 TOYOTA TOUCH 3 (DISPLAY AUDIO - SENZA MAPPE) ---
-        Card(
+        // --- Category 0: 📺 TOYOTA TOUCH 3 (DISPLAY AUDIO - SENZA MAPPE) ---
+        Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF0F1522)),
-            border = BorderStroke(1.dp, Color(0xFF2B3A55))
+            shape = RoundedCornerShape(6.dp),
+            color = SurfaceDark,
+            border = BorderStroke(1.dp, CardBorder)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(20.dp)
+                    .padding(16.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1269,28 +1483,30 @@ fun EcuCodingSection(
                             imageVector = Icons.Default.Tv,
                             contentDescription = null,
                             tint = AccentCyan,
-                            modifier = Modifier.size(22.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "📺 TOYOTA TOUCH 3 (DISPLAY AUDIO)",
-                            fontSize = 12.sp,
+                            text = "DISPLAY AUDIO TOUCH 3",
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Black,
-                            color = AccentCyan,
-                            letterSpacing = 0.8.sp
+                            color = TextPrimary,
+                            letterSpacing = 1.sp
                         )
                     }
 
                     Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = Color(0xFFFF1801).copy(alpha = 0.2f)
+                        shape = RoundedCornerShape(4.dp),
+                        color = DarkBackground,
+                        border = BorderStroke(1.dp, CardBorder)
                     ) {
                         Text(
-                            text = "TOUCH 3",
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Black,
-                            color = Color(0xFFFF5252)
+                            text = "HEAD UNIT",
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            color = TextSecondary
                         )
                     }
                 }
@@ -1299,21 +1515,21 @@ fun EcuCodingSection(
 
                 // Animazione di Avvio Schermo
                 Text(
-                    text = "Animazione di Avvio Schermo Display (Opening Screen)",
-                    fontSize = 13.sp,
+                    text = "Animazione di Avvio (Opening Screen)",
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     PresetButton(
-                        label = "🏁 Gazoo Racing (GR)",
+                        label = "GR Gazoo",
                         isSelected = stateDraft.touch3OpeningAnimation == Touch3OpeningScreen.GAZOO_RACING,
-                        modifier = Modifier.weight(1.3f),
+                        modifier = Modifier.weight(1.1f),
                         onClick = { stateDraft = stateDraft.copy(touch3OpeningAnimation = Touch3OpeningScreen.GAZOO_RACING) }
                     )
                     PresetButton(
-                        label = "⚡ Hybrid Synergy",
+                        label = "Hybrid Synergy",
                         isSelected = stateDraft.touch3OpeningAnimation == Touch3OpeningScreen.HYBRID_SYNERGY,
                         modifier = Modifier.weight(1.1f),
                         onClick = { stateDraft = stateDraft.copy(touch3OpeningAnimation = Touch3OpeningScreen.HYBRID_SYNERGY) }
@@ -1330,19 +1546,12 @@ fun EcuCodingSection(
 
                 // ASL Auto Sound Levelizer
                 Text(
-                    text = "ASL: Volume Audio Automatico in Base alla Velocità",
-                    fontSize = 13.sp,
+                    text = "ASL: Compensazione Volume con Velocità",
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary
                 )
-                Text(
-                    text = "Compensa il rumore di rotolamento delle gomme aumentando il volume in autostrada",
-                    fontSize = 11.sp,
-                    color = TextSecondary,
-                    lineHeight = 15.sp,
-                    modifier = Modifier.padding(vertical = 2.dp)
-                )
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(6.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     PresetButton(
                         label = "OFF",
@@ -1357,9 +1566,9 @@ fun EcuCodingSection(
                         onClick = { stateDraft = stateDraft.copy(aslVolumeMode = AslVolumeMode.LOW) }
                     )
                     PresetButton(
-                        label = "Medio (Ideale)",
+                        label = "Medio",
                         isSelected = stateDraft.aslVolumeMode == AslVolumeMode.MID,
-                        modifier = Modifier.weight(1.2f),
+                        modifier = Modifier.weight(1.1f),
                         onClick = { stateDraft = stateDraft.copy(aslVolumeMode = AslVolumeMode.MID) }
                     )
                     PresetButton(
@@ -1374,15 +1583,15 @@ fun EcuCodingSection(
 
                 // Retrocamera Delay
                 Text(
-                    text = "Ritardo Spegnimento Retrocamera in Manovra",
-                    fontSize = 13.sp,
+                    text = "Ritardo Spegnimento Retrocamera in Marcia D",
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     PresetButton(
-                        label = "5s in marcia D (Comodo)",
+                        label = "5 secondi (Comodo)",
                         isSelected = stateDraft.rearCameraDelay == CameraOffDelay.SEC_5,
                         modifier = Modifier.weight(1.3f),
                         onClick = { stateDraft = stateDraft.copy(rearCameraDelay = CameraOffDelay.SEC_5) }
@@ -1395,37 +1604,38 @@ fun EcuCodingSection(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 CodingSwitchRow(
-                    label = "Bip di Feedback al Tocco Schermo & Tasti Fisici",
+                    label = "Bip Feedback Tocco Schermo & Tasti",
                     checked = stateDraft.touchScreenBeep,
                     onCheckedChange = { stateDraft = stateDraft.copy(touchScreenBeep = it) }
                 )
             }
         }
 
-// --- Category 1: 🔔 Comfort & Cicalini di Bordo ---
-        Card(
+        // --- Category 1: 🔔 Comfort & Cicalini di Bordo ---
+        Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = CardBackground), border = BorderStroke(1.dp, CardBorder)
+            shape = RoundedCornerShape(6.dp),
+            color = SurfaceDark,
+            border = BorderStroke(1.dp, CardBorder)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(20.dp)
+                    .padding(16.dp)
             ) {
                 Text(
-                    text = "🔔 COMFORT & CICALINI",
-                    fontSize = 12.sp,
+                    text = "COMFORT & CICALINI",
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Black,
-                    color = AccentCyan,
-                    letterSpacing = 0.8.sp
+                    color = TextPrimary,
+                    letterSpacing = 1.sp
                 )
                 Spacer(modifier = Modifier.height(14.dp))
 
-                Text(text = "Cicalino Retromarcia (Reverse Beep)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text(text = "Cicalino Retromarcia (Reverse Beep)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1438,16 +1648,16 @@ fun EcuCodingSection(
                         onClick = { stateDraft = stateDraft.copy(reverseBeep = ReverseBeepMode.SINGLE) }
                     )
                     PresetButton(
-                        label = "Continuo (Fabbrica)",
+                        label = "Continuo (OEM)",
                         isSelected = stateDraft.reverseBeep == ReverseBeepMode.CONTINUOUS,
                         modifier = Modifier.weight(1f),
                         onClick = { stateDraft = stateDraft.copy(reverseBeep = ReverseBeepMode.CONTINUOUS) }
                     )
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
-                HorizontalDivider(color = DividerColor)
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(14.dp))
+                HorizontalDivider(color = CardBorder)
+                Spacer(modifier = Modifier.height(10.dp))
 
                 CodingSwitchRow(
                     label = "Cicalino Cintura Conducente",
@@ -1468,26 +1678,27 @@ fun EcuCodingSection(
         }
 
         // --- Category 2: 🔑 Smart Key, Telecomando & Serrature ---
-        Card(
+        Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = CardBackground), border = BorderStroke(1.dp, CardBorder)
+            shape = RoundedCornerShape(6.dp),
+            color = SurfaceDark,
+            border = BorderStroke(1.dp, CardBorder)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(20.dp)
+                    .padding(16.dp)
             ) {
                 Text(
-                    text = "🔑 SMART KEY & SERRATURE",
-                    fontSize = 12.sp,
+                    text = "SMART KEY & SERRATURE",
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Black,
-                    color = AccentCyan,
-                    letterSpacing = 0.8.sp
+                    color = TextPrimary,
+                    letterSpacing = 1.sp
                 )
                 Spacer(modifier = Modifier.height(14.dp))
 
-                Text(text = "Volume Segnale Sirena Esterna (Chiusura/Apertura)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text(text = "Volume Segnale Sirena Esterna", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     PresetButton(label = "Muto", isSelected = stateDraft.keylessBuzzerVolume == KeylessBuzzerVolume.MUTE, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(keylessBuzzerVolume = KeylessBuzzerVolume.MUTE) })
@@ -1497,7 +1708,7 @@ fun EcuCodingSection(
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
-                Text(text = "Tempo Richiusura Automatica (Auto-Relock)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text(text = "Tempo Richiusura Automatica (Auto-Relock)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     PresetButton(label = "30s", isSelected = stateDraft.autoRelockTime == AutoRelockTime.SEC_30, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(autoRelockTime = AutoRelockTime.SEC_30) })
@@ -1506,32 +1717,32 @@ fun EcuCodingSection(
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
-                Text(text = "Sblocco Selettivo Portiere", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text(text = "Sblocco Selettivo Portiere", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    PresetButton(label = "Tutte le porte (1 tocco)", isSelected = stateDraft.doorUnlockMode == DoorUnlockMode.ALL_DOORS, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(doorUnlockMode = DoorUnlockMode.ALL_DOORS) })
-                    PresetButton(label = "Solo guida (2 tocchi tutte)", isSelected = stateDraft.doorUnlockMode == DoorUnlockMode.DRIVER_FIRST, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(doorUnlockMode = DoorUnlockMode.DRIVER_FIRST) })
+                    PresetButton(label = "Tutte (1 tocco)", isSelected = stateDraft.doorUnlockMode == DoorUnlockMode.ALL_DOORS, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(doorUnlockMode = DoorUnlockMode.ALL_DOORS) })
+                    PresetButton(label = "Solo Guida", isSelected = stateDraft.doorUnlockMode == DoorUnlockMode.DRIVER_FIRST, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(doorUnlockMode = DoorUnlockMode.DRIVER_FIRST) })
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
                 CodingSwitchRow(
-                    label = "Apertura/Chiusura Finestrini con Telecomando",
+                    label = "Apertura/Chiusura Finestrini da Telecomando",
                     checked = stateDraft.windowsWithKeyFob,
                     onCheckedChange = { stateDraft = stateDraft.copy(windowsWithKeyFob = it) }
                 )
 
                 Spacer(modifier = Modifier.height(10.dp))
-                Text(text = "Chiusura Automatica Serrature in Movimento", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text(text = "Chiusura Automatica Serrature in Movimento", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     PresetButton(label = "A 20 km/h", isSelected = stateDraft.autoDoorLock == AutoDoorLockMode.BY_SPEED, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(autoDoorLock = AutoDoorLockMode.BY_SPEED) })
-                    PresetButton(label = "Marcia D", isSelected = stateDraft.autoDoorLock == AutoDoorLockMode.BY_SHIFT_D, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(autoDoorLock = AutoDoorLockMode.BY_SHIFT_D) })
+                    PresetButton(label = "In Marcia D", isSelected = stateDraft.autoDoorLock == AutoDoorLockMode.BY_SHIFT_D, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(autoDoorLock = AutoDoorLockMode.BY_SHIFT_D) })
                     PresetButton(label = "OFF", isSelected = stateDraft.autoDoorLock == AutoDoorLockMode.OFF, modifier = Modifier.weight(0.7f), onClick = { stateDraft = stateDraft.copy(autoDoorLock = AutoDoorLockMode.OFF) })
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
                 CodingSwitchRow(
-                    label = "Sblocco Automatico Porte inserendo la marcia 'P'",
+                    label = "Sblocco Automatico Porte inserendo 'P'",
                     checked = stateDraft.autoDoorUnlock,
                     onCheckedChange = { stateDraft = stateDraft.copy(autoDoorUnlock = it) }
                 )
@@ -1539,22 +1750,23 @@ fun EcuCodingSection(
         }
 
         // --- Category 3: 🌧️ Tergicristalli & Sensore Pioggia ---
-        Card(
+        Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = CardBackground), border = BorderStroke(1.dp, CardBorder)
+            shape = RoundedCornerShape(6.dp),
+            color = SurfaceDark,
+            border = BorderStroke(1.dp, CardBorder)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(20.dp)
+                    .padding(16.dp)
             ) {
                 Text(
-                    text = "🌧️ TERGICRISTALLI & SENSORE PIOGGIA",
-                    fontSize = 12.sp,
+                    text = "TERGICRISTALLI & SENSORE PIOGGIA",
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Black,
-                    color = AccentCyan,
-                    letterSpacing = 0.8.sp
+                    color = TextPrimary,
+                    letterSpacing = 1.sp
                 )
                 Spacer(modifier = Modifier.height(14.dp))
 
@@ -1577,26 +1789,27 @@ fun EcuCodingSection(
         }
 
         // --- Category 4: 💡 Luci, Frecce & Plafoniera ---
-        Card(
+        Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = CardBackground), border = BorderStroke(1.dp, CardBorder)
+            shape = RoundedCornerShape(6.dp),
+            color = SurfaceDark,
+            border = BorderStroke(1.dp, CardBorder)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(20.dp)
+                    .padding(16.dp)
             ) {
                 Text(
-                    text = "💡 FRECCE, FARI & PLAFONIERA",
-                    fontSize = 12.sp,
+                    text = "FRECCE, FARI & PLAFONIERA",
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Black,
-                    color = AccentCyan,
-                    letterSpacing = 0.8.sp
+                    color = TextPrimary,
+                    letterSpacing = 1.sp
                 )
                 Spacer(modifier = Modifier.height(14.dp))
 
-                Text(text = "Lampeggi Freccia Comfort (Cambio Corsia)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text(text = "Lampeggi Freccia Comfort (Cambio Corsia)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     PresetButton(label = "3 Lampeggi", isSelected = stateDraft.turnSignalFlashes == TurnSignalFlashes.FLASHES_3, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(turnSignalFlashes = TurnSignalFlashes.FLASHES_3) })
@@ -1605,7 +1818,7 @@ fun EcuCodingSection(
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
-                Text(text = "Dissolvenza Luci Interne Plafoniera", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text(text = "Dissolvenza Luci Interne Plafoniera", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     PresetButton(label = "7.5s", isSelected = stateDraft.interiorDimTime == InteriorLightDimTime.SEC_7_5, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(interiorDimTime = InteriorLightDimTime.SEC_7_5) })
@@ -1613,7 +1826,7 @@ fun EcuCodingSection(
                     PresetButton(label = "30s", isSelected = stateDraft.interiorDimTime == InteriorLightDimTime.SEC_30, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(interiorDimTime = InteriorLightDimTime.SEC_30) })
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
                 CodingSwitchRow(
                     label = "Illuminazione Vano Piedi Attiva in Marcia",
                     checked = stateDraft.footwellLightingInDrive,
@@ -1621,7 +1834,7 @@ fun EcuCodingSection(
                 )
 
                 Spacer(modifier = Modifier.height(14.dp))
-                Text(text = "Sensibilità Fari Automatici Crepuscolari", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text(text = "Sensibilità Fari Crepuscolari Automatici", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     PresetButton(label = "Scuro (-1)", isSelected = stateDraft.lightSensitivity == LightSensitivity.DARK_1, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(lightSensitivity = LightSensitivity.DARK_1) })
@@ -1630,7 +1843,7 @@ fun EcuCodingSection(
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
-                Text(text = "Luci Guida a Casa (Follow Me Home)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text(text = "Luci Follow Me Home", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     PresetButton(label = "OFF", isSelected = stateDraft.followMeHome == FollowMeHomeDuration.OFF, modifier = Modifier.weight(0.8f), onClick = { stateDraft = stateDraft.copy(followMeHome = FollowMeHomeDuration.OFF) })
@@ -1641,26 +1854,27 @@ fun EcuCodingSection(
         }
 
         // --- Category 5: 🛡️ ADAS & Assistenza Guida (TSS 2.5) ---
-        Card(
+        Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = CardBackground), border = BorderStroke(1.dp, CardBorder)
+            shape = RoundedCornerShape(6.dp),
+            color = SurfaceDark,
+            border = BorderStroke(1.dp, CardBorder)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(20.dp)
+                    .padding(16.dp)
             ) {
                 Text(
-                    text = "🛡️ ADAS & SICUREZZA (TOYOTA SAFETY SENSE)",
-                    fontSize = 12.sp,
+                    text = "ADAS & SICUREZZA (TSS)",
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Black,
-                    color = AccentCyan,
-                    letterSpacing = 0.8.sp
+                    color = TextPrimary,
+                    letterSpacing = 1.sp
                 )
                 Spacer(modifier = Modifier.height(14.dp))
 
-                Text(text = "Volume Avviso Cambio Corsia (LDA / LTA)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text(text = "Volume Avviso Cambio Corsia (LDA / LTA)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     PresetButton(label = "Basso", isSelected = stateDraft.ldaWarningVolume == LdaWarningVolume.LOW, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(ldaWarningVolume = LdaWarningVolume.LOW) })
@@ -1669,7 +1883,7 @@ fun EcuCodingSection(
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
-                Text(text = "Sensibilità Rilevamento Angolo Cieco (BSM)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text(text = "Sensibilità Angolo Cieco (BSM)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     PresetButton(label = "Vicino", isSelected = stateDraft.bsmSensitivity == BsmSensitivity.NEAR, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(bsmSensitivity = BsmSensitivity.NEAR) })
@@ -1680,27 +1894,28 @@ fun EcuCodingSection(
         }
 
         // --- Category 6: ❄️ Climatizzatore & Modalità Eco ---
-        Card(
+        Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = CardBackground), border = BorderStroke(1.dp, CardBorder)
+            shape = RoundedCornerShape(6.dp),
+            color = SurfaceDark,
+            border = BorderStroke(1.dp, CardBorder)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(20.dp)
+                    .padding(16.dp)
             ) {
                 Text(
-                    text = "❄️ CLIMATIZZATORE & ECO EFFICIENZA",
-                    fontSize = 12.sp,
+                    text = "CLIMATIZZATORE & ECO EFFICIENZA",
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Black,
-                    color = AccentCyan,
-                    letterSpacing = 0.8.sp
+                    color = TextPrimary,
+                    letterSpacing = 1.sp
                 )
                 Spacer(modifier = Modifier.height(14.dp))
 
                 CodingSwitchRow(
-                    label = "Attivazione Automatica Compressore A/C su 'AUTO'",
+                    label = "Attivazione Compressore A/C su 'AUTO'",
                     checked = stateDraft.autoAcWithAutoButton,
                     onCheckedChange = { stateDraft = stateDraft.copy(autoAcWithAutoButton = it) }
                 )
@@ -1727,15 +1942,15 @@ fun CodingSwitchRow(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(text = label, fontSize = 13.sp, color = TextPrimary, modifier = Modifier.weight(1f))
+        Text(text = label, fontSize = 12.sp, color = TextPrimary, modifier = Modifier.weight(1f))
         Switch(
             checked = checked,
             onCheckedChange = onCheckedChange,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = Color.White,
-                checkedTrackColor = Color(0xFF7C4DFF),
-                uncheckedThumbColor = TextSecondary,
-                uncheckedTrackColor = SurfaceDark
+                checkedTrackColor = AccentCyan,
+                uncheckedThumbColor = TextMuted,
+                uncheckedTrackColor = DarkBackground
             )
         )
     }
@@ -1743,16 +1958,16 @@ fun CodingSwitchRow(
 
 /**
  * =========================================================
- * 4. HELPER COMPOSABLES & LOGOS
+ * 4. HELPER COMPOSABLES & LOGOS (MoTeC / Bosch Motorsport)
  * =========================================================
  */
 
 @Composable
 fun GazooRacingLogoBadge() {
     Surface(
-        shape = RoundedCornerShape(10.dp),
-        color = Color(0xFF070A0F),
-        border = BorderStroke(1.dp, Color(0xFF3A4456))
+        shape = RoundedCornerShape(4.dp),
+        color = Color(0xFF090A0E),
+        border = BorderStroke(1.dp, CardBorder)
     ) {
         Box(
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
@@ -1762,8 +1977,8 @@ fun GazooRacingLogoBadge() {
                 painter = painterResource(id = R.drawable.ic_gr_logo),
                 contentDescription = "Toyota Gazoo Racing GR Logo",
                 modifier = Modifier
-                    .width(52.dp)
-                    .height(26.dp)
+                    .width(46.dp)
+                    .height(23.dp)
             )
         }
     }
@@ -1778,42 +1993,46 @@ fun SprintScoreCard(
 ) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
-        color = Color(0xFF0D121B),
-        border = BorderStroke(1.dp, Color(0xFF222B3D))
+        shape = RoundedCornerShape(6.dp),
+        color = DarkBackground,
+        border = BorderStroke(1.dp, CardBorder)
     ) {
         Column(
             modifier = Modifier.padding(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = title,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Black,
-                color = Color(0xFFFF5252),
-                letterSpacing = 0.5.sp
+                text = title.uppercase(),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextSecondary,
+                letterSpacing = 0.8.sp
             )
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(6.dp))
             Text(
                 text = if (lastTime != null) String.format("%.2fs", lastTime) else "--.--s",
-                fontSize = 20.sp,
+                fontSize = 22.sp,
                 fontWeight = FontWeight.Black,
-                color = if (lastTime != null) TextPrimary else TextSecondary,
+                color = if (lastTime != null) TextPrimary else TextMuted,
                 fontFamily = FontFamily.Monospace
             )
-            Spacer(modifier = Modifier.height(2.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
                 Text(
-                    text = "🏆 RECORD: ",
-                    fontSize = 10.sp,
+                    text = "RECORD ",
+                    fontSize = 9.sp,
                     fontWeight = FontWeight.Bold,
-                    color = TextSecondary
+                    color = TextMuted,
+                    letterSpacing = 0.5.sp
                 )
                 Text(
-                    text = if (bestTime != null) String.format("%.2fs", bestTime) else "--",
+                    text = if (bestTime != null) String.format("%.2fs", bestTime) else "--.--s",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Black,
-                    color = SuccessGreen,
+                    color = if (bestTime != null) SuccessGreen else TextMuted,
                     fontFamily = FontFamily.Monospace
                 )
             }
@@ -1830,11 +2049,15 @@ fun PresetButton(
 ) {
     Surface(
         modifier = modifier
-            .height(44.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .clickable { onClick() },
-        color = if (isSelected) AccentCyan else CardBackground,
-        shape = RoundedCornerShape(12.dp)
+            .height(40.dp)
+            .clip(RoundedCornerShape(4.dp))
+            .clickable { onClick() }
+            .then(
+                if (isSelected) Modifier.border(BorderStroke(1.dp, AccentCyan), RoundedCornerShape(4.dp))
+                else Modifier.border(BorderStroke(1.dp, CardBorder), RoundedCornerShape(4.dp))
+            ),
+        color = if (isSelected) AccentCyan.copy(alpha = 0.16f) else SurfaceDark,
+        shape = RoundedCornerShape(4.dp)
     ) {
         Box(
             modifier = Modifier.fillMaxSize(),
@@ -1842,9 +2065,9 @@ fun PresetButton(
         ) {
             Text(
                 text = label,
-                fontSize = 12.sp,
-                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                color = if (isSelected) DarkBackground else TextPrimary,
+                fontSize = 11.sp,
+                fontWeight = if (isSelected) FontWeight.Black else FontWeight.Medium,
+                color = if (isSelected) AccentCyan else TextSecondary,
                 textAlign = TextAlign.Center
             )
         }
@@ -1853,19 +2076,31 @@ fun PresetButton(
 
 @Composable
 fun SensorItem(label: String, value: Double, isReady: Boolean) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            text = label,
-            style = Typography.labelSmall,
-            color = TextSecondary
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = if (isReady) "${value.toInt()}°" else "--",
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold,
-            color = if (isReady) TextPrimary else TextSecondary
-        )
+    Surface(
+        shape = RoundedCornerShape(4.dp),
+        color = DarkBackground,
+        border = BorderStroke(1.dp, CardBorder)
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = label.uppercase(),
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextSecondary,
+                letterSpacing = 0.5.sp
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = if (isReady) String.format("%.1f°", value) else "--.-°",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Black,
+                color = if (isReady) TextPrimary else TextMuted,
+                fontFamily = FontFamily.Monospace
+            )
+        }
     }
 }
 
@@ -1878,73 +2113,99 @@ fun TelemetryChip(
 ) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(14.dp),
-        color = CardBackground
+        shape = RoundedCornerShape(4.dp),
+        color = DarkBackground,
+        border = BorderStroke(1.dp, CardBorder)
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = label,
-                fontSize = 11.sp,
+                text = label.uppercase(),
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
                 color = TextSecondary,
-                maxLines = 1
+                maxLines = 1,
+                letterSpacing = 0.5.sp
             )
-            Spacer(modifier = Modifier.height(2.dp))
+            Spacer(modifier = Modifier.height(3.dp))
             Text(
                 text = value,
                 fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (highlight) SuccessGreen else TextPrimary
+                fontWeight = FontWeight.Black,
+                color = if (highlight) SuccessGreen else TextPrimary,
+                fontFamily = FontFamily.Monospace
             )
         }
     }
 }
 
 @Composable
-fun ConnectionBadge(connectionState: BleConnectionState) {
-    val bgColor: Color
+fun ConnectionBadge(
+    connectionState: BleConnectionState,
+    isInitialized: Boolean = false,
+    hasEcuCommunication: Boolean = false
+) {
+    val borderColor: Color
+    val textColor: Color
     val text: String
     when (connectionState) {
-        is BleConnectionState.Ready -> {
-            bgColor = SuccessGreen
-            text = "CONNESSO"
-        }
-        is BleConnectionState.Connected -> {
-            bgColor = AccentCyan
-            text = "LINK OBD"
+        is BleConnectionState.Ready, is BleConnectionState.Connected -> {
+            if (hasEcuCommunication) {
+                borderColor = SuccessGreen
+                textColor = SuccessGreen
+                text = "● ECU ONLINE"
+            } else if (isInitialized) {
+                borderColor = WarningOrange
+                textColor = WarningOrange
+                text = "▲ DONGLE OK - ATTESA ECU"
+            } else {
+                borderColor = AccentCyan
+                textColor = AccentCyan
+                text = "◌ LINK OBD..."
+            }
         }
         is BleConnectionState.Connecting -> {
-            bgColor = WarningOrange
-            text = "CONNESSIONE..."
+            borderColor = WarningOrange
+            textColor = WarningOrange
+            text = "◌ CONNESSIONE"
+        }
+        is BleConnectionState.Reconnecting -> {
+            borderColor = WarningOrange
+            textColor = WarningOrange
+            text = "○ AUTO-RETRY"
         }
         is BleConnectionState.Scanning -> {
-            bgColor = WarningOrange
-            text = "SCANSIONE..."
+            borderColor = WarningOrange
+            textColor = WarningOrange
+            text = "◌ SCANSIONE"
         }
         is BleConnectionState.Error -> {
-            bgColor = DangerRed
-            text = "ERRORE"
+            borderColor = DangerRed
+            textColor = DangerRed
+            text = "■ ERRORE LINK"
         }
         else -> {
-            bgColor = DividerColor
-            text = "DISCONNESSO"
+            borderColor = CardBorder
+            textColor = TextMuted
+            text = "○ DISCONNESSO"
         }
     }
 
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(bgColor.copy(alpha = 0.2f))
-            .padding(horizontal = 14.dp, vertical = 7.dp)
+    Surface(
+        shape = RoundedCornerShape(4.dp),
+        color = DarkBackground,
+        border = BorderStroke(1.dp, borderColor)
     ) {
         Text(
             text = text,
-            color = bgColor,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 0.5.sp
+            color = textColor,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Black,
+            fontFamily = FontFamily.Monospace,
+            letterSpacing = 0.8.sp,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
         )
     }
 }

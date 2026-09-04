@@ -32,6 +32,7 @@ sealed class BleConnectionState {
     object Disconnected : BleConnectionState()
     object Scanning : BleConnectionState()
     data class Connecting(val deviceName: String, val address: String) : BleConnectionState()
+    data class Reconnecting(val deviceName: String, val address: String, val attempt: Int) : BleConnectionState()
     data class Connected(val deviceName: String, val address: String) : BleConnectionState()
     data class Ready(val deviceName: String, val address: String) : BleConnectionState()
     data class Error(val message: String) : BleConnectionState()
@@ -55,6 +56,16 @@ class BleManager(private val context: Context) {
         
         // Standard Serial Port Profile (SPP) UUID for Bluetooth Classic ELM327 / OBD-II
         val SPP_UUID: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
+
+        fun calculateBackoffMs(attempt: Int): Long {
+            return when (attempt) {
+                1 -> 2000L
+                2 -> 4000L
+                3 -> 8000L
+                4 -> 15000L
+                else -> 30000L
+            }
+        }
     }
 
     private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
@@ -95,6 +106,46 @@ class BleManager(private val context: Context) {
     val isBluetoothEnabled: Boolean
         get() = bluetoothAdapter?.isEnabled == true
 
+    // --- Bluetooth Adapter System State Monitor ---
+
+    private val bluetoothStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(c: Context?, intent: Intent?) {
+            if (BluetoothAdapter.ACTION_STATE_CHANGED == intent?.action) {
+                val state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)
+                when (state) {
+                    BluetoothAdapter.STATE_TURNING_OFF, BluetoothAdapter.STATE_OFF -> {
+                        Log.w(TAG, "Bluetooth disattivato a livello di sistema operativo.")
+                        mainHandler.removeCallbacks(reconnectRunnable)
+                        mainHandler.removeCallbacks(serviceDiscoveryFallback)
+                        internalDisconnect()
+                        _connectionState.value = BleConnectionState.Error("Bluetooth disattivato dal sistema")
+                    }
+                    BluetoothAdapter.STATE_ON -> {
+                        Log.i(TAG, "Bluetooth riattivato a livello di sistema operativo.")
+                        if (!isManualDisconnect && lastTargetMac != null) {
+                            Log.i(TAG, "Ripristino immediato connessione a $lastTargetMac...")
+                            reconnectAttempt = 0
+                            mainHandler.removeCallbacks(reconnectRunnable)
+                            connect(lastTargetMac!!, lastTransportType)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var isBtStateReceiverRegistered = false
+
+    init {
+        try {
+            val filter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
+            context.registerReceiver(bluetoothStateReceiver, filter)
+            isBtStateReceiverRegistered = true
+        } catch (e: Exception) {
+            Log.w(TAG, "Impossibile registrare bluetoothStateReceiver", e)
+        }
+    }
+
     // --- Scanning (Dual-Stack: BLE + Classic Discovery) ---
 
     private val classicReceiver = object : BroadcastReceiver() {
@@ -126,7 +177,7 @@ class BleManager(private val context: Context) {
                                 transportType = BluetoothTransportType.CLASSIC_SPP
                             )
                         )
-                        _discoveredDevices.value = currentList
+                        _discoveredDevices.value = sortDiscoveredDevices(currentList)
                     }
                 }
             }
@@ -166,7 +217,7 @@ class BleManager(private val context: Context) {
             Log.w(TAG, "Impossibile recuperare dispositivi bonded", e)
         }
 
-        _discoveredDevices.value = initialList
+        _discoveredDevices.value = sortDiscoveredDevices(initialList)
         _connectionState.value = BleConnectionState.Scanning
         isScanning = true
 
@@ -247,6 +298,9 @@ class BleManager(private val context: Context) {
                 val existingIndex = currentList.indexOfFirst { it.address == address }
                 val isBonded = device.bondState == BluetoothDevice.BOND_BONDED
 
+                val isClassic = isClassicDevice(resolvedName, device)
+                val deviceTransport = if (isClassic) BluetoothTransportType.CLASSIC_SPP else BluetoothTransportType.BLE
+
                 if (existingIndex >= 0) {
                     val old = currentList[existingIndex]
                     val betterName = if (old.name.contains("Dispositivo", ignoreCase = true) && !resolvedName.contains("Dispositivo", ignoreCase = true)) {
@@ -254,12 +308,17 @@ class BleManager(private val context: Context) {
                     } else {
                         old.name
                     }
+                    val finalTransport = if (old.transportType == BluetoothTransportType.CLASSIC_SPP || isClassic) {
+                        BluetoothTransportType.CLASSIC_SPP
+                    } else {
+                        BluetoothTransportType.BLE
+                    }
                     currentList[existingIndex] = DiscoveredBleDevice(
                         name = betterName,
                         address = address,
                         rssi = rssi,
                         isBonded = old.isBonded || isBonded,
-                        transportType = BluetoothTransportType.BLE
+                        transportType = finalTransport
                     )
                 } else {
                     currentList.add(
@@ -268,11 +327,11 @@ class BleManager(private val context: Context) {
                             address = address,
                             rssi = rssi,
                             isBonded = isBonded,
-                            transportType = BluetoothTransportType.BLE
+                            transportType = deviceTransport
                         )
                     )
                 }
-                _discoveredDevices.value = currentList
+                _discoveredDevices.value = sortDiscoveredDevices(currentList)
             }
         }
 
@@ -280,6 +339,40 @@ class BleManager(private val context: Context) {
             Log.e(TAG, "Scan BLE fallito con codice $errorCode")
             isScanning = false
         }
+    }
+
+    fun sortDiscoveredDevices(devices: List<DiscoveredBleDevice>): List<DiscoveredBleDevice> {
+        return devices.sortedWith(
+            compareByDescending<DiscoveredBleDevice> { dev ->
+                val upper = dev.name.uppercase()
+                upper.contains("VLINK") ||
+                upper.contains("OBD") ||
+                upper.contains("VGATE") ||
+                upper.contains("ELM327") ||
+                upper.contains("BAFX") ||
+                isClassicDevice(dev.name, null)
+            }
+            .thenByDescending { it.isBonded }
+            .thenByDescending { it.rssi }
+        )
+    }
+
+    fun isClassicDevice(name: String?, device: BluetoothDevice?): Boolean {
+        val devName = name?.uppercase() ?: ""
+        if (devName.contains("ANDROID-VLINK") ||
+            (devName.contains("V-LINK") && !devName.contains("IOS")) ||
+            devName.contains("OBDII") ||
+            devName.contains("VLINKER FD") ||
+            (devName.contains("VLINKER MC") && !devName.contains("BLE")) ||
+            devName.contains("BAFX")
+        ) {
+            return true
+        }
+        if (device != null) {
+            if (device.type == BluetoothDevice.DEVICE_TYPE_CLASSIC) return true
+            if (device.bondState == BluetoothDevice.BOND_BONDED && device.type != BluetoothDevice.DEVICE_TYPE_LE) return true
+        }
+        return false
     }
 
     private fun parseNameFromAdvBytes(bytes: ByteArray?): String? {
@@ -323,6 +416,9 @@ class BleManager(private val context: Context) {
         }
     }
 
+    private var reconnectAttempt = 0
+    private var lastDeviceName: String? = null
+
     fun connect(macAddress: String, transport: BluetoothTransportType = BluetoothTransportType.AUTO) {
         stopScan()
         isManualDisconnect = false
@@ -354,13 +450,22 @@ class BleManager(private val context: Context) {
         internalDisconnect()
 
         val deviceName = device.name ?: "OBD Device"
+        lastDeviceName = deviceName
         _connectionState.value = BleConnectionState.Connecting(deviceName, macAddress)
         Log.i(TAG, "Tentativo connessione a $deviceName ($macAddress) [Transport: $transport]...")
 
+        val isClassic = isClassicDevice(deviceName, device)
         val shouldTryClassic = when (transport) {
             BluetoothTransportType.CLASSIC_SPP -> true
-            BluetoothTransportType.BLE -> false
-            BluetoothTransportType.AUTO -> device.type == BluetoothDevice.DEVICE_TYPE_CLASSIC
+            BluetoothTransportType.BLE -> {
+                if (isClassic && !deviceName.uppercase().contains("IOS")) {
+                    Log.w(TAG, "Dispositivo $deviceName identificato come Classic SPP. Forzo trasporto su Classic anziché BLE.")
+                    true
+                } else {
+                    false
+                }
+            }
+            BluetoothTransportType.AUTO -> isClassic || device.type == BluetoothDevice.DEVICE_TYPE_CLASSIC
         }
 
         if (shouldTryClassic) {
@@ -403,6 +508,7 @@ class BleManager(private val context: Context) {
                 socketOutputStream = socket.outputStream
 
                 _connectionState.value = BleConnectionState.Connected(deviceName, mac)
+                reconnectAttempt = 0
                 Log.i(TAG, "Socket SPP Connesso con successo! Avvio reader stream...")
 
                 startSocketReader(deviceName, mac)
@@ -445,7 +551,6 @@ class BleManager(private val context: Context) {
                 if (isActive) {
                     Log.w(TAG, "Stream SPP interrotto", e)
                     internalDisconnect()
-                    _connectionState.value = BleConnectionState.Error("Connessione interrotta. Riconnessione...")
                     scheduleReconnect()
                 }
             }
@@ -468,13 +573,19 @@ class BleManager(private val context: Context) {
 
     private fun scheduleReconnect() {
         if (!isManualDisconnect && lastTargetMac != null) {
+            reconnectAttempt++
+            val devName = lastDeviceName ?: "OBD Device"
+            _connectionState.value = BleConnectionState.Reconnecting(devName, lastTargetMac!!, reconnectAttempt)
+            val backoff = calculateBackoffMs(reconnectAttempt)
+            Log.i(TAG, "Tentativo di riconnessione #$reconnectAttempt pianificato tra ${backoff}ms a $devName ($lastTargetMac)...")
             mainHandler.removeCallbacks(reconnectRunnable)
-            mainHandler.postDelayed(reconnectRunnable, 3500L)
+            mainHandler.postDelayed(reconnectRunnable, backoff)
         }
     }
 
     fun disconnect() {
         isManualDisconnect = true
+        reconnectAttempt = 0
         mainHandler.removeCallbacks(reconnectRunnable)
         mainHandler.removeCallbacks(serviceDiscoveryFallback)
         internalDisconnect()
@@ -531,6 +642,7 @@ class BleManager(private val context: Context) {
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     Log.i(TAG, "GATT Connesso a $name ($addr).")
+                    reconnectAttempt = 0
                     mainHandler.removeCallbacks(reconnectRunnable)
                     _connectionState.value = BleConnectionState.Connected(name, addr)
                     
@@ -670,9 +782,28 @@ class BleManager(private val context: Context) {
 
     // --- Unified Command Dispatcher (SPP Socket or BLE GATT) ---
 
-    suspend fun sendCommand(command: String): String = commandMutex.withLock {
+    suspend fun sendCommand(
+        command: String,
+        timeoutMs: Long = COMMAND_TIMEOUT_MS
+    ): String = commandMutex.withLock {
+        // 0. Purge preventivo dello stream e del buffer di risposta per eliminare residui
         synchronized(responseBuffer) {
             responseBuffer.setLength(0)
+        }
+        try {
+            val inStream = socketInputStream
+            if (bluetoothSocket?.isConnected == true && inStream != null) {
+                withContext(Dispatchers.IO) {
+                    val avail = inStream.available()
+                    if (avail > 0) {
+                        Log.d(TAG, "Drenaggio preventivo di $avail byte orfani dallo stream SPP...")
+                        val discardBuf = ByteArray(avail)
+                        inStream.read(discardBuf)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Errore durante il purge dello stream in entrata", e)
         }
 
         val deferred = CompletableDeferred<String>()
@@ -708,7 +839,7 @@ class BleManager(private val context: Context) {
             }
         }
 
-        return withTimeoutOrNull(COMMAND_TIMEOUT_MS) {
+        return withTimeoutOrNull(timeoutMs) {
             deferred.await()
         } ?: run {
             activeResponseDeferred = null
@@ -718,6 +849,20 @@ class BleManager(private val context: Context) {
                 if (partial.isNotBlank()) partial else "TIMEOUT"
             }
         }
+    }
+
+    fun cleanup() {
+        disconnect()
+        stopScan()
+        try {
+            if (isBtStateReceiverRegistered) {
+                context.unregisterReceiver(bluetoothStateReceiver)
+                isBtStateReceiverRegistered = false
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Errore unregister bluetoothStateReceiver", e)
+        }
+        managerScope.cancel()
     }
 }
 
