@@ -17,9 +17,9 @@ call D:\Tools\gradle\gradle-8.7\bin\gradle.bat assembleRelease
 if %ERRORLEVEL% EQU 0 (
     echo [2/3] Sincronizzazione APK release principale...
     copy /Y "app\build\outputs\apk\release\app-release.apk" "YarisHvFanControl.apk"
-    copy /Y "app\build\outputs\apk\release\app-release.apk" "YarisHvFanControl-v2.8.0.apk"
+    copy /Y "app\build\outputs\apk\release\app-release.apk" "YarisHvFanControl-v2.8.1.apk"
     copy /Y "app\build\outputs\apk\release\app-release.apk" "docs\YarisHvFanControl.apk"
-    copy /Y "app\build\outputs\apk\release\app-release.apk" "docs\YarisHvFanControl-v2.8.0.apk"
+    copy /Y "app\build\outputs\apk\release\app-release.apk" "docs\YarisHvFanControl-v2.8.1.apk"
     
     echo [3/3] Aggiornamento file e deploy pronti!
     echo ========================================================

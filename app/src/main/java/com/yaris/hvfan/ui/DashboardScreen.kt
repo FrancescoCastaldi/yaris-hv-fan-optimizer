@@ -2252,20 +2252,20 @@ fun CodingSwitchRow(
 @Composable
 fun GazooRacingLogoBadge() {
     Surface(
-        shape = RoundedCornerShape(4.dp),
+        shape = RoundedCornerShape(6.dp),
         color = Color(0xFF090A0E),
         border = BorderStroke(1.dp, CardBorder)
     ) {
         Box(
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
             contentAlignment = Alignment.Center
         ) {
             Image(
-                painter = painterResource(id = R.drawable.ic_gr_logo),
-                contentDescription = "Toyota Gazoo Racing GR Logo",
+                painter = painterResource(id = R.drawable.ic_motorsport_logo),
+                contentDescription = "Yaris HV Gazoo Racing Motorsport Badge",
                 modifier = Modifier
-                    .width(46.dp)
-                    .height(23.dp)
+                    .size(36.dp)
+                    .clip(CircleShape)
             )
         }
     }

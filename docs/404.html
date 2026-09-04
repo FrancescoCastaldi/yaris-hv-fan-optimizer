@@ -3,25 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>Toyota Yaris MK4 Hybrid - HV Fan & GR Cockpit Optimizer v2.8.0</title>
+    <title>Toyota Yaris MK4 Hybrid - HV Fan & GR Cockpit Optimizer v2.8.1</title>
     <meta name="description" content="Applicazione Android per il controllo attivo della ventola batteria ad alto voltaggio, telemetria Gazoo Racing e cronometro accelerazione 0-100 km/h.">
-    <meta name="theme-color" content="#0B0E14">
+    <meta name="theme-color" content="#090A0E">
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-dark: #0B0E14;
-            --surface-dark: #121824;
-            --card-bg: #1A2232;
-            --accent-cyan: #00E5FF;
-            --accent-glow: rgba(0, 229, 255, 0.4);
-            --gr-red: #FF1801;
-            --gr-glow: rgba(255, 24, 1, 0.4);
-            --success-green: #00E676;
-            --text-primary: #FFFFFF;
+            --bg-dark: #090A0E;
+            --surface-dark: #11141C;
+            --card-bg: #151A24;
+            --accent-cyan: #38BDF8;
+            --gr-red: #D71920;
+            --gr-red-dark: #9F1239;
+            --silver-trim: #E2E8F0;
+            --success-green: #10B981;
+            --text-primary: #F8FAFC;
             --text-secondary: #94A3B8;
-            --border-color: #2A364F;
+            --border-color: #222B3D;
         }
 
         * {
@@ -40,8 +41,8 @@
             overflow-x: hidden;
             padding-bottom: 90px;
             background-image: 
-                radial-gradient(circle at 10% 10%, rgba(0, 229, 255, 0.1) 0%, transparent 45%),
-                radial-gradient(circle at 90% 50%, rgba(255, 24, 1, 0.08) 0%, transparent 45%);
+                radial-gradient(circle at 10% 10%, rgba(215, 25, 32, 0.05) 0%, transparent 45%),
+                radial-gradient(circle at 90% 50%, rgba(56, 189, 248, 0.04) 0%, transparent 45%);
         }
 
         .container {
@@ -187,14 +188,15 @@
             align-items: center;
             justify-content: center;
             gap: 10px;
-            background: linear-gradient(135deg, var(--accent-cyan), #0091EA);
-            color: #05101A;
+            background: linear-gradient(135deg, var(--gr-red), var(--gr-red-dark));
+            color: #FFFFFF;
             font-weight: 800;
             font-size: 1rem;
             padding: 16px 28px;
-            border-radius: 16px;
+            border-radius: 12px;
             text-decoration: none;
-            box-shadow: 0 8px 20px var(--accent-glow);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
             transition: all 0.2s ease;
             width: 100%;
             max-width: 340px;
@@ -215,7 +217,7 @@
             font-weight: 700;
             font-size: 0.95rem;
             padding: 14px 24px;
-            border-radius: 16px;
+            border-radius: 12px;
             text-decoration: none;
             transition: all 0.2s ease;
             width: 100%;
@@ -229,8 +231,8 @@
             color: var(--success-green);
             font-size: 0.8rem;
             font-weight: 700;
-            background: rgba(0, 230, 118, 0.08);
-            border: 1px solid rgba(0, 230, 118, 0.2);
+            background: rgba(16, 185, 129, 0.08);
+            border: 1px solid rgba(16, 185, 129, 0.2);
             padding: 6px 14px;
             border-radius: 100px;
             max-width: 90%;
@@ -239,14 +241,15 @@
 
         .hero-visual {
             margin: 28px auto 0;
-            max-width: 180px;
+            max-width: 190px;
         }
 
         .hero-visual img {
             width: 100%;
             height: auto;
-            border-radius: 36px;
-            box-shadow: 0 16px 40px rgba(0, 229, 255, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            border: 2px solid var(--border-color);
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6);
         }
 
         /* Specs Bar */
@@ -609,7 +612,7 @@
             <div class="nav-links">
                 <a href="https://github.com/FrancescoCastaldi/yaris-hv-fan-optimizer" class="nav-btn" target="_blank">GitHub</a>
                 <a href="preview.html" class="nav-btn" style="color: var(--warning-orange); font-weight: 700;">Simulatore Web</a>
-                <a href="YarisHvFanControl-v2.8.0.apk" download class="nav-btn" style="color: var(--accent-cyan); font-weight: 800;">APK v2.8.0</a>
+                <a href="YarisHvFanControl-v2.8.1.apk" download class="nav-btn" style="color: var(--gr-red); font-weight: 800;">APK v2.8.1</a>
             </div>
         </div>
     </header>
@@ -618,7 +621,8 @@
     <section class="hero">
         <div class="container">
             <div class="hero-badge">
-                <svg width="46" height="22" viewBox="0 0 148.102 72.69" style="vertical-align: middle; filter: drop-shadow(0 0 8px rgba(255,24,1,0.4));"><g><polygon points="20.171,2.426 3.109,70.264 65.164,70.264 82.23,2.426" fill="#000000" stroke="#FFFFFF" stroke-width="1.5"/><polygon points="82.51,2.426 81.212,2.426 64.142,70.264 127.935,70.264 144.991,2.426" fill="#FF1801" stroke="#FFFFFF" stroke-width="1.5"/><path fill="#FFFFFF" d="M131.368,39.218c-0.525,2.771-1.106,4.365-2.019,6.198c-1.711,3.418-5.163,5.284-10.023,5.935c-1.905,0.242-4.451,0.169-4.451,0.169l10.162,14.436h-15.077l-14.11-20.089c0,0,12.289-0.038,13.564-0.038c2.948,0,6.833-0.862,7.918-2.887c0.327-0.607,0.801-1.65,0.813-2.74c0.006-1.368-1.315-2.514-3.566-2.514c-2.257,0-22.11-0.019-22.11-0.019l-6.993,27.899H71.214l8.957-34.761c0,0,33.813-0.006,40.845-0.006C128.66,30.801,132.247,34.651,131.368,39.218"/><path fill="#FFFFFF" d="M66.159,45.183L42.666,45.2l-2.211,6.594h11.678l-1.905,6.373H31.412c-4.103,0-5.825-0.999-5.41-3.884c0.464-3.271,1.686-6.038,2.795-9.071c2.266-6.133,5.534-7.688,19.138-7.688c7.22,0,20.375,0.004,20.375,0.004l2.156-6.904c0,0-19.42-0.006-24.476-0.006c-19.939,0-26.763,2.333-30.58,12.086c-1.286,3.313-3.222,9.42-4.082,14.449c-1.022,5.933,3.566,8.249,8.449,8.415c6.746,0.226,40.626,0.116,40.626,0.116L66.159,45.183z"/></g></svg> <span style="margin-left: 8px;">TOYOTA GAZOO RACING EDITION v2.8.0</span>
+                <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--gr-red);"></span>
+                <span>TOYOTA GAZOO RACING EDITION v2.8.1</span>
             </div>
             <h1 class="hero-title">
                 Sblocca il <span class="accent">100% Boost Elettrico</span> & Cruscotto <span class="gr">GR Cockpit</span>
@@ -628,9 +632,9 @@
             </p>
 
             <div class="cta-group">
-                <a href="YarisHvFanControl-v2.8.0.apk" download class="btn-primary">
+                <a href="YarisHvFanControl-v2.8.1.apk" download class="btn-primary">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                    Scarica APK v2.8.0 (Release)
+                    Scarica APK v2.8.1 (Release)
                 </a>
                 <a href="https://github.com/FrancescoCastaldi/yaris-hv-fan-optimizer" target="_blank" class="btn-secondary">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
@@ -776,19 +780,33 @@
             </div>
 
             <div class="changelog-card">
-                <!-- v2.8.0 -->
+                <!-- v2.8.1 -->
                 <div class="release-item">
                     <div class="release-header">
-                        <span class="release-tag">v2.8.0 (Release Attuale)</span>
+                        <span class="release-tag">v2.8.1 (Release Attuale)</span>
                         <span class="release-date">04 Settembre 2026</span>
                     </div>
                     <ul class="release-list">
+                        <li><strong>Nuovo Logo Gazoo Racing Heritage Motorsport</strong>: Emblema esclusivo con trama in fibra di carbonio opaca, scudo aerodinamico a taglio inclinato, monogramma 'GR HV' in alluminio spazzolato e accenti Toyota Racing Red (#D71920) senza glow AI.</li>
+                        <li><strong>Nuove Icone App & Favicon Sincronizzate</strong>: Rigenerate tutte le icone launcher Android (MDPI fino a XXXHDPI tondo e squadrato) e favicon web multipiattaforma.</li>
+                        <li><strong>Palette Colori Motorsport Luxury</strong>: Eliminati bagliori e gradienti fittizi in favore di contrasti netti stile MoTeC / Bosch Motorsport in tutta la dashboard e sul sito web.</li>
+                    </ul>
+                </div>
+
+                <!-- v2.8.0 -->
+                <div class="release-item">
+                    <div class="release-header">
+                        <span class="release-tag" style="background: var(--surface-dark); border: 1px solid var(--border-color); color: var(--text-secondary);">v2.8.0</span>
+                        <span class="release-date">04 Settembre 2026</span>
+                    </div>
+                    <ul class="release-list">
+                        <li><strong>UX Ottimizzata Oppo A94 5G (Landscape 20:9)</strong>: Split-view Motorsport a 2 colonne in orizzontale (Telemetria/Dragy a sinistra, Ventola/Denso a destra), barra laterale azionabile con il pollice e safe padding da 32dp per punch-hole fotocamera su nero OLED puro.</li>
+                        <li><strong>Touch Targets Motorsport 52dp & Aptica</strong>: Pulsanti di preset e toggle con altezza minima 52dp e feedback aptico tattile su ogni tocco.</li>
+                        <li><strong>Google Play Protect 100% Free & Secure</strong>: Firma multi-schema RSA V1/V2/V3/V4, network security config con divieto totale cleartext, orientamento gestito runtime senza leak o reset connessione Bluetooth.</li>
                         <li><strong>Redesign UUXD MoTeC / Bosch Motorsport</strong>: Interfaccia ad altissimo contrasto Dark/OLED senza glow artificiosi, shift-light a 10 segmenti lineari e matrice 4 celle Denso.</li>
                         <li><strong>Diagnostica Closed-Loop & Hall RPM</strong>: Validazione risposta ECU Active Test (<code>30 81 06</code> -> <code>0x70 81 06 Positive ACK</code>) e stima tachimetrica fisica fino a ~4650 RPM con badge <code>ECU ACK</code>.</li>
                         <li><strong>Semantica Connessione Rigorosa a 2 Livelli</strong>: <code>[● ECU READY]</code> solo con effettivi pacchetti CAN validi in transito; <code>[▲ DONGLE OK - ATTESA ECU]</code> con placeholder <code>--</code> quando il quadro o l'auto sono spenti.</li>
                         <li><strong>Resilienza Bluetooth a Prova di Bomba</strong>: Riconnessione istantanea al riavvio del Bluetooth da sistema operativo (<code>ACTION_STATE_CHANGED</code>), drenaggio preventivo byte orfani dallo stream SPP e timeout comandi adattivo.</li>
-                        <li><strong>Scanner con Priorità Dongle OBD</strong>: Ordinamento automatico che posiziona i dongle riconosciuti (Vgate, vLinker, OBDII, ELM327) e i dispositivi già associati in cima alla lista.</li>
-                        <li><strong>Auto-Recovery CAN Bus Trasparente</strong>: Reset rapido dello stack seriale ELM327 (Warm Start <code>AT WS</code>) e ripristino ISO-TP in caso di silenzio della centralina > 5s senza caduta della connessione Bluetooth.</li>
                     </ul>
                 </div>
 
@@ -831,9 +849,9 @@
 
     <!-- Fixed Mobile Download Bar for 1-Tap Download -->
     <div class="mobile-bar">
-        <a href="YarisHvFanControl-v2.8.0.apk" download class="btn-download">
+        <a href="YarisHvFanControl-v2.8.1.apk" download class="btn-download">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Scarica APK v2.8.0 (Release)
+            Scarica APK v2.8.1 (Release)
         </a>
         <a href="https://github.com/FrancescoCastaldi/yaris-hv-fan-optimizer" target="_blank" class="btn-github" title="Vedi su GitHub">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>

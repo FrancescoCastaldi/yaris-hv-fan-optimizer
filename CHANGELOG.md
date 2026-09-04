@@ -8,6 +8,23 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)
 
 ---
 
+## [2.8.1] - 2026-09-04
+### 🏁 Gazoo Racing Heritage Motorsport Emblem & Clean Palette Refinement
+#### Added & Improved
+- **Nuovo Logo Motorsport Gazoo Racing Heritage**:
+  - Emblema esclusivo con scudo aerodinamico e trama in fibra di carbonio opaca a trama fine.
+  - Monogramma 'GR HV' in alluminio spazzolato con accenti Toyota Racing Red (`#D71920`) e dark graphite.
+  - Eliminazione totale di bagliori artificiali, fumo o glow stile AI.
+- **Sincronizzazione Completa Icone di Sistema & Web**:
+  - Nuove icone launcher Android rigenerate per tutte le densità (MDPI, HDPI, XHDPI, XXHDPI, XXXHDPI) sia in formato tondo che standard.
+  - Favicon web `favicon.ico` e immagine hero sincronizzata in `docs/icon.jpg`.
+  - Nuovo asset interno `ic_motorsport_logo.png` visualizzato nel badge di testata dell'app in Dashboard.
+- **Raffinamento Palette Colori Motorsport Luxury**:
+  - Rimozione completa di ombreggiature glow neon sul sito web `docs/index.html` e `preview.html`.
+  - Nuove classi e bottoni con gradiente racing solido e bordi metallici a taglio laser.
+
+---
+
 ## [2.8.0] - 2026-09-04
 ### 🏎️ MoTeC Motorsport Redesign, Semantica Connessione Rigorosa, Resilienza Backend & Closed-Loop Hall RPM
 #### Added & Improved
