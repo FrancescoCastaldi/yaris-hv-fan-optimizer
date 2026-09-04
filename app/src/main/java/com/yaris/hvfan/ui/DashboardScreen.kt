@@ -919,13 +919,32 @@ fun FanManagementSection(
                         color = TextSecondary,
                         letterSpacing = 0.8.sp
                     )
-                    Text(
-                        text = if (isConnected && liveState.hasEcuCommunication) "DUTY ${bat.fanSpeedLevel} / 6" else "DUTY -- / 6",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Black,
-                        fontFamily = FontFamily.Monospace,
-                        color = if (isConnected && liveState.hasEcuCommunication && bat.fanSpeedLevel > 0) AccentCyan else TextMuted
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (isConnected && liveState.hasEcuCommunication && bat.isEcuAckConfirmed && bat.estimatedFanRpm > 0) {
+                            Surface(
+                                shape = RoundedCornerShape(2.dp),
+                                color = DarkBackground,
+                                border = BorderStroke(1.dp, SuccessGreen.copy(alpha = 0.5f))
+                            ) {
+                                Text(
+                                    text = "ECU ACK • ~${bat.estimatedFanRpm} RPM",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = SuccessGreen,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+                        }
+                        Text(
+                            text = if (isConnected && liveState.hasEcuCommunication) "DUTY ${bat.fanSpeedLevel} / 6" else "DUTY -- / 6",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Black,
+                            fontFamily = FontFamily.Monospace,
+                            color = if (isConnected && liveState.hasEcuCommunication && bat.fanSpeedLevel > 0) AccentCyan else TextMuted
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))

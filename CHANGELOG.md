@@ -8,13 +8,17 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)
 
 ---
 
-## [2.6.0] - 2026-09-04
-### 🏎️ MoTeC Motorsport UUXD, Semantica Connessione Rigorosa & Resilienza Bluetooth Backend
+## [2.8.0] - 2026-09-04
+### 🏎️ MoTeC Motorsport Redesign, Semantica Connessione Rigorosa, Resilienza Backend & Closed-Loop Hall RPM
 #### Added & Improved
 - **Redesign UUXD MoTeC / Bosch Motorsport**:
   - Interfaccia ad altissimo contrasto Dark/OLED senza glow artificiosi.
   - Barra contagiri shift-light a 10 segmenti color-coded ispirata alla strumentazione da corsa.
   - Card tachimetro Dragy stile corsa e matrice a 4 celle Denso per il pacco batterie.
+- **Diagnostica a Circuito Chiuso (Closed-Loop ECU Feedback) & Hall RPM**:
+  - Invio Mode 30 IO Control con validazione di risposta `Positive ACK (0x70 81 06)`.
+  - Stima tachimetrica fisica fino a ~4650 RPM con badge dinamico `ECU ACK • ~XXXX RPM` nella scheda VENTOLA.
+  - Multi-PID Fallback a cascata per pacchi litio TNGA-B (`2228C1`, `2161`, `21C3`, `21C4`, `2228C0`).
 - **Semantica di Connessione Rigorosa a 2 Livelli (Zero Falsi Positivi)**:
   - Stato `[● ECU READY]` solo in presenza di effettivi frame CAN decodificati dalle centraline Toyota negli ultimi 5 secondi.
   - Stato `[▲ DONGLE OK - ATTESA ECU]` quando il dongle Bluetooth è associato ma l'auto ha il quadro spento o la centralina è in standby.
@@ -26,6 +30,14 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)
   - Timeout di comando adattivo e differenziato (`timeoutMs`) in `BleManager.sendCommand`.
   - Scanner con ordinamento prioritario dei dongle OBD (`Vgate`, `vLinker`, `OBDII`, `ELM327`) e dei dispositivi bonded in cima alla lista.
   - Auto-Recovery CAN trasparente: Warm Start `AT WS` dell'ELM327 e ripristino ISO-TP Flow Control dopo 5 secondi di assenza di frame CAN senza interruzione della connessione Bluetooth.
+
+---
+
+## [2.7.0] - 2026-09-01
+### 🏎️ Closed-Loop ECU Fan Confirmation & Live UI Web Simulator
+#### Added
+- Validazione risposta ECU Active Test `30 81 06`.
+- Simulatore UI Web `preview.html` per testare le funzionalità da browser.
 
 ---
 

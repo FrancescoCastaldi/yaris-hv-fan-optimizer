@@ -59,6 +59,8 @@ data class HvBatteryStatus(
     val intakeTemp: Double = 0.0,
     val fanSpeedLevel: Int = 0, // 0 to 6
     val isFanForced: Boolean = false,
+    val isEcuAckConfirmed: Boolean = false,
+    val estimatedFanRpm: Int = 0,
     val isThermalThrottled: Boolean = false,
     val timestamp: Long = System.currentTimeMillis()
 )
@@ -253,14 +255,18 @@ object ToyotaYarisCommands {
     const val PID_THROTTLE_POS     = "0111" // Formula: (A * 100) / 255 (%)
     const val CMD_MULTI_PID_ENGINE = "010D0C11" // Batched: Speed (0D), RPM (0C), Throttle (11)
 
-    // Toyota Enhanced PID (Mode 22 UDS / Mode 21 KWP)
-    const val PID_READ_BATTERY_DATA_TNGA = "2228C1"
-    const val PID_READ_BATTERY_DATA_LEGACY = "2161"
+    // Toyota Enhanced PID (Mode 22 UDS / Mode 21 KWP / Lithium Packs)
+    const val PID_READ_BATTERY_DATA_TNGA = "2228C1"      // Toyota TNGA-B Primary Mode 22
+    const val PID_READ_BATTERY_DATA_LEGACY = "2161"      // KWP Mode 21 Fallback
+    const val PID_READ_BATTERY_DATA_LITHIUM_1 = "21C3"   // TNGA Lithium Pack Fallback 1
+    const val PID_READ_BATTERY_DATA_LITHIUM_2 = "21C4"   // TNGA Lithium Pack Fallback 2
+    const val PID_READ_BATTERY_DATA_ALT = "2228C0"       // Alternative Mode 22
 
     // Active Test / IO Control: Set Battery Cooling Fan to Level 6 (MAX)
-    const val CMD_FAN_MAX_SPEED_UDS = "300806"       // Mode 30 IO Control (Fan Level 6)
-    const val CMD_FAN_MAX_SPEED_ALT = "2F580306"     // Mode 2F IO Control Short Term Adjustment to 6
-    const val CMD_TESTER_PRESENT     = "3E00"         // Tester Present keep-alive
+    const val CMD_FAN_MAX_SPEED_UDS = "300806"           // Mode 30 IO Control (Fan Level 6)
+    const val CMD_FAN_MAX_SPEED_UDS_ALT = "308106"       // Mode 30 IO Control Variant 81 06
+    const val CMD_FAN_MAX_SPEED_ALT = "2F580306"         // Mode 2F IO Control Short Term Adjustment to 6
+    const val CMD_TESTER_PRESENT     = "3E00"            // Tester Present keep-alive
 
     data class MultiPidEngineData(
         val speedKmh: Int? = null,
@@ -496,10 +502,12 @@ object ToyotaYarisCommands {
 
         try {
             var hexPayload = clean
-            if (hexPayload.contains("6228C1")) {
-                hexPayload = hexPayload.substring(hexPayload.indexOf("6228C1") + 6)
-            } else if (hexPayload.contains("6161")) {
-                hexPayload = hexPayload.substring(hexPayload.indexOf("6161") + 4)
+            when {
+                hexPayload.contains("6228C1") -> hexPayload = hexPayload.substring(hexPayload.indexOf("6228C1") + 6)
+                hexPayload.contains("6228C0") -> hexPayload = hexPayload.substring(hexPayload.indexOf("6228C0") + 6)
+                hexPayload.contains("6161")   -> hexPayload = hexPayload.substring(hexPayload.indexOf("6161") + 4)
+                hexPayload.contains("61C3")   -> hexPayload = hexPayload.substring(hexPayload.indexOf("61C3") + 4)
+                hexPayload.contains("61C4")   -> hexPayload = hexPayload.substring(hexPayload.indexOf("61C4") + 4)
             }
 
             if (hexPayload.length < 8) {
@@ -519,6 +527,9 @@ object ToyotaYarisCommands {
                 if (isForced) 6 else 0
             }
 
+            val rpmMap = mapOf(0 to 0, 1 to 1250, 2 to 1850, 3 to 2450, 4 to 3100, 5 to 3850, 6 to 4650)
+            val fanRpm = rpmMap[fanLevel] ?: (fanLevel * 750)
+
             val temps = listOf(t1, t2, t3, t4).filter { it > -30 && it < 100 }
             val maxT = if (temps.isNotEmpty()) temps.maxOrNull() ?: t1 else t1
             val avgT = if (temps.isNotEmpty()) temps.average() else t1
@@ -533,6 +544,8 @@ object ToyotaYarisCommands {
                 intakeTemp = intake,
                 fanSpeedLevel = fanLevel,
                 isFanForced = isForced,
+                isEcuAckConfirmed = isForced || fanLevel > 0,
+                estimatedFanRpm = fanRpm,
                 isThermalThrottled = maxT >= 36.0,
                 timestamp = System.currentTimeMillis()
             )
