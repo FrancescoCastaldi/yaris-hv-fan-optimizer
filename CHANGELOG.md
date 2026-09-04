@@ -8,6 +8,17 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)
 
 ---
 
+## [2.8.2] - 2026-09-04
+### 🏁 Gazoo Racing Heritage Motorsport Final Deployment & Site Sync
+#### Added & Improved
+- **Sincronizzazione Completa Release v2.8.2**:
+  - Allineamento build Android Gradle con `versionName = "2.8.2"` e `versionCode = 14`.
+  - Aggiornamento script di build per generazione e firma automatica di `YarisHvFanControl-v2.8.2.apk`.
+  - Sincronizzazione completa del portale web (`docs/index.html`, `docs/404.html`, `docs/vercel.json` e workflow CI/CD) con download diretto dell'APK v2.8.2.
+  - Aggiornamento documentazione tecnica, README e manifest di compatibilità.
+
+---
+
 ## [2.8.1] - 2026-09-04
 ### 🏁 Gazoo Racing Heritage Motorsport Emblem & Clean Palette Refinement
 #### Added & Improved
