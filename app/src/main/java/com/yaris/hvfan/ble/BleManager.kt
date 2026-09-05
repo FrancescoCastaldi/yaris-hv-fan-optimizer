@@ -669,8 +669,8 @@ class BleManager(private val context: Context) {
                 Log.e(TAG, "GATT errore di stato: $status")
                 internalDisconnect()
 
-                // Fallback automatico su Classic SPP se AUTO
-                if (lastTransportType == BluetoothTransportType.AUTO && device != null) {
+                // Fallback automatico su Classic SPP se AUTO o se il dispositivo è associato (bonded) e fallisce su BLE
+                if ((lastTransportType == BluetoothTransportType.AUTO || (device?.bondState == BluetoothDevice.BOND_BONDED && reconnectAttempt <= 1)) && device != null) {
                     Log.i(TAG, "GATT status $status, fallback su Classic SPP...")
                     connectClassicSocket(device)
                 } else {
@@ -822,6 +822,24 @@ class BleManager(private val context: Context) {
 
     // --- Unified Command Dispatcher (SPP Socket or BLE GATT) ---
 
+    private fun writeGattCharacteristic(
+        gatt: BluetoothGatt,
+        characteristic: BluetoothGattCharacteristic,
+        data: ByteArray,
+        writeType: Int
+    ): Boolean {
+        characteristic.writeType = writeType
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val status = gatt.writeCharacteristic(characteristic, data, writeType)
+            status == BluetoothStatusCodes.SUCCESS
+        } else {
+            @Suppress("DEPRECATION")
+            characteristic.value = data
+            @Suppress("DEPRECATION")
+            gatt.writeCharacteristic(characteristic)
+        }
+    }
+
     /**
      * Invia la sequenza di risveglio preventiva "\r\r" per svegliare Vgate iCar Pro / chip ELM327
      * dallo stato di sleep / low-power standby senza attendere il terminatore rigido.
@@ -842,9 +860,7 @@ class BleManager(private val context: Context) {
                 val gatt = bluetoothGatt
                 val writeCh = writeCharacteristic
                 if (gatt != null && writeCh != null) {
-                    writeCh.value = wakeBytes
-                    writeCh.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-                    gatt.writeCharacteristic(writeCh)
+                    writeGattCharacteristic(gatt, writeCh, wakeBytes, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE)
                 }
             }
             delay(150)
@@ -860,24 +876,9 @@ class BleManager(private val context: Context) {
         command: String,
         timeoutMs: Long = COMMAND_TIMEOUT_MS
     ): String = commandMutex.withLock {
-        // 0. Purge preventivo dello stream e del buffer di risposta per eliminare residui
+        // 0. Purge preventivo del buffer di risposta per eliminare residui precedenti (thread-safe)
         synchronized(responseBuffer) {
             responseBuffer.setLength(0)
-        }
-        try {
-            val inStream = socketInputStream
-            if (bluetoothSocket?.isConnected == true && inStream != null) {
-                withContext(Dispatchers.IO) {
-                    val avail = inStream.available()
-                    if (avail > 0) {
-                        Log.d(TAG, "Drenaggio preventivo di $avail byte orfani dallo stream SPP...")
-                        val discardBuf = ByteArray(avail)
-                        inStream.read(discardBuf)
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Errore durante il purge dello stream in entrata", e)
         }
 
         val deferred = CompletableDeferred<String>()
@@ -898,15 +899,14 @@ class BleManager(private val context: Context) {
             val gatt = bluetoothGatt ?: throw IllegalStateException("Nessun canale Bluetooth connesso")
             val writeCh = writeCharacteristic ?: throw IllegalStateException("Caratteristica Write non disponibile")
 
-            writeCh.value = cmdBytes
-            writeCh.writeType = if ((writeCh.properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0 &&
+            val writeType = if ((writeCh.properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0 &&
                 (writeCh.properties and BluetoothGattCharacteristic.PROPERTY_WRITE) == 0) {
                 BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
             } else {
                 BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
             }
 
-            val success = gatt.writeCharacteristic(writeCh)
+            val success = writeGattCharacteristic(gatt, writeCh, cmdBytes, writeType)
             if (!success) {
                 activeResponseDeferred = null
                 throw RuntimeException("Fallita scrittura su BLE per comando: $command")

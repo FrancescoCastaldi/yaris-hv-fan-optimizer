@@ -40,14 +40,30 @@ object Elm327Protocol {
             .trim()
     }
 
-    private val VOLTAGE_REGEX = Regex("""(\d{1,2}\.\d+)""")
+    private val VOLTAGE_WITH_UNIT_REGEX = Regex("""(\d{1,2}\.\d+)\s*V""", RegexOption.IGNORE_CASE)
+    private val GENERIC_DECIMAL_REGEX = Regex("""(\d{1,2}\.\d+)""")
 
     /**
      * Estrae la tensione reale della batteria 12V da risposte AT RV (es. "14.2V", "13.8V", "12.4V").
+     * Previene l'errata estrazione di versioni firmware del dongle (es. "ELM327 v1.5" o "v2.2").
      */
     fun parseBatteryVoltage(raw: String): Float? {
-        val match = VOLTAGE_REGEX.find(raw)
-        return match?.groupValues?.get(1)?.toFloatOrNull()
+        // 1. Cerca prima con suffisso 'V' (priorità massima per non confondersi con banner tipo "ELM327 v1.5")
+        val matchWithUnit = VOLTAGE_WITH_UNIT_REGEX.find(raw)
+        if (matchWithUnit != null) {
+            val v = matchWithUnit.groupValues[1].toFloatOrNull()
+            if (v != null && v in 5.0f..20.0f) return v
+        }
+
+        // 2. Fallback: cerca decimali che rientrino in un intervallo di tensione plausibile per batteria auto (8.0V - 18.0V)
+        val allMatches = GENERIC_DECIMAL_REGEX.findAll(raw)
+        for (match in allMatches) {
+            val v = match.groupValues[1].toFloatOrNull()
+            if (v != null && v in 8.0f..18.0f) {
+                return v
+            }
+        }
+        return null
     }
 
     /**

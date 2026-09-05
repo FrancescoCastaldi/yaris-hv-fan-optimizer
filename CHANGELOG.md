@@ -6,6 +6,29 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)
 - **MINOR (`0.X.0`)**: Aggiunta di nuove funzionalità, sensori, codifiche o telemetrie.
 - **PATCH (`0.0.X`)**: Bugfix, ottimizzazioni di performance o aggiustamenti grafici minori.
 
+## [2.9.4] - 2026-09-05
+### 🛡️ Thread-Safe Stream Architecture, Flow Control Hardening & Firmware Version Banner Immunity
+#### Added & Improved
+- **Immunità del Parser Tensione a Banner Firmware ELM327/STN**:
+  - Risolto potenziale falso riconoscimento della versione dongle (es. `ELM327 v1.5` o `STN1110 v2.2`) come tensione 12V: `parseBatteryVoltage()` dà priorità assoluta al suffisso `V` e applica filtraggio sul range reale di tensione automotive (8.0V - 18.0V).
+- **Architettura di Streaming Bluetooth SPP Thread-Safe**:
+  - Rimosso l'accesso concorrente su `socketInputStream` in `sendCommand`: tutta la ricezione dei byte avviene in modo atomico nel thread reader `startSocketReader`, prevenendo race condition, corruzione dei frame o disconnessioni spurie del socket RFCOMM.
+- **Supporto Moderno Android 13+ (API 33+) BLE GATT**:
+  - Implementato l'helper `writeGattCharacteristic` con dispatch a `BluetoothStatusCodes.SUCCESS`, eliminando deprecazioni del compilatore e garantendo compatibilità nativa su Android 13/14+.
+- **Raffinamento Hardware Flow Control ISO-TP & Timeout Adattivo**:
+  - Memorizzazione permanente dei registri `AT FC SH 7E2` e `AT FC SD 300000` all'avvio o recovery senza overhead di riscrittura ridondante ad ogni ciclo.
+  - Assegnazione dinamica dei timeout CAN: `AT ST 64` (~400ms) durante l'accesso UDS multi-frame alla centralina batteria (`7E2`) e `AT ST 20` (~80ms) per la telemetria rapida motore (`7E0`).
+  - Rilevamento automatico di compatibilità `AT FC SM 1` con fallback trasparente in caso di cloni ELM327 non standard.
+- **Grace Period di Avvio & Ripristino Completo in Auto-Recovery**:
+  - Evitato il trigger immediato di auto-recovery al primissimo ciclo dopo l'inizializzazione quando `lastValidCanTimestamp == 0L`, introducendo un grace period di 8s.
+  - Inclusione esplicita di `AT AT 1` e `AT CAF 1` durante la sequenza di warm auto-recovery.
+  - Probe CAN periodico (~10s) in modalità standby per sincronizzazione immediata se l'auto è attiva con batteria sotto i 13.0V.
+- **UI Dashboard Standby & Landscape Banner**:
+  - Distinzione visiva tra auto in standby a basso consumo (`AccentCyan` e icona hourglass) ed effettivo allarme centralina non rispondente (`WarningOrange`).
+  - Banner di standby integrato coerentemente sia nel layout verticale (Portrait) che orizzontale (Landscape).
+- **Pipeline di Release & Version Increment**:
+  - Bump versione a `v2.9.4` (`versionCode = 19`), aggiornamento file di build e sincronizzazione completa sito web `docs/`.
+
 ## [2.9.3] - 2026-09-05
 ### 🔌 Intelligent Hybrid Assistant Handshake & Hardware ISO-TP Flow Control
 #### Added & Improved
