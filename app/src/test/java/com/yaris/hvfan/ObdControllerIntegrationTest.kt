@@ -428,6 +428,17 @@ class ObdControllerIntegrationTest {
         val rawDirty = "SEARCHING... 13.5V\r\n>"
         assertEquals(13.5f, Elm327Protocol.parseBatteryVoltage(rawDirty) ?: 0f, 0.05f)
 
+        // Verifiche critiche per prevenire match errati su banner firmware dongle ("v1.5", "v2.2")
+        val rawWithVgateBanner = "ELM327 v1.5\r\n14.2V\r\n>"
+        assertEquals(14.2f, Elm327Protocol.parseBatteryVoltage(rawWithVgateBanner) ?: 0f, 0.05f)
+
+        val rawWithStnBanner = "STN1110 v2.2\r\n13.9V\r\n>"
+        assertEquals(13.9f, Elm327Protocol.parseBatteryVoltage(rawWithStnBanner) ?: 0f, 0.05f)
+
+        // Banner orfano senza voltaggio non deve essere interpretato come 1.5V
+        val rawBannerOnly = "ELM327 v1.5\r\n>"
+        assertNull(Elm327Protocol.parseBatteryVoltage(rawBannerOnly))
+
         val rawInvalid = "NO DATA\r\n>"
         assertNull(Elm327Protocol.parseBatteryVoltage(rawInvalid))
 
@@ -435,8 +446,10 @@ class ObdControllerIntegrationTest {
         assertTrue(Elm327Protocol.isVehicleReady(14.2f))
         assertTrue(Elm327Protocol.isVehicleReady(13.8f))
         assertTrue(Elm327Protocol.isVehicleReady(13.0f))
+        assertFalse(Elm327Protocol.isVehicleReady(12.8f))
         assertFalse(Elm327Protocol.isVehicleReady(12.6f))
         assertFalse(Elm327Protocol.isVehicleReady(11.9f))
+        assertFalse(Elm327Protocol.isVehicleReady(1.5f)) // Non deve essere considerato valido né ready
         assertFalse(Elm327Protocol.isVehicleReady(null))
     }
 

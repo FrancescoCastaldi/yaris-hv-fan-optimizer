@@ -30,6 +30,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.content.res.Configuration
@@ -261,6 +262,59 @@ fun DashboardScreen(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
+                // Banner Standby / Alert per orientamento Landscape
+                if ((connectionState is BleConnectionState.Ready || connectionState is BleConnectionState.Connected) &&
+                    (!liveState.hasEcuCommunication || liveState.isStandbyMode) && liveState.ecuAlertMessage != null) {
+                    val isStandby = liveState.isStandbyMode
+                    val bannerBorder = if (isStandby) AccentCyan.copy(alpha = 0.5f) else WarningOrange
+                    val bannerColor = if (isStandby) AccentCyan else WarningOrange
+                    val bannerTitle = if (isStandby) "MODALITÀ STANDBY" else "CENTRALINA NON RISPONDE"
+                    val bannerIcon = if (isStandby) Icons.Default.HourglassEmpty else Icons.Default.Warning
+
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 6.dp),
+                        shape = RoundedCornerShape(4.dp),
+                        color = DarkBackground,
+                        border = BorderStroke(1.dp, bannerBorder)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = bannerIcon,
+                                contentDescription = null,
+                                tint = bannerColor,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "$bannerTitle: ${liveState.ecuAlertMessage}",
+                                fontSize = 9.5.sp,
+                                color = TextSecondary,
+                                modifier = Modifier.weight(1f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            OutlinedButton(
+                                onClick = onReconnect,
+                                shape = RoundedCornerShape(4.dp),
+                                border = BorderStroke(1.dp, bannerBorder),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = bannerColor),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                modifier = Modifier.height(24.dp)
+                            ) {
+                                Text(text = if (isStandby) "SVEGLIA" else "RIPROVA", fontSize = 9.sp, fontWeight = FontWeight.Black)
+                            }
+                        }
+                    }
+                }
+
                 // Split 2-Column Screen Workspace (Cockpit + Fan side-by-side or scrollable tab)
                 Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                     if (selectedTab == DashboardTab.GR_COCKPIT) {
@@ -389,15 +443,22 @@ fun DashboardScreen(
                 }
             }
 
-            // --- Auto-Alert Banner for ECU Communication ---
+            // --- Auto-Alert / Standby Status Banner ---
             if ((connectionState is BleConnectionState.Ready || connectionState is BleConnectionState.Connected) &&
-                !liveState.hasEcuCommunication && liveState.ecuAlertMessage != null) {
+                (!liveState.hasEcuCommunication || liveState.isStandbyMode) && liveState.ecuAlertMessage != null) {
                 Spacer(modifier = Modifier.height(10.dp))
+                val isStandby = liveState.isStandbyMode
+                val bannerBorder = if (isStandby) AccentCyan.copy(alpha = 0.6f) else WarningOrange
+                val bannerColor = if (isStandby) AccentCyan else WarningOrange
+                val bannerTitle = if (isStandby) "MODALITÀ STANDBY A BASSO CONSUMO" else "CENTRALINA NON RISPONDE"
+                val bannerIcon = if (isStandby) Icons.Default.HourglassEmpty else Icons.Default.Warning
+                val buttonText = if (isStandby) "SVEGLIA" else "RIPROVA"
+
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(4.dp),
                     color = DarkBackground,
-                    border = BorderStroke(1.dp, WarningOrange)
+                    border = BorderStroke(1.dp, bannerBorder)
                 ) {
                     Row(
                         modifier = Modifier
@@ -406,23 +467,23 @@ fun DashboardScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Warning,
+                            imageVector = bannerIcon,
                             contentDescription = null,
-                            tint = WarningOrange,
+                            tint = bannerColor,
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "CENTRALINA NON RISPONDE",
+                                text = bannerTitle,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Black,
-                                color = WarningOrange,
+                                color = bannerColor,
                                 letterSpacing = 0.8.sp
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = liveState.ecuAlertMessage ?: "Verifica che il quadro dell'auto sia su READY (spia verde accesa) e che l'adattatore OBD sia ben inserito.",
+                                text = liveState.ecuAlertMessage ?: "In attesa di connessione centralina Toyota.",
                                 fontSize = 10.sp,
                                 color = TextSecondary,
                                 lineHeight = 14.sp
@@ -432,12 +493,12 @@ fun DashboardScreen(
                         OutlinedButton(
                             onClick = onReconnect,
                             shape = RoundedCornerShape(4.dp),
-                            border = BorderStroke(1.dp, WarningOrange),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = WarningOrange),
+                            border = BorderStroke(1.dp, bannerBorder),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = bannerColor),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
                             modifier = Modifier.height(30.dp)
                         ) {
-                            Text(text = "RIPROVA", fontSize = 10.sp, fontWeight = FontWeight.Black)
+                            Text(text = buttonText, fontSize = 10.sp, fontWeight = FontWeight.Black)
                         }
                     }
                 }

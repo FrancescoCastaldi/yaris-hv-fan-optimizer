@@ -61,8 +61,11 @@ class ObdController(
     private var loopJob: Job? = null
     private var isProtocolInitialized = false
     private var isMultiPidSupported = false
+    private var isCustomFcSupported = true
     private var consecutiveCanErrors = 0
     private var lastValidCanTimestamp = 0L
+    private var loopStartTimestamp = 0L
+    private var standbyCycleCounter = 0
     private var lastBatteryCheckTimestamp = 0L
     private var lastCoolantCheckTimestamp = 0L
     private var pendingBatterySafetyCheck = false
@@ -147,6 +150,8 @@ class ObdController(
         loopJob = scope.launch(Dispatchers.IO) {
             try {
                 consecutiveCanErrors = 0
+                loopStartTimestamp = System.currentTimeMillis()
+                standbyCycleCounter = 0
                 _liveState.value = _liveState.value.copy(
                     isInitialized = false,
                     isLoopRunning = false,
@@ -197,7 +202,13 @@ class ObdController(
                 bleManager.sendCommand(ToyotaYarisCommands.CMD_SET_RECEIVE_FILTER)     // AT CRA 7EA
                 bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SH_BATTERY)          // AT FC SH 7E2
                 bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SD_CTS)              // AT FC SD 300000
-                bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SM_CUSTOM)           // AT FC SM 1
+                val resFcSm = bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SM_CUSTOM) // AT FC SM 1
+                isCustomFcSupported = !Elm327Protocol.isError(resFcSm) && !resFcSm.contains("?")
+                if (isCustomFcSupported) {
+                    addLog("✅ Flow Control Hardware ISO-TP Custom (AT FC SM 1) attivo per ECU Batteria 7E2!")
+                } else {
+                    addLog("ℹ️ Adattatore OBD non supporta AT FC SM 1 (risposta: ${Elm327Protocol.cleanResponse(resFcSm)}). Fallback su Flow Control standard.")
+                }
                 currentCanHeader = ToyotaYarisCommands.HEADER_BATTERY_ECU
 
                 // 6. Test di reattività iniziale CAN bus su batteria HV
@@ -236,9 +247,6 @@ class ObdController(
                 } else {
                     isMultiPidSupported = false
                 }
-
-                // Ottimizzazione timeout chip ELM327 per massimizzare il frame-rate CAN
-                bleManager.sendCommand("AT ST 20") // ~80ms timeout per latenza minima
 
                 isProtocolInitialized = true
                 _liveState.value = _liveState.value.copy(
@@ -290,14 +298,18 @@ class ObdController(
             bleManager.sendCommand("AT SH $header")
             bleManager.sendCommand("AT CRA $filter")
             if (header == ToyotaYarisCommands.HEADER_BATTERY_ECU) {
-                bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SH_BATTERY)
-                bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SD_CTS)
-                bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SM_CUSTOM)
+                if (isCustomFcSupported) {
+                    bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SM_CUSTOM)
+                }
+                bleManager.sendCommand("AT ST 64") // ~400ms timeout per multi-frame UDS 2228C1
             } else {
-                bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SM_DEFAULT)
+                if (isCustomFcSupported) {
+                    bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SM_DEFAULT)
+                }
+                bleManager.sendCommand("AT ST 20") // ~80ms timeout per loop rapido telemetria
             }
             currentCanHeader = header
-            delay(30)
+            delay(25)
         }
     }
 
@@ -305,31 +317,35 @@ class ObdController(
     private var lastAutoRecoveryTimestamp = 0L
 
     private suspend fun executeCanBusAutoRecovery() {
-        addLog("⚠️ Nessun dato CAN ricevuto da > 5s: verifica tensione 12V e auto-recovery...")
+        addLog("⚠️ Nessun dato CAN ricevuto: verifica tensione 12V e auto-recovery...")
         val voltRes = bleManager.sendCommand(Elm327Protocol.CMD_VOLTAGE)
         val volt = Elm327Protocol.parseBatteryVoltage(voltRes) ?: lastKnown12v
         lastKnown12v = volt
         if (volt < 12.8f && volt > 0f) {
             addLog("Auto non in READY (12V: ${volt}V <= 12.8V): passaggio a standby a basso consumo.")
+            currentCanHeader = ""
             _liveState.value = _liveState.value.copy(
                 isVehicleReady = false,
                 isStandbyMode = true,
                 hasEcuCommunication = false,
                 auxiliary12vVoltage = volt,
-                ecuAlertMessage = "Auto in standby (12V: ${volt}V): in attesa di spia verde READY..."
+                ecuAlertMessage = "Auto in standby a basso consumo (12V: ${volt}V): in attesa di spia verde READY..."
             )
             return
         }
 
         // Reset rapido dello stack seriale ELM327 senza perdita connessione BLE
         bleManager.sendCommand(Elm327Protocol.CMD_WARM_START) // Warm Start
-        delay(100)
+        delay(200)
         bleManager.sendCommand("AT E0")
         bleManager.sendCommand("AT L0")
         bleManager.sendCommand("AT S0")
         bleManager.sendCommand("AT H0")
+        bleManager.sendCommand("AT AT 1")
         bleManager.sendCommand("AT SP 6")
-        bleManager.sendCommand("AT ST 20")
+        bleManager.sendCommand("AT CAF 1")
+        bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SH_BATTERY)
+        bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SD_CTS)
         currentCanHeader = "" // Forza riapplicazione degli header
         ensureCanHeader(ToyotaYarisCommands.HEADER_BATTERY_ECU, ToyotaYarisCommands.FILTER_BATTERY_ECU)
         addLog("✅ Procedura auto-recovery completata. Ripristino polling CAN.")
@@ -342,17 +358,26 @@ class ObdController(
 
         // GESTIONE STATO STANDBY A BASSO CONSUMO (Auto spenta o non READY)
         if (_liveState.value.isStandbyMode) {
+            standbyCycleCounter++
             val voltRes = bleManager.sendCommand(Elm327Protocol.CMD_VOLTAGE)
             val volt = Elm327Protocol.parseBatteryVoltage(voltRes) ?: lastKnown12v
             lastKnown12v = volt
 
-            if (Elm327Protocol.isVehicleReady(volt)) {
-                addLog("⚡ RILEVATO STATO READY AUTO (12V: ${volt}V > 13.0V)! Uscita da standby...")
+            val isReadyByVoltage = Elm327Protocol.isVehicleReady(volt)
+            var canOk = false
+
+            // Se la tensione è sopra i 13.0V o ogni 4 cicli (~10s) tenta un probe CAN di sincronizzazione
+            if (isReadyByVoltage || standbyCycleCounter % 4 == 0) {
+                currentCanHeader = ""
                 ensureCanHeader(ToyotaYarisCommands.HEADER_BATTERY_ECU, ToyotaYarisCommands.FILTER_BATTERY_ECU)
                 val testRes = bleManager.sendCommand(ToyotaYarisCommands.PID_READ_BATTERY_DATA_TNGA)
                 val cleanTest = Elm327Protocol.cleanResponse(testRes)
-                val canOk = cleanTest.contains("6228C1") || (!Elm327Protocol.isError(cleanTest) && cleanTest.length >= 8)
+                canOk = cleanTest.contains("6228C1") || (!Elm327Protocol.isError(cleanTest) && cleanTest.length >= 8)
+            }
 
+            if (isReadyByVoltage || canOk) {
+                addLog("⚡ RILEVATO STATO READY AUTO (12V: ${volt}V, CAN: ${if (canOk) "OK" else "in attesa"})! Uscita da standby...")
+                standbyCycleCounter = 0
                 _liveState.value = _liveState.value.copy(
                     isVehicleReady = true,
                     isStandbyMode = false,
@@ -377,25 +402,28 @@ class ObdController(
         }
 
         // GESTIONE TRANSIZIONE A STANDBY SE L'AUTO VIENE SPENTA DURANTE IL FUNZIONAMENTO
-        if (consecutiveCanErrors >= 5 && (now - lastValidCanTimestamp > 5000L)) {
+        if (consecutiveCanErrors >= 5 && lastValidCanTimestamp > 0L && (now - lastValidCanTimestamp > 5000L)) {
             val voltRes = bleManager.sendCommand(Elm327Protocol.CMD_VOLTAGE)
             val volt = Elm327Protocol.parseBatteryVoltage(voltRes) ?: lastKnown12v
             lastKnown12v = volt
             if (volt < 12.8f && volt > 0f) {
                 addLog("💤 Auto spenta (12V: ${volt}V <= 12.8V, CAN silente). Entrata in standby a basso consumo.")
+                currentCanHeader = ""
                 _liveState.value = _liveState.value.copy(
                     isVehicleReady = false,
                     isStandbyMode = true,
                     hasEcuCommunication = false,
                     auxiliary12vVoltage = volt,
-                    ecuAlertMessage = "Auto in standby (12V: ${volt}V): in attesa di spia verde READY..."
+                    ecuAlertMessage = "Auto in standby a basso consumo (12V: ${volt}V): in attesa di spia verde READY..."
                 )
                 return
             }
         }
 
-        // 0. Auto-Recovery se il bus CAN è silente da oltre 5000ms (e sono passati almeno 10s dall'ultimo recovery)
-        if (isProtocolInitialized && (now - lastValidCanTimestamp > 5000L) && (now - lastAutoRecoveryTimestamp > 10000L)) {
+        // 0. Auto-Recovery se il bus CAN è silente da oltre 5000ms dopo che era attivo, o se bloccato all'avvio (>8s)
+        val isCanSilentAfterActive = lastValidCanTimestamp > 0L && (now - lastValidCanTimestamp > 5000L)
+        val isInitialCanStuck = lastValidCanTimestamp == 0L && (now - loopStartTimestamp > 8000L)
+        if (isProtocolInitialized && (isCanSilentAfterActive || isInitialCanStuck) && (now - lastAutoRecoveryTimestamp > 10000L)) {
             lastAutoRecoveryTimestamp = now
             executeCanBusAutoRecovery()
         }
