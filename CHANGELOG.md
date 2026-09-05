@@ -8,6 +8,22 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)
 
 ---
 
+## [2.9.1] - 2026-09-05
+### 🏁 Motorsport Micro-Twill Carbon Fiber Background & High-Speed Tiling
+#### Added & Improved
+- **Pattern Esclusivo Fibra di Carbonio Micro-Twill 2x2**:
+  - Implementazione pattern opaco Motorsport Micro-Twill Weave 2x2 a 45° ad elevato contrasto ed eleganza estetica.
+  - Generazione hardware-accelerata nativa su Android (`CarbonBackground.kt`) tramite `BitmapShader` (8x8 px) e tiling a ciclo zero-CPU, con morbida vignettatura radiale scura (`#0B0E11` -> `#050709`) per ottimizzazione consumi su display OLED/AMOLED.
+  - Applicazione uniforme alla Dashboard nativa Jetpack Compose (`DashboardScreen.kt`) per entrambi gli orientamenti portrait e landscape.
+- **Sincronizzazione Web & Brand Styling**:
+  - Applicazione del texture gradient SVG Micro-Twill con overlay radiale scuro su tutto il portale web (`docs/index.html`, `docs/404.html`, `docs/preview.html`).
+  - Aggiornamento dei badge di rilascio, card di download e link APK alla versione `v2.9.1` (`versionCode = 16`).
+- **Pipeline di Build e Deploy**:
+  - Aggiornato `build_apk.bat` con generazione automatica di `YarisHvFanControl-v2.9.1.apk`.
+  - Configurate le route Vercel (`docs/vercel.json`) e il workflow CI/CD GitHub Actions (`.github/workflows/deploy.yml`).
+
+---
+
 ## [2.9.0] - 2026-09-05
 ### 🌀 Smart Auto-Cooling Protection Suite & Dynamic Thermal Hysteresis
 #### Added & Improved

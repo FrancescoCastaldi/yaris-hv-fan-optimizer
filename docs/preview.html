@@ -1,9 +1,9 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="it">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Live UI Simulator - Yaris HV Fan & GR Cockpit v2.6.1</title>
+    <title>Live UI Simulator - Yaris HV Fan & GR Cockpit v2.9.1</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
@@ -31,10 +31,12 @@
         }
 
         body {
-            background-color: #05070A;
+            background-color: #07090D;
             background-image: 
-                radial-gradient(circle at 50% 10%, rgba(0, 229, 255, 0.08) 0%, transparent 40%),
-                radial-gradient(circle at 80% 80%, rgba(255, 24, 1, 0.06) 0%, transparent 40%);
+                radial-gradient(circle at 50% 30%, rgba(18, 22, 31, 0.72) 0%, rgba(6, 8, 12, 0.96) 80%),
+                repeating-linear-gradient(45deg, #0F131C 0px, #0F131C 3px, #161B27 3px, #161B27 6px),
+                repeating-linear-gradient(-45deg, #111622 0px, #111622 3px, #0A0D14 3px, #0A0D14 6px);
+            background-blend-mode: normal, overlay;
             color: var(--text-primary);
             min-height: 100vh;
             display: flex;

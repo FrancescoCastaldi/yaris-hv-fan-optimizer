@@ -81,7 +81,7 @@ fun DashboardScreen(
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFF06080D)) // Pure deep OLED black to hide punch hole
+                .carbonFiberBackground()
                 .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp) // 32dp punch-hole safe margin
         ) {
             // 1. VERTICAL COMPACT NAVIGATION SIDEBAR (Left Thumb Ergonomics)
@@ -338,7 +338,7 @@ fun DashboardScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(DarkBackground)
+                .carbonFiberBackground()
                 .padding(14.dp)
                 .verticalScroll(scrollState)
         ) {
