@@ -6,6 +6,13 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)
 - **MINOR (`0.X.0`)**: Aggiunta di nuove funzionalità, sensori, codifiche o telemetrie.
 - **PATCH (`0.0.X`)**: Bugfix, ottimizzazioni di performance o aggiustamenti grafici minori.
 
+## [2.9.5] - 2026-09-06
+- Fix critico: Negoziazione protocollo CAN con PID OBD-II standard (0100) prima delle query UDS Toyota
+- Fix critico: Rilevamento supporto Flow Control (AT FC) prima della configurazione — compatibilità Vlinker/clone
+- Fix: Timeout estesi per prima query CAN (12s per SEARCHING) e query batteria HV (6s)
+- Fix: Tentativo PID alternativi (2228C0, 2161, 21C3) se 2228C1 non risponde
+- Fix: Auto-recovery non invia più comandi AT FC su adattatori non compatibili
+- Fix: Fallback automatico su AT SP 0 (auto-detect) se AT SP 6 non trova il protocollo
 ## [2.9.4] - 2026-09-05
 ### 🛡️ Thread-Safe Stream Architecture, Flow Control Hardening & Firmware Version Banner Immunity
 #### Added & Improved
@@ -224,3 +231,4 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)
 - **Telemetria Motore & Anticipo Termico**: Anticipo reale (`PID 010E` °BTDC), carico motore (%) e pedale gas (%).
 - **Firma Digitale RSA 2048-bit**: Certificato di sicurezza per Android V1/V2/V3.
 - **Portale Web Mobile-Friendly**: Download diretto APK con barra sticky 1-tap.
+
