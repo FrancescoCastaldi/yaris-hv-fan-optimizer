@@ -19,6 +19,10 @@ class AppPreferences(context: Context) {
         private const val KEY_LAST_0_100 = "dragy_last_0_100"
         private const val KEY_LAST_SPRINT_BATT_TEMP = "dragy_last_batt_temp"
         private const val KEY_LAST_SPRINT_ECT = "dragy_last_ect"
+        private const val KEY_AUTO_COOLING_ENABLED = "auto_cooling_enabled"
+        private const val KEY_AUTO_COOLING_TRIGGER = "auto_cooling_trigger_temp"
+        private const val KEY_AUTO_COOLING_HYSTERESIS = "auto_cooling_hysteresis"
+        private const val KEY_AUTO_COOLING_SPEED = "auto_cooling_target_speed"
     }
 
     var savedTransportType: String
@@ -68,6 +72,22 @@ class AppPreferences(context: Context) {
     var lastSprintCoolantTemp: Float
         get() = prefs.getFloat(KEY_LAST_SPRINT_ECT, 0f)
         set(value) = prefs.edit().putFloat(KEY_LAST_SPRINT_ECT, value).apply()
+
+    var isAutoCoolingEnabled: Boolean
+        get() = prefs.getBoolean(KEY_AUTO_COOLING_ENABLED, false)
+        set(value) = prefs.edit().putBoolean(KEY_AUTO_COOLING_ENABLED, value).apply()
+
+    var autoCoolingTriggerTemp: Float
+        get() = prefs.getFloat(KEY_AUTO_COOLING_TRIGGER, 34.0f)
+        set(value) = prefs.edit().putFloat(KEY_AUTO_COOLING_TRIGGER, value).apply()
+
+    var autoCoolingHysteresis: Float
+        get() = prefs.getFloat(KEY_AUTO_COOLING_HYSTERESIS, 2.0f)
+        set(value) = prefs.edit().putFloat(KEY_AUTO_COOLING_HYSTERESIS, value).apply()
+
+    var autoCoolingTargetSpeed: Int
+        get() = prefs.getInt(KEY_AUTO_COOLING_SPEED, 6)
+        set(value) = prefs.edit().putInt(KEY_AUTO_COOLING_SPEED, value).apply()
 
     fun clearDevice() {
         prefs.edit().remove(KEY_SAVED_MAC).remove(KEY_SAVED_NAME).remove(KEY_TRANSPORT).apply()

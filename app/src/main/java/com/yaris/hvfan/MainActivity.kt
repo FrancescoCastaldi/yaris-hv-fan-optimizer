@@ -130,6 +130,18 @@ class MainActivity : ComponentActivity() {
                             appPreferences.forcedFanSpeed = if (forced) 6 else 0
                             service?.obdController?.setForcedFan(forced)
                         },
+                        onAutoCoolingToggle = { enabled ->
+                            service?.obdController?.setAutoCoolingEnabled(enabled)
+                        },
+                        onAutoCoolingTriggerChanged = { temp ->
+                            service?.obdController?.setAutoCoolingTriggerTemp(temp)
+                        },
+                        onAutoCoolingHysteresisChanged = { hyst ->
+                            service?.obdController?.setAutoCoolingHysteresis(hyst)
+                        },
+                        onAutoCoolingTargetSpeedChanged = { speed ->
+                            service?.obdController?.setAutoCoolingTargetSpeed(speed)
+                        },
                         onReadEcuCoding = {
                             service?.obdController?.readEcuCustomizations()
                         },

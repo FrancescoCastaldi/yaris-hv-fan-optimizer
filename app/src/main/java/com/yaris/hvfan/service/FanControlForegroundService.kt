@@ -75,6 +75,10 @@ class FanControlForegroundService : Service() {
         obdController.setForcedFan(appPreferences.forcedFanSpeed == 6)
 
         createNotificationChannel()
+        obdController.onAutoCoolingStateChanged = { isStarting ->
+            playAlertSoundAndHaptic(isStarting)
+            updateNotification()
+        }
         obdController.startController()
         observeStateForNotification()
     }
@@ -170,6 +174,47 @@ class FanControlForegroundService : Service() {
         }
     }
 
+    private var toneGenerator: android.media.ToneGenerator? = null
+
+    private fun playAlertSoundAndHaptic(isStarting: Boolean) {
+        try {
+            if (toneGenerator == null) {
+                toneGenerator = android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, 80)
+            }
+            if (isStarting) {
+                toneGenerator?.startTone(android.media.ToneGenerator.TONE_PROP_BEEP, 250)
+            } else {
+                toneGenerator?.startTone(android.media.ToneGenerator.TONE_PROP_ACK, 180)
+            }
+        } catch (e: Exception) {
+            Log.e("HvFanService", "Errore emissione feedback audio", e)
+        }
+
+        try {
+            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val vm = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? android.os.VibratorManager
+                vm?.defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                getSystemService(Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val effect = if (isStarting) {
+                    android.os.VibrationEffect.createWaveform(longArrayOf(0, 150, 80, 200), -1)
+                } else {
+                    android.os.VibrationEffect.createOneShot(100, android.os.VibrationEffect.DEFAULT_AMPLITUDE)
+                }
+                vibrator?.vibrate(effect)
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator?.vibrate(150)
+            }
+        } catch (e: Exception) {
+            Log.e("HvFanService", "Errore feedback vibrazione", e)
+        }
+    }
+
     private fun updateNotification() {
         val state = obdController.liveState.value
         val connState = bleManager.connectionState.value
@@ -182,10 +227,21 @@ class FanControlForegroundService : Service() {
                     title = "Toyota Yaris: In attesa centralina"
                     content = "Dongle connesso. Accendi la vettura (spia READY) per visualizzare i dati"
                 } else {
-                    val fanText = if (state.batteryStatus.isFanForced) "Ventola MAX (Lvl 6)" else "Ventola Auto (Lvl ${state.batteryStatus.fanSpeedLevel})"
-                    val tempText = "Temp HV: ${String.format(java.util.Locale.US, "%.1f", state.batteryStatus.maxTemp)}°C"
-                    title = "Toyota Yaris: $fanText"
-                    content = "$tempText | Target: ${state.targetThreshold}°C"
+                    val auto = state.autoCoolingStatus
+                    val tempStr = String.format(java.util.Locale.US, "%.1f", state.batteryStatus.maxTemp)
+                    if (auto.isEnabled && auto.isActivelyCooling) {
+                        title = "🌀 Auto-Cooling ATTIVO (L${auto.targetSpeed})"
+                        content = "Batt: ${tempStr}°C ➔ Raffreddamento attivo fino a ${String.format(java.util.Locale.US, "%.1f", auto.cutoffTemp)}°C"
+                    } else if (auto.isEnabled) {
+                        val fanText = if (state.batteryStatus.isFanForced) "Ventola MAX (Lvl 6)" else "Ventola OEM (Lvl ${state.batteryStatus.fanSpeedLevel})"
+                        title = "🛡️ Auto-Cooling Standby • $fanText"
+                        content = "Temp HV: ${tempStr}°C | Soglia: ${String.format(java.util.Locale.US, "%.1f", auto.triggerTemp)}°C (L${auto.targetSpeed})"
+                    } else {
+                        val fanText = if (state.batteryStatus.isFanForced) "Ventola MAX (Lvl 6)" else "Ventola Auto (Lvl ${state.batteryStatus.fanSpeedLevel})"
+                        val tempText = "Temp HV: ${tempStr}°C"
+                        title = "Toyota Yaris: $fanText"
+                        content = "$tempText | Target: ${state.targetThreshold}°C"
+                    }
                 }
             }
             is BleConnectionState.Connected -> {
@@ -236,6 +292,10 @@ class FanControlForegroundService : Service() {
         isRunning = false
         updateWakeLock(false)
         wakeLock = null
+        try {
+            toneGenerator?.release()
+            toneGenerator = null
+        } catch (_: Exception) {}
         bleManager.cleanup()
         obdController.stopLoop()
         serviceScope.cancel()

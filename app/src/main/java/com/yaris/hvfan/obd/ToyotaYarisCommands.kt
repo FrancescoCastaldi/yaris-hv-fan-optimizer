@@ -49,6 +49,17 @@ data class EnginePerformanceStatus(
     val timestamp: Long = System.currentTimeMillis()
 )
 
+data class AutoCoolingStatus(
+    val isEnabled: Boolean = false,
+    val triggerTemp: Float = 34.0f,
+    val hysteresis: Float = 2.0f,
+    val targetSpeed: Int = 6,
+    val isActivelyCooling: Boolean = false,
+    val lastTriggerTimestamp: Long = 0L
+) {
+    val cutoffTemp: Float get() = triggerTemp - hysteresis
+}
+
 data class HvBatteryStatus(
     val temp1: Double = 0.0,
     val temp2: Double = 0.0,
@@ -266,7 +277,14 @@ object ToyotaYarisCommands {
     const val CMD_FAN_MAX_SPEED_UDS = "300806"           // Mode 30 IO Control (Fan Level 6)
     const val CMD_FAN_MAX_SPEED_UDS_ALT = "308106"       // Mode 30 IO Control Variant 81 06
     const val CMD_FAN_MAX_SPEED_ALT = "2F580306"         // Mode 2F IO Control Short Term Adjustment to 6
+    const val CMD_FAN_STOP_OR_RESET = "300800"           // Mode 30 Release / Stop
     const val CMD_TESTER_PRESENT     = "3E00"            // Tester Present keep-alive
+
+    fun getFanSpeedCommand(level: Int): String {
+        val safeLevel = level.coerceIn(0, 6)
+        val hexLevel = String.format(java.util.Locale.US, "%02X", safeLevel)
+        return "3008$hexLevel"
+    }
 
     data class MultiPidEngineData(
         val speedKmh: Int? = null,

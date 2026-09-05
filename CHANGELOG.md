@@ -8,6 +8,29 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)
 
 ---
 
+## [2.9.0] - 2026-09-05
+### 🌀 Smart Auto-Cooling Protection Suite & Dynamic Thermal Hysteresis
+#### Added & Improved
+- **Smart Auto-Cooling Protection System (Algoritmo Predittivo a Circuito Chiuso)**:
+  - Monitoraggio continuo a ciclo chiuso della temperatura massima celle del pacco trazione litio Denso (`maxTemp`).
+  - **Innesco automatico**: invia comandi Mode 30 IO Control non appena la temperatura raggiunge la soglia impostata (`triggerTemp`), senza richiedere l'intervento manuale del guidatore.
+  - **Isteresi di spegnimento configurabile**: previene pendolamenti o continui cicli on/off, rilasciando il controllo alla centralina di bordo solo quando la temperatura scende a `triggerTemp - hysteresis` (es. innesco a 34°C, spegnimento a 32°C).
+  - **Selettore velocità target ventola**: modulabile liberamente da Livello 1 a Livello 6, con supporto a 3 preset rapidi (*Gazoo Track* 30°C/L6, *Bilanciato* 33.5°C/L6, *Comfort* 36°C/L4).
+- **Protezione Attiva 24/7 in Background**:
+  - Il servizio Android in primo piano (`FanControlForegroundService`) con CPU partial wake-lock mantiene attivo il controllo anche con smartphone bloccato, schermo spento o con app di navigazione aperte (Google Maps, Waze).
+  - Notifica persistente nella tendina di Android arricchita con stato live (`🌀 Auto-Cooling ATTIVO (L6)` e target di cutoff termico).
+- **Feedback Acustico & Tattile all'Innesco**:
+  - Segnale audio discreto (`ToneGenerator`) e vibrazione haptic personalizzata (`Vibrator` waveform) all'avvio e al rilascio del raffreddamento.
+  - Aggiunto permesso di sistema `android.permission.VIBRATE` nel manifest.
+- **Persistenza Parametri & Suite UI**:
+  - Salvataggio persistente in `AppPreferences` delle soglie e velocità prescelte.
+  - Riprogettazione card di regolazione termica nella scheda `VENTOLA` con controlli motorsport ad alta ergonomia.
+- **Sincronizzazione Release & Portale Web**:
+  - Aggiornamento build Gradle a `v2.9.0` (`versionCode = 15`).
+  - Aggiornamento portale web `docs/` e script di build per la generazione e download di `YarisHvFanControl-v2.9.0.apk`.
+
+---
+
 ## [2.8.2] - 2026-09-04
 ### 🏁 Gazoo Racing Heritage Motorsport Final Deployment & Site Sync
 #### Added & Improved

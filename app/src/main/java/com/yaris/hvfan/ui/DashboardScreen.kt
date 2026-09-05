@@ -58,6 +58,10 @@ fun DashboardScreen(
     onReconnect: () -> Unit,
     onThresholdChanged: (Int) -> Unit,
     onForcedFanToggle: (Boolean) -> Unit,
+    onAutoCoolingToggle: (Boolean) -> Unit = {},
+    onAutoCoolingTriggerChanged: (Float) -> Unit = {},
+    onAutoCoolingHysteresisChanged: (Float) -> Unit = {},
+    onAutoCoolingTargetSpeedChanged: (Int) -> Unit = {},
     onReadEcuCoding: () -> Unit = {},
     onApplyEcuCoding: (EcuCustomizationState) -> Unit = {},
     onRestoreFactoryEcuCoding: () -> Unit = {}
@@ -286,7 +290,11 @@ fun DashboardScreen(
                                     liveState = liveState,
                                     isConnected = isDeviceConnected,
                                     onThresholdChanged = onThresholdChanged,
-                                    onForcedFanToggle = onForcedFanToggle
+                                    onForcedFanToggle = onForcedFanToggle,
+                                    onAutoCoolingToggle = onAutoCoolingToggle,
+                                    onAutoCoolingTriggerChanged = onAutoCoolingTriggerChanged,
+                                    onAutoCoolingHysteresisChanged = onAutoCoolingHysteresisChanged,
+                                    onAutoCoolingTargetSpeedChanged = onAutoCoolingTargetSpeedChanged
                                 )
                             }
                         }
@@ -300,7 +308,11 @@ fun DashboardScreen(
                                 liveState = liveState,
                                 isConnected = isDeviceConnected,
                                 onThresholdChanged = onThresholdChanged,
-                                onForcedFanToggle = onForcedFanToggle
+                                onForcedFanToggle = onForcedFanToggle,
+                                onAutoCoolingToggle = onAutoCoolingToggle,
+                                onAutoCoolingTriggerChanged = onAutoCoolingTriggerChanged,
+                                onAutoCoolingHysteresisChanged = onAutoCoolingHysteresisChanged,
+                                onAutoCoolingTargetSpeedChanged = onAutoCoolingTargetSpeedChanged
                             )
                         }
                     } else {
@@ -579,7 +591,11 @@ fun DashboardScreen(
                             liveState = liveState,
                             isConnected = isDeviceConnected,
                             onThresholdChanged = onThresholdChanged,
-                            onForcedFanToggle = onForcedFanToggle
+                            onForcedFanToggle = onForcedFanToggle,
+                            onAutoCoolingToggle = onAutoCoolingToggle,
+                            onAutoCoolingTriggerChanged = onAutoCoolingTriggerChanged,
+                            onAutoCoolingHysteresisChanged = onAutoCoolingHysteresisChanged,
+                            onAutoCoolingTargetSpeedChanged = onAutoCoolingTargetSpeedChanged
                         )
                     }
                     DashboardTab.ECU_CODING -> {
@@ -1091,7 +1107,11 @@ fun FanManagementSection(
     liveState: ObdLiveState,
     isConnected: Boolean,
     onThresholdChanged: (Int) -> Unit,
-    onForcedFanToggle: (Boolean) -> Unit
+    onForcedFanToggle: (Boolean) -> Unit,
+    onAutoCoolingToggle: (Boolean) -> Unit = {},
+    onAutoCoolingTriggerChanged: (Float) -> Unit = {},
+    onAutoCoolingHysteresisChanged: (Float) -> Unit = {},
+    onAutoCoolingTargetSpeedChanged: (Int) -> Unit = {}
 ) {
     val isFanMax = isConnected && liveState.hasEcuCommunication && (liveState.batteryStatus.isFanForced || liveState.fanForcedMax)
     val bat = liveState.batteryStatus
@@ -1536,46 +1556,134 @@ fun FanManagementSection(
             }
         }
 
-        // --- 4. TARGET THRESHOLD SLIDER & PRESETS CARD ---
+        // --- 4. SMART AUTO-COOLING PROTECTION (PREDITTIVA CON ISTERESI REGOLABILE) ---
+        val autoCool = liveState.autoCoolingStatus
+        val haptic = LocalHapticFeedback.current
+
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(6.dp),
             color = SurfaceDark,
-            border = BorderStroke(1.dp, CardBorder)
+            border = BorderStroke(1.dp, if (autoCool.isEnabled && autoCool.isActivelyCooling) SuccessGreen else if (autoCool.isEnabled) AccentCyan else CardBorder)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp)
             ) {
+                // Header & Toggle Switch
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "SOGLIA ATTIVAZIONE AUTOMATICA",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Black,
-                        color = TextPrimary,
-                        letterSpacing = 1.sp
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "SMART AUTO-COOLING PROTECTION",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Black,
+                                color = TextPrimary,
+                                letterSpacing = 1.sp
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Surface(
+                                shape = RoundedCornerShape(3.dp),
+                                color = DarkBackground,
+                                border = BorderStroke(
+                                    1.dp,
+                                    when {
+                                        !autoCool.isEnabled -> CardBorder
+                                        autoCool.isActivelyCooling -> SuccessGreen
+                                        else -> AccentCyan
+                                    }
+                                )
+                            ) {
+                                Text(
+                                    text = when {
+                                        !autoCool.isEnabled -> "OFF"
+                                        autoCool.isActivelyCooling -> "RAFFREDDAMENTO (L${autoCool.targetSpeed})"
+                                        else -> "STANDBY SOGLIA"
+                                    },
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = when {
+                                        !autoCool.isEnabled -> TextMuted
+                                        autoCool.isActivelyCooling -> SuccessGreen
+                                        else -> AccentCyan
+                                    },
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                        Text(
+                            text = "Protezione termica predittiva con isteresi e monitoraggio continuo in background",
+                            fontSize = 11.sp,
+                            color = TextSecondary,
+                            lineHeight = 14.sp
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    Switch(
+                        checked = autoCool.isEnabled,
+                        onCheckedChange = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onAutoCoolingToggle(it)
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = AccentCyan,
+                            checkedTrackColor = DarkBackground,
+                            checkedBorderColor = AccentCyan,
+                            uncheckedThumbColor = TextMuted,
+                            uncheckedTrackColor = DarkBackground,
+                            uncheckedBorderColor = CardBorder
+                        )
                     )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // 1. Slider Soglia Trigger (28°C - 42°C)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "TEMPERATURA DI INNESCO (ON)",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextSecondary,
+                            letterSpacing = 0.8.sp
+                        )
+                        Text(
+                            text = "Invia comando Mode 30 al raggiungimento della soglia",
+                            fontSize = 10.sp,
+                            color = TextMuted
+                        )
+                    }
                     Text(
-                        text = "${liveState.targetThreshold}°C",
-                        fontSize = 18.sp,
+                        text = "${String.format(java.util.Locale.US, "%.1f", autoCool.triggerTemp)}°C",
+                        fontSize = 16.sp,
                         fontWeight = FontWeight.Black,
-                        color = AccentCyan,
+                        color = if (autoCool.isEnabled) AccentCyan else TextMuted,
                         fontFamily = FontFamily.Monospace
                     )
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
-
                 Slider(
-                    value = liveState.targetThreshold.toFloat(),
-                    onValueChange = { onThresholdChanged(it.toInt()) },
-                    valueRange = 15f..40f,
-                    steps = 24,
+                    value = autoCool.triggerTemp,
+                    onValueChange = {
+                        val rounded = Math.round(it * 2f) / 2f
+                        onAutoCoolingTriggerChanged(rounded)
+                    },
+                    valueRange = 28f..42f,
+                    steps = 27,
+                    enabled = autoCool.isEnabled,
                     colors = SliderDefaults.colors(
                         thumbColor = AccentCyan,
                         activeTrackColor = AccentCyan,
@@ -1584,29 +1692,141 @@ fun FanManagementSection(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // 2. Slider Isteresi (1.0°C - 5.0°C)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "ISTERESI DI SPEGNIMENTO (OFF)",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextSecondary,
+                            letterSpacing = 0.8.sp
+                        )
+                        Text(
+                            text = "Rilascia alla centralina a ${String.format(java.util.Locale.US, "%.1f", autoCool.cutoffTemp)}°C (delta -${String.format(java.util.Locale.US, "%.1f", autoCool.hysteresis)}°C)",
+                            fontSize = 10.sp,
+                            color = if (autoCool.isEnabled) SuccessGreen else TextMuted
+                        )
+                    }
+                    Text(
+                        text = "Δ ${String.format(java.util.Locale.US, "%.1f", autoCool.hysteresis)}°C",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Black,
+                        color = if (autoCool.isEnabled) WarningOrange else TextMuted,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+
+                Slider(
+                    value = autoCool.hysteresis,
+                    onValueChange = {
+                        val rounded = Math.round(it * 2f) / 2f
+                        onAutoCoolingHysteresisChanged(rounded)
+                    },
+                    valueRange = 1f..5f,
+                    steps = 7,
+                    enabled = autoCool.isEnabled,
+                    colors = SliderDefaults.colors(
+                        thumbColor = WarningOrange,
+                        activeTrackColor = WarningOrange,
+                        inactiveTrackColor = DarkBackground
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // 3. Velocità Ventola Target (Livelli 1-6)
+                Text(
+                    text = "VELOCITÀ BERSAGLIO VENTOLA",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextSecondary,
+                    letterSpacing = 0.8.sp
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    for (speed in 1..6) {
+                        val isSelected = autoCool.targetSpeed == speed
+                        val speedColor = if (speed <= 2) SuccessGreen else if (speed <= 4) AccentCyan else WarningOrange
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(32.dp)
+                                .clickable(enabled = autoCool.isEnabled) {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onAutoCoolingTargetSpeedChanged(speed)
+                                },
+                            shape = RoundedCornerShape(4.dp),
+                            color = if (isSelected && autoCool.isEnabled) speedColor else DarkBackground,
+                            border = BorderStroke(1.dp, if (isSelected && autoCool.isEnabled) speedColor else CardBorder)
+                        ) {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "L$speed",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Black,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = if (isSelected && autoCool.isEnabled) Color.Black else if (autoCool.isEnabled) TextPrimary else TextMuted
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // 4. Preset Rapidi
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     PresetButton(
-                        label = "20°C (Racing)",
-                        isSelected = liveState.targetThreshold == 20,
+                        label = "🏁 Track (30°C/L6)",
+                        isSelected = autoCool.triggerTemp == 30f && autoCool.targetSpeed == 6 && autoCool.hysteresis == 2f,
                         modifier = Modifier.weight(1f),
-                        onClick = { onThresholdChanged(20) }
+                        onClick = {
+                            onAutoCoolingTriggerChanged(30.0f)
+                            onAutoCoolingHysteresisChanged(2.0f)
+                            onAutoCoolingTargetSpeedChanged(6)
+                            if (!autoCool.isEnabled) onAutoCoolingToggle(true)
+                        }
                     )
                     PresetButton(
-                        label = "25°C (Bilanciato)",
-                        isSelected = liveState.targetThreshold == 25,
+                        label = "⚖️ Bilanciato (33.5°/L6)",
+                        isSelected = autoCool.triggerTemp == 33.5f && autoCool.targetSpeed == 6 && autoCool.hysteresis == 2f,
                         modifier = Modifier.weight(1f),
-                        onClick = { onThresholdChanged(25) }
+                        onClick = {
+                            onAutoCoolingTriggerChanged(33.5f)
+                            onAutoCoolingHysteresisChanged(2.0f)
+                            onAutoCoolingTargetSpeedChanged(6)
+                            if (!autoCool.isEnabled) onAutoCoolingToggle(true)
+                        }
                     )
                     PresetButton(
-                        label = "30°C (Silenzioso)",
-                        isSelected = liveState.targetThreshold == 30,
+                        label = "🍃 Comfort (36°/L4)",
+                        isSelected = autoCool.triggerTemp == 36f && autoCool.targetSpeed == 4 && autoCool.hysteresis == 2.5f,
                         modifier = Modifier.weight(1f),
-                        onClick = { onThresholdChanged(30) }
+                        onClick = {
+                            onAutoCoolingTriggerChanged(36.0f)
+                            onAutoCoolingHysteresisChanged(2.5f)
+                            onAutoCoolingTargetSpeedChanged(4)
+                            if (!autoCool.isEnabled) onAutoCoolingToggle(true)
+                        }
                     )
                 }
             }

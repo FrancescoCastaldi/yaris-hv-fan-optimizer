@@ -20,6 +20,7 @@ data class ObdLiveState(
     val ecuCodingState: EcuCustomizationState = EcuCustomizationState(),
     val targetThreshold: Int = 20,
     val fanForcedMax: Boolean = true,
+    val autoCoolingStatus: AutoCoolingStatus = AutoCoolingStatus(),
     val lastLogMessage: String = "In attesa di connessione...",
     val logs: List<String> = emptyList(),
     val errorCount: Int = 0
@@ -36,11 +37,19 @@ class ObdController(
         private const val COOLANT_POLL_INTERVAL_MS = 4000L
     }
 
+    var onAutoCoolingStateChanged: ((Boolean) -> Unit)? = null
+
     private val _liveState = MutableStateFlow(
         ObdLiveState(
             accelerationState = AccelerationRunState(
                 best0to50TimeSec = appPreferences?.best0to50TimeSec,
                 best0to100TimeSec = appPreferences?.best0to100TimeSec
+            ),
+            autoCoolingStatus = AutoCoolingStatus(
+                isEnabled = appPreferences?.isAutoCoolingEnabled ?: false,
+                triggerTemp = appPreferences?.autoCoolingTriggerTemp ?: 34.0f,
+                hysteresis = appPreferences?.autoCoolingHysteresis ?: 2.0f,
+                targetSpeed = appPreferences?.autoCoolingTargetSpeed ?: 6
             )
         )
     )
@@ -300,6 +309,7 @@ class ObdController(
         }
 
         val currentState = _liveState.value
+        val autoStatus = currentState.autoCoolingStatus
         val parsedStatus = ToyotaYarisCommands.parseBatteryResponse(rawResponse, currentState.fanForcedMax)
         val updatedBattery = if (parsedStatus != null) {
             lastValidCanTimestamp = System.currentTimeMillis()
@@ -309,23 +319,56 @@ class ObdController(
             currentState.batteryStatus.copy(timestamp = System.currentTimeMillis())
         }
 
-        // Valutazione soglia termica & override ventola Mode 30
-        val shouldForceFan = currentState.fanForcedMax || (updatedBattery.maxTemp >= currentState.targetThreshold)
+        // Valutazione Smart Auto-Cooling
+        var updatedAutoStatus = autoStatus
+        if (autoStatus.isEnabled && updatedBattery.maxTemp > 0.0) {
+            val nowMs = System.currentTimeMillis()
+            if (!autoStatus.isActivelyCooling && updatedBattery.maxTemp >= autoStatus.triggerTemp) {
+                // Innesco protezione termica!
+                updatedAutoStatus = autoStatus.copy(
+                    isActivelyCooling = true,
+                    lastTriggerTimestamp = nowMs
+                )
+                addLog("🌀 SMART AUTO-COOLING ATTIVATO: ${String.format(java.util.Locale.US, "%.1f", updatedBattery.maxTemp)}°C >= soglia ${autoStatus.triggerTemp}°C (Target L${autoStatus.targetSpeed})")
+                scope.launch(Dispatchers.Main) {
+                    onAutoCoolingStateChanged?.invoke(true)
+                }
+            } else if (autoStatus.isActivelyCooling && updatedBattery.maxTemp <= autoStatus.cutoffTemp) {
+                // Disinnesco per isteresi raggiunta
+                updatedAutoStatus = autoStatus.copy(
+                    isActivelyCooling = false
+                )
+                addLog("✅ SMART AUTO-COOLING DISINSERITO: ${String.format(java.util.Locale.US, "%.1f", updatedBattery.maxTemp)}°C <= spegnimento ${autoStatus.cutoffTemp}°C")
+                scope.launch(Dispatchers.Main) {
+                    onAutoCoolingStateChanged?.invoke(false)
+                }
+            }
+        }
+
+        val isAutoCoolingActive = updatedAutoStatus.isEnabled && updatedAutoStatus.isActivelyCooling
+        val shouldForceFan = currentState.fanForcedMax || isAutoCoolingActive || (updatedBattery.maxTemp >= currentState.targetThreshold)
+        val activeTargetSpeed = if (currentState.fanForcedMax) 6 else if (isAutoCoolingActive) updatedAutoStatus.targetSpeed else 6
+
         if (shouldForceFan) {
-            val fanCmdRes = bleManager.sendCommand(ToyotaYarisCommands.CMD_FAN_MAX_SPEED_UDS)
+            val fanCmd = ToyotaYarisCommands.getFanSpeedCommand(activeTargetSpeed)
+            val fanCmdRes = bleManager.sendCommand(fanCmd)
             val cleanFanRes = Elm327Protocol.cleanResponse(fanCmdRes)
             if (cleanFanRes.contains("7F30") || cleanFanRes.contains("ERROR")) {
                 bleManager.sendCommand(ToyotaYarisCommands.CMD_FAN_MAX_SPEED_ALT)
             }
-            addLog("Ventola HV MAX (L6) | Batt: ${String.format(java.util.Locale.US, "%.1f", updatedBattery.maxTemp)}°C")
+            addLog("Ventola HV L$activeTargetSpeed | Batt: ${String.format(java.util.Locale.US, "%.1f", updatedBattery.maxTemp)}°C")
         } else {
+            if (currentState.batteryStatus.isFanForced) {
+                bleManager.sendCommand(ToyotaYarisCommands.CMD_FAN_STOP_OR_RESET)
+            }
             bleManager.sendCommand(ToyotaYarisCommands.CMD_TESTER_PRESENT)
         }
 
         _liveState.value = _liveState.value.copy(
+            autoCoolingStatus = updatedAutoStatus,
             batteryStatus = updatedBattery.copy(
                 isFanForced = shouldForceFan,
-                fanSpeedLevel = if (shouldForceFan) 6 else updatedBattery.fanSpeedLevel
+                fanSpeedLevel = if (shouldForceFan) activeTargetSpeed else updatedBattery.fanSpeedLevel
             )
         )
     }
@@ -525,6 +568,49 @@ class ObdController(
         _liveState.value = _liveState.value.copy(fanForcedMax = forced)
         pendingBatterySafetyCheck = true
         addLog(if (forced) "Forzatura ventola 100% ABILITATA" else "Forzatura ventola DISABILITATA (solo soglia)")
+    }
+
+    fun setAutoCoolingEnabled(enabled: Boolean) {
+        val current = _liveState.value.autoCoolingStatus
+        _liveState.value = _liveState.value.copy(
+            autoCoolingStatus = current.copy(
+                isEnabled = enabled,
+                isActivelyCooling = if (!enabled) false else current.isActivelyCooling
+            )
+        )
+        appPreferences?.isAutoCoolingEnabled = enabled
+        pendingBatterySafetyCheck = true
+        addLog("Protezione Smart Auto-Cooling: " + if (enabled) "ABILITATA (Soglia ${current.triggerTemp}°C, Spegnimento ${current.cutoffTemp}°C, L${current.targetSpeed})" else "DISABILITATA")
+    }
+
+    fun setAutoCoolingTriggerTemp(temp: Float) {
+        val current = _liveState.value.autoCoolingStatus
+        _liveState.value = _liveState.value.copy(
+            autoCoolingStatus = current.copy(triggerTemp = temp)
+        )
+        appPreferences?.autoCoolingTriggerTemp = temp
+        pendingBatterySafetyCheck = true
+        addLog("Soglia innesco Auto-Cooling: ${temp}°C (Spegnimento a ${temp - current.hysteresis}°C)")
+    }
+
+    fun setAutoCoolingHysteresis(hysteresis: Float) {
+        val current = _liveState.value.autoCoolingStatus
+        _liveState.value = _liveState.value.copy(
+            autoCoolingStatus = current.copy(hysteresis = hysteresis)
+        )
+        appPreferences?.autoCoolingHysteresis = hysteresis
+        pendingBatterySafetyCheck = true
+        addLog("Isteresi Auto-Cooling: ${hysteresis}°C (Spegnimento a ${current.triggerTemp - hysteresis}°C)")
+    }
+
+    fun setAutoCoolingTargetSpeed(speed: Int) {
+        val current = _liveState.value.autoCoolingStatus
+        _liveState.value = _liveState.value.copy(
+            autoCoolingStatus = current.copy(targetSpeed = speed)
+        )
+        appPreferences?.autoCoolingTargetSpeed = speed
+        pendingBatterySafetyCheck = true
+        addLog("Velocità bersaglio Auto-Cooling: Livello $speed")
     }
 
     fun stopLoop() {
