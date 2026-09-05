@@ -8,6 +8,18 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)
 
 ---
 
+## [2.9.2] - 2026-09-05
+### 🧹 Repository Hygiene & GitHub Pages Streamlining
+#### Added & Improved
+- **Semplificazione Hosting & Disattivazione Vercel**:
+  - Rimozione configurazione ridondante `docs/vercel.json`, consolidando l'infrastruttura di deploy e hosting pubblico direttamente su **GitHub Pages** (`https://francescocastaldi.github.io/yaris-hv-fan-optimizer/`).
+  - Ottimizzazione link e documentazione in `README.md` e direttive agenti in `AGENTS.md`.
+- **Pipeline & Artefatti di Rilascio**:
+  - Bump versione incrementale `v2.9.2` (`versionCode = 17`).
+  - Sincronizzazione automatica degli script di compilazione `build_apk.bat` e CI/CD `.github/workflows/deploy.yml` per l'erogazione di `YarisHvFanControl-v2.9.2.apk`.
+
+---
+
 ## [2.9.1] - 2026-09-05
 ### 🏁 Motorsport Micro-Twill Carbon Fiber Background & High-Speed Tiling
 #### Added & Improved

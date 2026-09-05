@@ -12,7 +12,6 @@ Ad ogni modifica, fix, push o rilascio:
    - `docs/YarisHvFanControl-vX.Y.Z.apk`
 3. **Aggiornamento di tutti i riferimenti Web & Deploy**:
    - `docs/index.html` e `docs/404.html` (header, hero badge, download button, changelog e sticky mobile bar con la nuova versione)
-   - `docs/vercel.json` (header MIME type per il nuovo APK)
    - `build_apk.bat` e `.github/workflows/deploy.yml`
    - `README.md` e `CHANGELOG.md`
 4. **Flusso di Verifica & Consegna**:

@@ -45,9 +45,9 @@ jobs:
         run: |
           mkdir -p docs
           cp app/build/outputs/apk/release/app-release.apk YarisHvFanControl.apk
-          cp app/build/outputs/apk/release/app-release.apk YarisHvFanControl-v2.9.1.apk
+          cp app/build/outputs/apk/release/app-release.apk YarisHvFanControl-v2.9.2.apk
           cp app/build/outputs/apk/release/app-release.apk docs/YarisHvFanControl.apk
-          cp app/build/outputs/apk/release/app-release.apk docs/YarisHvFanControl-v2.9.1.apk
+          cp app/build/outputs/apk/release/app-release.apk docs/YarisHvFanControl-v2.9.2.apk
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4

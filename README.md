@@ -24,7 +24,6 @@ Applicazione Android nativa ad altissime prestazioni per **Toyota Yaris MK4 Hybr
 - **Portale Web Ufficiale**: 👉 **[https://francescocastaldi.github.io/yaris-hv-fan-optimizer/](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/)**
 - **Simulatore Interattivo Web**: 👉 **[https://francescocastaldi.github.io/yaris-hv-fan-optimizer/preview.html](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/preview.html)**
 - **Download Diretto Ultimo APK (v2.9.1)**: 👉 **[Scarica YarisHvFanControl-v2.9.1.apk](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisHvFanControl-v2.9.1.apk)** (disponibile anche come [YarisHvFanControl.apk](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisHvFanControl.apk))
-- **Deploy su Vercel (1-Click)**: 👉 **[Deploy Vercel](https://vercel.com/new/clone?repository-url=https://github.com/FrancescoCastaldi/yaris-hv-fan-optimizer&root-directory=docs)**
 
 ---
 
