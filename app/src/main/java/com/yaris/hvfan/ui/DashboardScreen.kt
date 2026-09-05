@@ -252,7 +252,9 @@ fun DashboardScreen(
                         ConnectionBadge(
                             connectionState = connectionState,
                             isInitialized = liveState.isInitialized,
-                            hasEcuCommunication = liveState.hasEcuCommunication
+                            hasEcuCommunication = liveState.hasEcuCommunication,
+                            isStandbyMode = liveState.isStandbyMode,
+                            auxiliary12vVoltage = liveState.auxiliary12vVoltage
                         )
                     }
                 }
@@ -380,7 +382,9 @@ fun DashboardScreen(
                     ConnectionBadge(
                         connectionState = connectionState,
                         isInitialized = liveState.isInitialized,
-                        hasEcuCommunication = liveState.hasEcuCommunication
+                        hasEcuCommunication = liveState.hasEcuCommunication,
+                        isStandbyMode = liveState.isStandbyMode,
+                        auxiliary12vVoltage = liveState.auxiliary12vVoltage
                     )
                 }
             }
@@ -2659,7 +2663,9 @@ fun TelemetryChip(
 fun ConnectionBadge(
     connectionState: BleConnectionState,
     isInitialized: Boolean = false,
-    hasEcuCommunication: Boolean = false
+    hasEcuCommunication: Boolean = false,
+    isStandbyMode: Boolean = false,
+    auxiliary12vVoltage: Float = 0f
 ) {
     val borderColor: Color
     val textColor: Color
@@ -2669,11 +2675,27 @@ fun ConnectionBadge(
             if (hasEcuCommunication) {
                 borderColor = SuccessGreen
                 textColor = SuccessGreen
-                text = "● ECU ONLINE"
+                text = if (auxiliary12vVoltage > 0f) {
+                    "● READY ONLINE (${String.format(java.util.Locale.US, "%.1f", auxiliary12vVoltage)}V)"
+                } else {
+                    "● ECU ONLINE"
+                }
+            } else if (isStandbyMode) {
+                borderColor = WarningOrange
+                textColor = WarningOrange
+                text = if (auxiliary12vVoltage > 0f) {
+                    "▲ STANDBY (${String.format(java.util.Locale.US, "%.1f", auxiliary12vVoltage)}V)"
+                } else {
+                    "▲ STANDBY - ATTESA READY"
+                }
             } else if (isInitialized) {
                 borderColor = WarningOrange
                 textColor = WarningOrange
-                text = "▲ DONGLE OK - ATTESA ECU"
+                text = if (auxiliary12vVoltage > 0f) {
+                    "▲ DONGLE OK (${String.format(java.util.Locale.US, "%.1f", auxiliary12vVoltage)}V)"
+                } else {
+                    "▲ DONGLE OK - ATTESA ECU"
+                }
             } else {
                 borderColor = AccentCyan
                 textColor = AccentCyan
@@ -2688,7 +2710,7 @@ fun ConnectionBadge(
         is BleConnectionState.Reconnecting -> {
             borderColor = WarningOrange
             textColor = WarningOrange
-            text = "○ AUTO-RETRY"
+            text = "○ AUTO-RETRY #${connectionState.attempt}"
         }
         is BleConnectionState.Scanning -> {
             borderColor = WarningOrange

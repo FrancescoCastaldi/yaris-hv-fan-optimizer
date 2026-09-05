@@ -92,8 +92,17 @@ class FanControlForegroundService : Service() {
             ACTION_START -> {
                 isRunning = true
                 startAsForeground()
-                // Auto connect to saved MAC if available
-                val savedMac = appPreferences.savedMacAddress
+                // Auto connect to saved MAC or bonded OBD device if available
+                var savedMac = appPreferences.savedMacAddress
+                if (savedMac.isNullOrBlank()) {
+                    val bonded = bleManager.findBondedObdDevice()
+                    if (bonded != null) {
+                        appPreferences.savedMacAddress = bonded.address
+                        appPreferences.savedDeviceName = bonded.name
+                        appPreferences.savedTransportType = bonded.transportType.name
+                        savedMac = bonded.address
+                    }
+                }
                 if (!savedMac.isNullOrBlank() && bleManager.connectionState.value is BleConnectionState.Disconnected) {
                     val transport = try {
                         com.yaris.hvfan.ble.BluetoothTransportType.valueOf(appPreferences.savedTransportType)
@@ -223,7 +232,11 @@ class FanControlForegroundService : Service() {
 
         when (connState) {
             is BleConnectionState.Ready -> {
-                if (!state.hasEcuCommunication) {
+                if (state.isStandbyMode) {
+                    title = "Toyota Yaris: Auto in Standby"
+                    val voltStr = if (state.auxiliary12vVoltage > 0f) "${String.format(java.util.Locale.US, "%.1f", state.auxiliary12vVoltage)}V" else "12V"
+                    content = "Tensione 12V: $voltStr. Accendi la vettura (spia verde READY) per visualizzare i dati"
+                } else if (!state.hasEcuCommunication) {
                     title = "Toyota Yaris: In attesa centralina"
                     content = "Dongle connesso. Accendi la vettura (spia READY) per visualizzare i dati"
                 } else {

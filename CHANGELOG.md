@@ -6,6 +6,31 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)
 - **MINOR (`0.X.0`)**: Aggiunta di nuove funzionalità, sensori, codifiche o telemetrie.
 - **PATCH (`0.0.X`)**: Bugfix, ottimizzazioni di performance o aggiustamenti grafici minori.
 
+## [2.9.3] - 2026-09-05
+### 🔌 Intelligent Hybrid Assistant Handshake & Hardware ISO-TP Flow Control
+#### Added & Improved
+- **Handshake Avanzato Intelligente Hybrid Assistant & Wake-Up Protocol**:
+  - **Sequenza Preventiva di Risveglio**: Invio di `\r\r` con flushing del buffer per risvegliare dongle ELM327/Vgate iCar Pro da stati di sleep profondo o risparmio energetico prima dei comandi AT.
+  - **Warm Start Non-Bloccante**: Utilizzo di `AT WS` con attesa calibrata (600ms) evitando blocchi baudrate e reboot lenti di `AT Z`.
+  - **Rilevamento Dinamico Stato READY & Tensione 12V (`AT RV`)**: Lettura della tensione ausiliaria 12V reale tramite `AT RV`. Se la tensione è >= 13.0V (convertitore DC-DC attivo), il veicolo è rilevato in stato READY; se < 12.8V o CAN inattivo, il controller entra in modalità Standby a basso consumo (loop distanziato a 2.5s con sola query di tensione), prevenendo saturazione del bus CAN ed errori a raffica `NO DATA` a veicolo spento.
+- **Hardware ISO-TP Flow Control su Centralina Batteria Denso**:
+  - Configurazione automatica dei filtri e controllo di flusso hardware per frame UDS multi-frame (PID `2228C1` e Mode 30):
+    - `AT CRA 7EA` (filtro hardware CAN ricezione Battery ECU).
+    - `AT FC SH 7E2` (header di controllo di flusso verso Battery ECU).
+    - `AT FC SD 300000` (Clear To Send: Block Size = 0, Separation Time = 0ms per throughput istantaneo).
+    - `AT FC SM 1` (modalità Flow Control custom definita dall'utente abilitata durante l'interrogazione della centralina HV e ripristino dinamico per altre centraline).
+- **Silent Reconnection Watchdog a Circuito Chiuso**:
+  - Eliminati pop-up, allarmi o toast invadenti in caso di disconnessione o perdita transitoria di pacchetti: il sistema passa silenziosamente a `Reconnecting` ed esegue backoff esponenziale autonomo fino al ripristino del segnale.
+- **Connessione Automatica Istantanea in Background**:
+  - All'avvio dell'app o del Foreground Service, se è presente un dispositivo Vgate/OBD accoppiato o precedentemente salvato, la connessione si avvia immediatamente senza forzare la finestra modale di scansione.
+- **UI Dashboard & Service Notification**:
+  - Badge di connessione e notifiche del servizio arricchite con visualizzazione tensione batteria 12V reale e indicazione chiara dello stato (`● READY ONLINE (XX.XV)`, `▲ STANDBY (XX.XV) - ATTESA READY`, `○ AUTO-RETRY #N`).
+- **Suite di Test Unitari**:
+  - Aggiunti test in `ObdControllerIntegrationTest.kt` per il parsing della tensione, isteresi dello stato READY, transizioni di standby e costanti ISO-TP Flow Control.
+- **Pipeline & Artefatti di Rilascio**:
+  - Bump versione a `v2.9.3` (`versionCode = 18`).
+  - Sincronizzazione script di build `build_apk.bat`, workflow CI/CD `.github/workflows/deploy.yml`, e portale web `docs/` (`index.html`, `404.html`, `preview.html`) con `YarisHvFanControl-v2.9.3.apk`.
+
 ---
 
 ## [2.9.2] - 2026-09-05

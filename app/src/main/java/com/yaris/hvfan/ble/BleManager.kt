@@ -375,6 +375,48 @@ class BleManager(private val context: Context) {
         return false
     }
 
+    /**
+     * Ricerca tra i dispositivi associati (bonded) di Android il miglior adattatore OBD compatibile
+     * (Vgate iCar Pro, vLinker, OBD-II, ecc.) per l'auto-connessione immediata all'avvio.
+     */
+    fun findBondedObdDevice(): DiscoveredBleDevice? {
+        try {
+            val bonded = bluetoothAdapter?.bondedDevices ?: return null
+            if (bonded.isEmpty()) return null
+
+            val matched = bonded.filter { dev ->
+                val name = (dev.name ?: "").uppercase()
+                name.contains("VGATE") ||
+                name.contains("V-LINK") ||
+                name.contains("VLINK") ||
+                name.contains("OBD") ||
+                name.contains("IOS-VLINK") ||
+                name.contains("ANDROID-VLINK") ||
+                name.contains("ELM327") ||
+                name.contains("BAFX") ||
+                name.contains("CARISTA") ||
+                name.contains("VEEPEAK") ||
+                name.contains("KONNWEI")
+            }
+
+            val target = matched.firstOrNull() ?: return null
+            val bName = target.name ?: "OBD Device"
+            val isClassic = isClassicDevice(bName, target)
+            val transport = if (isClassic) BluetoothTransportType.CLASSIC_SPP else BluetoothTransportType.BLE
+
+            return DiscoveredBleDevice(
+                name = bName,
+                address = target.address,
+                rssi = 0,
+                isBonded = true,
+                transportType = transport
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Errore durante il recupero dei dispositivi bonded OBD", e)
+            return null
+        }
+    }
+
     private fun parseNameFromAdvBytes(bytes: ByteArray?): String? {
         if (bytes == null || bytes.isEmpty()) return null
         var ptr = 0
@@ -526,7 +568,6 @@ class BleManager(private val context: Context) {
                         connectGattClient(device)
                     }
                 } else {
-                    _connectionState.value = BleConnectionState.Error("Connessione Classic fallita: ${e.localizedMessage}")
                     scheduleReconnect()
                 }
             }
@@ -633,7 +674,6 @@ class BleManager(private val context: Context) {
                     Log.i(TAG, "GATT status $status, fallback su Classic SPP...")
                     connectClassicSocket(device)
                 } else {
-                    _connectionState.value = BleConnectionState.Error("Disconnesso ($status). Riconnessione in corso...")
                     scheduleReconnect()
                 }
                 return
@@ -781,6 +821,40 @@ class BleManager(private val context: Context) {
     }
 
     // --- Unified Command Dispatcher (SPP Socket or BLE GATT) ---
+
+    /**
+     * Invia la sequenza di risveglio preventiva "\r\r" per svegliare Vgate iCar Pro / chip ELM327
+     * dallo stato di sleep / low-power standby senza attendere il terminatore rigido.
+     */
+    suspend fun sendWakeSequence() = commandMutex.withLock {
+        try {
+            synchronized(responseBuffer) {
+                responseBuffer.setLength(0)
+            }
+            val wakeBytes = "\r\r".toByteArray(Charsets.US_ASCII)
+            val outStream = socketOutputStream
+            if (bluetoothSocket?.isConnected == true && outStream != null) {
+                withContext(Dispatchers.IO) {
+                    outStream.write(wakeBytes)
+                    outStream.flush()
+                }
+            } else {
+                val gatt = bluetoothGatt
+                val writeCh = writeCharacteristic
+                if (gatt != null && writeCh != null) {
+                    writeCh.value = wakeBytes
+                    writeCh.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+                    gatt.writeCharacteristic(writeCh)
+                }
+            }
+            delay(150)
+            synchronized(responseBuffer) {
+                responseBuffer.setLength(0)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Errore durante invio sequenza di sveglia Vgate", e)
+        }
+    }
 
     suspend fun sendCommand(
         command: String,

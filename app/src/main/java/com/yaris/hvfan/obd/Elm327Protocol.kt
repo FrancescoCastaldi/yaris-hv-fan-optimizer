@@ -1,6 +1,18 @@
 package com.yaris.hvfan.obd
 
 object Elm327Protocol {
+    // Sequenza di risveglio da low-power / sleep Vgate iCar Pro
+    const val CMD_WAKE_UP = "\r\r"
+    const val CMD_WARM_START = "AT WS"
+    const val CMD_RESET = "AT Z"
+    const val CMD_VOLTAGE = "AT RV"
+
+    // Hardware Flow Control ISO-TP Constants for Denso Battery ECU (7E2 / 7EA)
+    const val CMD_FLOW_CONTROL_BATTERY_HEADER = "AT FC SH 7E2"
+    const val CMD_FLOW_CONTROL_BATTERY_DATA = "AT FC SD 300000" // Clear To Send (CTS), Block Size 0, Separation Time 0
+    const val CMD_FLOW_CONTROL_MODE_CUSTOM = "AT FC SM 1"       // Custom Flow Control mode
+    const val CMD_FLOW_CONTROL_MODE_DEFAULT = "AT FC SM 0"      // Standard Flow Control mode
+
     val INIT_COMMANDS = listOf(
         "AT Z",       // Reset ELM327 / Vgate / STN (gestito con delay speciale)
         "AT D",       // Set to defaults
@@ -26,6 +38,24 @@ object Elm327Protocol {
             .replace("BUSINIT:...", "")
             .replace("STOPPED", "")
             .trim()
+    }
+
+    private val VOLTAGE_REGEX = Regex("""(\d{1,2}\.\d+)""")
+
+    /**
+     * Estrae la tensione reale della batteria 12V da risposte AT RV (es. "14.2V", "13.8V", "12.4V").
+     */
+    fun parseBatteryVoltage(raw: String): Float? {
+        val match = VOLTAGE_REGEX.find(raw)
+        return match?.groupValues?.get(1)?.toFloatOrNull()
+    }
+
+    /**
+     * Verifica lo stato READY dell'auto ibrida Toyota XP210 basandosi sulla tensione reale del bus 12V.
+     * Quando l'auto è in READY, il convertitore DC-DC dalla batteria HV porta il bus 12V sopra i 13.0V (13.8V - 14.5V).
+     */
+    fun isVehicleReady(voltage: Float?): Boolean {
+        return voltage != null && voltage >= 13.0f
     }
 
     fun isError(response: String): Boolean {

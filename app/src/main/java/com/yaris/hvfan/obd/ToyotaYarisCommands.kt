@@ -255,6 +255,12 @@ object ToyotaYarisCommands {
     const val CMD_SET_HEADER_ENGINE_ECU  = "AT SH 7E0"  // Toyota Engine / Hybrid Main ECU
     const val CMD_SET_RECEIVE_FILTER     = "AT CRA 7EA" // Filter for Battery ECU responses
 
+    // Hardware Flow Control ISO-TP Multi-Frame (Hybrid Assistant Specification)
+    const val CMD_FC_SH_BATTERY          = "AT FC SH 7E2"   // Flow Control Header per ECU Batteria
+    const val CMD_FC_SD_CTS              = "AT FC SD 300000" // Clear to Send, Block Size 0, Separation Time 0
+    const val CMD_FC_SM_CUSTOM           = "AT FC SM 1"      // Custom Flow Control Mode
+    const val CMD_FC_SM_DEFAULT          = "AT FC SM 0"      // Standard Flow Control Mode
+
     // Standard OBD-II PIDs (Mode 01 for Engine & Atmosphere)
     const val PID_VEHICLE_SPEED    = "010D" // Formula: A (km/h)
     const val PID_COOLANT_TEMP     = "0105" // Formula: A - 40 (°C)

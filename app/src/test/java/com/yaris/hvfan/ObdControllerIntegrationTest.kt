@@ -412,4 +412,83 @@ class ObdControllerIntegrationTest {
         assertEquals("Headphones Sony", sortedList[2].name) // Bonded non-OBD comes before non-bonded non-OBD
         assertEquals("Smart TV Samsung", sortedList[3].name)
     }
+
+    @Test
+    fun testElm327VoltageParserAndVehicleReadyDetection() {
+        // 1. Clean voltage parsing
+        val raw142 = "14.2V\r\n>"
+        assertEquals(14.2f, Elm327Protocol.parseBatteryVoltage(raw142) ?: 0f, 0.05f)
+
+        val raw138 = "13.8V"
+        assertEquals(13.8f, Elm327Protocol.parseBatteryVoltage(raw138) ?: 0f, 0.05f)
+
+        val raw124 = "12.4V"
+        assertEquals(12.4f, Elm327Protocol.parseBatteryVoltage(raw124) ?: 0f, 0.05f)
+
+        val rawDirty = "SEARCHING... 13.5V\r\n>"
+        assertEquals(13.5f, Elm327Protocol.parseBatteryVoltage(rawDirty) ?: 0f, 0.05f)
+
+        val rawInvalid = "NO DATA\r\n>"
+        assertNull(Elm327Protocol.parseBatteryVoltage(rawInvalid))
+
+        // 2. Toyota XP210 Hybrid READY detection (> 13.0V DC-DC converter active)
+        assertTrue(Elm327Protocol.isVehicleReady(14.2f))
+        assertTrue(Elm327Protocol.isVehicleReady(13.8f))
+        assertTrue(Elm327Protocol.isVehicleReady(13.0f))
+        assertFalse(Elm327Protocol.isVehicleReady(12.6f))
+        assertFalse(Elm327Protocol.isVehicleReady(11.9f))
+        assertFalse(Elm327Protocol.isVehicleReady(null))
+    }
+
+    @Test
+    fun testIsoTpFlowControlAndHandshakeConstants() {
+        // Vgate wake-up & warm start
+        assertEquals("\r\r", Elm327Protocol.CMD_WAKE_UP)
+        assertEquals("AT WS", Elm327Protocol.CMD_WARM_START)
+        assertEquals("AT RV", Elm327Protocol.CMD_VOLTAGE)
+
+        // Denso Battery ECU ISO-TP Flow Control (7E2 / 7EA)
+        assertEquals("AT FC SH 7E2", ToyotaYarisCommands.CMD_FC_SH_BATTERY)
+        assertEquals("AT FC SD 300000", ToyotaYarisCommands.CMD_FC_SD_CTS)
+        assertEquals("AT FC SM 1", ToyotaYarisCommands.CMD_FC_SM_CUSTOM)
+        assertEquals("AT FC SM 0", ToyotaYarisCommands.CMD_FC_SM_DEFAULT)
+
+        assertEquals("AT FC SH 7E2", Elm327Protocol.CMD_FLOW_CONTROL_BATTERY_HEADER)
+        assertEquals("AT FC SD 300000", Elm327Protocol.CMD_FLOW_CONTROL_BATTERY_DATA)
+        assertEquals("AT FC SM 1", Elm327Protocol.CMD_FLOW_CONTROL_MODE_CUSTOM)
+        assertEquals("AT FC SM 0", Elm327Protocol.CMD_FLOW_CONTROL_MODE_DEFAULT)
+    }
+
+    @Test
+    fun testStandbyModeStateAndBadgeDisplay() {
+        // Vehicle not READY (Standby low-power mode)
+        val standbyState = ObdLiveState(
+            isInitialized = true,
+            isLoopRunning = true,
+            hasEcuCommunication = false,
+            isVehicleReady = false,
+            isStandbyMode = true,
+            auxiliary12vVoltage = 12.2f,
+            ecuAlertMessage = "Auto in standby a basso consumo: accendi la vettura (spia verde READY) per avviare la telemetria."
+        )
+        assertTrue(standbyState.isStandbyMode)
+        assertFalse(standbyState.isVehicleReady)
+        assertFalse(standbyState.hasEcuCommunication)
+        assertEquals(12.2f, standbyState.auxiliary12vVoltage, 0.01f)
+        assertNotNull(standbyState.ecuAlertMessage)
+
+        // Vehicle enters READY mode (> 13.0V) and receives CAN frames
+        val readyState = standbyState.copy(
+            isVehicleReady = true,
+            isStandbyMode = false,
+            hasEcuCommunication = true,
+            auxiliary12vVoltage = 14.1f,
+            ecuAlertMessage = null
+        )
+        assertFalse(readyState.isStandbyMode)
+        assertTrue(readyState.isVehicleReady)
+        assertTrue(readyState.hasEcuCommunication)
+        assertEquals(14.1f, readyState.auxiliary12vVoltage, 0.01f)
+        assertNull(readyState.ecuAlertMessage)
+    }
 }

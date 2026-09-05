@@ -231,14 +231,64 @@ class MainActivity : ComponentActivity() {
         bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE)
     }
 
+    private fun findBondedObdLocally(): com.yaris.hvfan.ble.DiscoveredBleDevice? {
+        val btManager = getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+        val adapter = btManager?.adapter ?: return null
+        val bonded = adapter.bondedDevices ?: return null
+        val match = bonded.firstOrNull { dev ->
+            val name = (dev.name ?: "").uppercase()
+            name.contains("VGATE") ||
+            name.contains("V-LINK") ||
+            name.contains("VLINK") ||
+            name.contains("OBD") ||
+            name.contains("IOS-VLINK") ||
+            name.contains("ANDROID-VLINK") ||
+            name.contains("ELM327") ||
+            name.contains("BAFX") ||
+            name.contains("CARISTA") ||
+            name.contains("VEEPEAK") ||
+            name.contains("KONNWEI")
+        } ?: return null
+
+        val bName = match.name ?: "OBD Device"
+        val isClassic = (match.type == android.bluetooth.BluetoothDevice.DEVICE_TYPE_CLASSIC) ||
+                bName.uppercase().contains("ANDROID-VLINK") ||
+                (bName.uppercase().contains("V-LINK") && !bName.uppercase().contains("IOS")) ||
+                bName.uppercase().contains("OBDII")
+        val transport = if (isClassic) com.yaris.hvfan.ble.BluetoothTransportType.CLASSIC_SPP else com.yaris.hvfan.ble.BluetoothTransportType.BLE
+        return com.yaris.hvfan.ble.DiscoveredBleDevice(
+            name = bName,
+            address = match.address,
+            rssi = 0,
+            isBonded = true,
+            transportType = transport
+        )
+    }
+
     private fun checkAndAutoConnect() {
-        val savedMac = appPreferences.savedMacAddress
-        if (savedMac == null) {
-            // First time launch: show device picker
-            showDevicePicker = true
+        var savedMac = appPreferences.savedMacAddress
+        if (savedMac.isNullOrBlank()) {
+            val bonded = serviceBinder?.service?.bleManager?.findBondedObdDevice()
+                ?: findBondedObdLocally()
+            if (bonded != null) {
+                appPreferences.savedMacAddress = bonded.address
+                appPreferences.savedDeviceName = bonded.name
+                appPreferences.savedTransportType = bonded.transportType.name
+                savedMac = bonded.address
+            }
+        }
+
+        if (!savedMac.isNullOrBlank()) {
+            showDevicePicker = false
+            val transport = try {
+                com.yaris.hvfan.ble.BluetoothTransportType.valueOf(appPreferences.savedTransportType)
+            } catch (e: Exception) {
+                com.yaris.hvfan.ble.BluetoothTransportType.AUTO
+            }
+            serviceBinder?.service?.bleManager?.connect(savedMac, transport)
         } else {
-            // Auto connect is handled by ForegroundService or reconnect
-            serviceBinder?.service?.bleManager?.connect(savedMac)
+            // Nessun dispositivo salvato né precedentemente associato nel sistema Bluetooth
+            showDevicePicker = true
         }
     }
 
