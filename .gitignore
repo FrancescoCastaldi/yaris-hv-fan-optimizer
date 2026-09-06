@@ -1,13 +1,1 @@
-*.iml
-.gradle
-/local.properties
-/.idea
-.DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
-local.properties
-app/build/
-*.hprof
-.agents/
+Nothing should be ignored based on the provided file changes, as only a source code file (.kt) was modified and no build artifacts, dependencies, or temporary files were included in the changes.

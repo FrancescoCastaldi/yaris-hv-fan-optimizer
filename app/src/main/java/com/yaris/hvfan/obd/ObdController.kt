@@ -248,12 +248,14 @@ class ObdController(
                     // Stadio 2: centralina ibrida Denso HV Battery (7E2 / 7EA) con catena di fallback trasparente
                     addLog("Handshake CAN Stadio 2: interrogazione Centralina Ibrida Denso HV Battery (7E2 / 7EA)...")
                     ensureCanHeader(ToyotaYarisCommands.HEADER_BATTERY_ECU, ToyotaYarisCommands.FILTER_BATTERY_ECU)
+                    delay(100) // Delay critico per stabilizzazione header CAN e timeout ST prima del primo comando UDS
+                    
                     var stage2Ok = false
                     var initialBatteryStatus: HvBatteryStatus? = null
 
                     for (bPid in ToyotaYarisCommands.BATTERY_FALLBACK_PIDS) {
-                        addLog("Interrogazione PID Batteria $bPid...")
-                        val bRes = bleManager.sendCommand(bPid, timeoutMs = 2500L)
+                        addLog("Interrogazione PID Batteria $bPid (timeout 4000ms)...")
+                        val bRes = bleManager.sendCommand(bPid, timeoutMs = 4000L) // Timeout esteso a 4000ms per multi-frame UDS
                         val parsed = ToyotaYarisCommands.parseBatteryResponse(bRes, _liveState.value.fanForcedMax)
                         if (parsed != null) {
                             activeBatteryPid = bPid
@@ -263,7 +265,8 @@ class ObdController(
                             addLog("✅ Handshake CAN Stadio 2 confermato con PID $bPid! Dati pacco batteria ricevuti.")
                             break
                         } else {
-                            addLog("PID $bPid non ha risposto o formato non riconosciuto, provo fallback successivo...")
+                            val cleanResp = Elm327Protocol.cleanResponse(bRes)
+                            addLog("PID $bPid non ha risposto o formato non riconosciuto (risposta: $cleanResp), provo fallback successivo...")
                         }
                     }
 
@@ -342,23 +345,31 @@ class ObdController(
 
     private suspend fun ensureCanHeader(header: String, filter: String) {
         if (currentCanHeader != header) {
+            // Imposta header CAN e filtro ricezione per ECU target
             bleManager.sendCommand("AT SH $header")
+            delay(30) // Delay critico tra AT SH e AT CRA per evitare race condition su adapter clone
             bleManager.sendCommand("AT CRA $filter")
             if (header == ToyotaYarisCommands.HEADER_BATTERY_ECU) {
                 if (isCustomFcSupported) {
+                    // Hardware Flow Control ISO-TP per chipset STN/OBDLink originali
                     bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SH_BATTERY)
+                    delay(20)
                     bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SD_CTS)
+                    delay(20)
                     bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SM_CUSTOM)
                 }
-                bleManager.sendCommand("AT ST 64") // ~400ms timeout per multi-frame UDS 2228C1
+                // Timeout esteso a 400ms (64 * 4ms) per risposte multi-frame UDS 2228C1
+                bleManager.sendCommand("AT ST 64")
             } else {
                 if (isCustomFcSupported) {
+                    // Disabilita Flow Control custom per ECU motore/metriche veloci
                     bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SM_DEFAULT)
                 }
-                bleManager.sendCommand("AT ST 20") // ~80ms timeout per loop rapido telemetria
+                // Timeout ridotto a 80ms (20 * 4ms) per loop telemetria rapido
+                bleManager.sendCommand("AT ST 20")
             }
             currentCanHeader = header
-            delay(25)
+            delay(50) // Delay di stabilizzazione completo dopo configurazione header/timeout
         }
     }
 
