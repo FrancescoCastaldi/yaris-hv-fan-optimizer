@@ -2188,6 +2188,12 @@ fun EcuCodingSection(
                         modifier = Modifier.weight(1f),
                         onClick = { stateDraft = stateDraft.copy(rearCameraDelay = CameraOffDelay.IMMEDIATE) }
                     )
+                    PresetButton(
+                        label = "10 secondi",
+                        isSelected = stateDraft.rearCameraDelay == CameraOffDelay.SEC_10,
+                        modifier = Modifier.weight(1f),
+                        onClick = { stateDraft = stateDraft.copy(rearCameraDelay = CameraOffDelay.SEC_10) }
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
@@ -2401,6 +2407,8 @@ fun EcuCodingSection(
                     PresetButton(label = "3 Lampeggi", isSelected = stateDraft.turnSignalFlashes == TurnSignalFlashes.FLASHES_3, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(turnSignalFlashes = TurnSignalFlashes.FLASHES_3) })
                     PresetButton(label = "4 Lampeggi", isSelected = stateDraft.turnSignalFlashes == TurnSignalFlashes.FLASHES_4, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(turnSignalFlashes = TurnSignalFlashes.FLASHES_4) })
                     PresetButton(label = "5 Lampeggi", isSelected = stateDraft.turnSignalFlashes == TurnSignalFlashes.FLASHES_5, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(turnSignalFlashes = TurnSignalFlashes.FLASHES_5) })
+                    PresetButton(label = "6 Lampeggi", isSelected = stateDraft.turnSignalFlashes == TurnSignalFlashes.FLASHES_6, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(turnSignalFlashes = TurnSignalFlashes.FLASHES_6) })
+                    PresetButton(label = "Disattivato", isSelected = stateDraft.turnSignalFlashes == TurnSignalFlashes.OFF, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(turnSignalFlashes = TurnSignalFlashes.OFF) })
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
@@ -2435,6 +2443,7 @@ fun EcuCodingSection(
                     PresetButton(label = "OFF", isSelected = stateDraft.followMeHome == FollowMeHomeDuration.OFF, modifier = Modifier.weight(0.8f), onClick = { stateDraft = stateDraft.copy(followMeHome = FollowMeHomeDuration.OFF) })
                     PresetButton(label = "30s", isSelected = stateDraft.followMeHome == FollowMeHomeDuration.SEC_30, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(followMeHome = FollowMeHomeDuration.SEC_30) })
                     PresetButton(label = "60s", isSelected = stateDraft.followMeHome == FollowMeHomeDuration.SEC_60, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(followMeHome = FollowMeHomeDuration.SEC_60) })
+                    PresetButton(label = "90s", isSelected = stateDraft.followMeHome == FollowMeHomeDuration.SEC_90, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(followMeHome = FollowMeHomeDuration.SEC_90) })
                 }
             }
         }
@@ -2476,6 +2485,23 @@ fun EcuCodingSection(
                     PresetButton(label = "Normale", isSelected = stateDraft.bsmSensitivity == BsmSensitivity.NORMAL, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(bsmSensitivity = BsmSensitivity.NORMAL) })
                     PresetButton(label = "Anticipato", isSelected = stateDraft.bsmSensitivity == BsmSensitivity.FAR, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(bsmSensitivity = BsmSensitivity.FAR) })
                 }
+
+                Spacer(modifier = Modifier.height(14.dp))
+                CodingSwitchRow(
+                    label = "RCTA: Allerta Traffico Posteriore",
+                    checked = stateDraft.rctaEnabled,
+                    onCheckedChange = { stateDraft = stateDraft.copy(rctaEnabled = it) }
+                )
+                CodingSwitchRow(
+                    label = "LTA: Mantenimento Corsia",
+                    checked = stateDraft.ltaEnabled,
+                    onCheckedChange = { stateDraft = stateDraft.copy(ltaEnabled = it) }
+                )
+                CodingSwitchRow(
+                    label = "PCS: Ricorda Ultimo Stato",
+                    checked = stateDraft.pcsRememberLast,
+                    onCheckedChange = { stateDraft = stateDraft.copy(pcsRememberLast = it) }
+                )
             }
         }
 
@@ -2510,6 +2536,22 @@ fun EcuCodingSection(
                     checked = stateDraft.ecoAirConEfficiencyMode,
                     onCheckedChange = { stateDraft = stateDraft.copy(ecoAirConEfficiencyMode = it) }
                 )
+                CodingSwitchRow(
+                    label = "Ventilatore su Sbrinatore",
+                    checked = stateDraft.blowerOnDefroster,
+                    onCheckedChange = { stateDraft = stateDraft.copy(blowerOnDefroster = it) }
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+                Text(text = "Calibrazione Temperatura Clima", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    PresetButton(label = "-2°C", isSelected = stateDraft.temperatureCalibration == TemperatureCalibration.MINUS_2, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(temperatureCalibration = TemperatureCalibration.MINUS_2) })
+                    PresetButton(label = "-1°C", isSelected = stateDraft.temperatureCalibration == TemperatureCalibration.MINUS_1, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(temperatureCalibration = TemperatureCalibration.MINUS_1) })
+                    PresetButton(label = "0°C", isSelected = stateDraft.temperatureCalibration == TemperatureCalibration.ZERO, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(temperatureCalibration = TemperatureCalibration.ZERO) })
+                    PresetButton(label = "+1°C", isSelected = stateDraft.temperatureCalibration == TemperatureCalibration.PLUS_1, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(temperatureCalibration = TemperatureCalibration.PLUS_1) })
+                    PresetButton(label = "+2°C", isSelected = stateDraft.temperatureCalibration == TemperatureCalibration.PLUS_2, modifier = Modifier.weight(1f), onClick = { stateDraft = stateDraft.copy(temperatureCalibration = TemperatureCalibration.PLUS_2) })
+                }
             }
         }
     }

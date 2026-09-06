@@ -6,6 +6,15 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)
 - **MINOR (`0.X.0`)**: Aggiunta di nuove funzionalità, sensori, codifiche o telemetrie.
 - **PATCH (`0.0.X`)**: Bugfix, ottimizzazioni di performance o aggiustamenti grafici minori.
 
+## [2.9.10] - 2026-09-06
+### 🛠️ Espansione Codifiche: ADAS, Clima & Opzioni Mancanti
+- **Nuove codifiche ADAS (ECU 7A0)**: RCTA Allerta Traffico Posteriore (`3B62`), LTA Mantenimento Corsia (`3B63`) e PCS con memoria dell'ultimo stato (`3B64`).
+- **Nuove codifiche Clima (ECU 7C4)**: Ventilatore attivo con sbrinatore (`3B52`) e calibrazione quadrante temperatura da -2°C a +2°C (`3B53`).
+- **Codifiche esistenti ora operative**: Cicalino cinture posteriori (`3B03`), sblocco selettivo porte (`3B25`), intermittenza legata alla velocità (`3B42`) e illuminazione vano piedi in marcia (`3B34`) ora inviano il comando UDS corretto.
+- **Nuove opzioni UI**: Frecce comfort a 6 lampeggi e disattivazione, Follow Me Home 90 secondi e ritardo retrocamera 10 secondi.
+- **Test aggiornati**: Asserzioni sui nuovi default in `EcuCodingAndPipelineTest.kt`.
+- Nota: i DataIdentifier seguono lo schema interno dell'app; verificarne l'effetto sulla propria vettura prima dell'uso.
+
 ## [2.9.9] - 2026-09-06
 ### 🏁 Nuovo Pit Wall Digitale & Portale Motorsport Responsive
 - **Nuova identità visiva del portale web**: Tipografia Barlow Condensed / Barlow / IBM Plex Mono, palette carbonio/alluminio/rosso/ghiaccio e layout a pit wall per `docs/index.html`, `docs/preview.html` e `docs/404.html`.

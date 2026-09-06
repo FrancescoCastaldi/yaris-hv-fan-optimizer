@@ -1076,6 +1076,8 @@ class ObdController(
                 delay(40)
                 bleManager.sendCommand("3B02" + if (updatedState.passengerSeatbeltBeep) "01" else "00")
                 delay(40)
+                bleManager.sendCommand("3B03" + if (updatedState.rearSeatbeltBeep) "01" else "00")
+                delay(40)
 
                 // Read-After-Write Verification su Meter
                 val verifyMeter = bleManager.sendCommand("21A7")
@@ -1102,6 +1104,9 @@ class ObdController(
                 // Auto Relock Timer
                 bleManager.sendCommand("3B24" + updatedState.autoRelockTime.code)
                 delay(40)
+                // Door Unlock Mode
+                bleManager.sendCommand("3B25" + updatedState.doorUnlockMode.code)
+                delay(40)
                 // Turn Signal Flashes
                 bleManager.sendCommand("3B30" + updatedState.turnSignalFlashes.code)
                 delay(40)
@@ -1114,10 +1119,15 @@ class ObdController(
                 // Interior Light Dim Time
                 bleManager.sendCommand("3B33" + updatedState.interiorDimTime.code)
                 delay(40)
+                // Footwell Lighting in Drive
+                bleManager.sendCommand("3B34" + if (updatedState.footwellLightingInDrive) "01" else "00")
+                delay(40)
                 // Wipers (Rear wiper reverse link & Drip wipe)
                 bleManager.sendCommand("3B40" + if (updatedState.rearWiperReverseLink) "01" else "00")
                 delay(40)
                 bleManager.sendCommand("3B41" + if (updatedState.dripWipeExtraPass) "01" else "00")
+                delay(40)
+                bleManager.sendCommand("3B42" + if (updatedState.wiperSpeedLink) "01" else "00")
                 delay(40)
 
                 // Read-After-Write Verification su Body ECU
@@ -1132,6 +1142,12 @@ class ObdController(
                 delay(40)
                 bleManager.sendCommand("3B51" + if (updatedState.ecoAirConEfficiencyMode) "01" else "00")
                 delay(40)
+                // Blower on Defroster
+                bleManager.sendCommand("3B52" + if (updatedState.blowerOnDefroster) "01" else "00")
+                delay(40)
+                // Temperature Calibration
+                bleManager.sendCommand("3B53" + updatedState.temperatureCalibration.code)
+                delay(40)
 
                 // 4. TSS 2.5 / ADAS ECU (7A0 / 7A8) -> LDA Volume & BSM Sensitivity
                 ensureCanHeader(ToyotaYarisCommands.HEADER_ADAS_ECU)
@@ -1140,6 +1156,13 @@ class ObdController(
                 bleManager.sendCommand("3B60" + updatedState.ldaWarningVolume.code)
                 delay(40)
                 bleManager.sendCommand("3B61" + updatedState.bsmSensitivity.code)
+                delay(40)
+                // RCTA, LTA & PCS
+                bleManager.sendCommand("3B62" + if (updatedState.rctaEnabled) "01" else "00")
+                delay(40)
+                bleManager.sendCommand("3B63" + if (updatedState.ltaEnabled) "01" else "00")
+                delay(40)
+                bleManager.sendCommand("3B64" + if (updatedState.pcsRememberLast) "01" else "00")
                 delay(40)
 
                 _liveState.value = _liveState.value.copy(
@@ -1172,12 +1195,20 @@ class ObdController(
             driverSeatbeltBeep = true,
             passengerSeatbeltBeep = true,
             rearSeatbeltBeep = true,
+            doorUnlockMode = DoorUnlockMode.ALL_DOORS,
             windowsWithKeyFob = false,
             autoDoorLock = AutoDoorLockMode.OFF,
             autoDoorUnlock = false,
+            wiperSpeedLink = true,
             turnSignalFlashes = TurnSignalFlashes.FLASHES_3,
             lightSensitivity = LightSensitivity.NORMAL,
+            footwellLightingInDrive = false,
             followMeHome = FollowMeHomeDuration.OFF,
+            rctaEnabled = true,
+            ltaEnabled = true,
+            pcsRememberLast = false,
+            blowerOnDefroster = true,
+            temperatureCalibration = TemperatureCalibration.ZERO,
             autoAcWithAutoButton = true,
             isReadCompleted = true,
             lastOperationStatus = "Configurazione di fabbrica ripristinata"

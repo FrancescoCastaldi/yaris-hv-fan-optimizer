@@ -68,6 +68,17 @@ class EcuCodingAndPipelineTest {
         assertFalse(state.touchScreenBeep)
         assertTrue(state.windowsWithKeyFob)
         assertTrue(state.autoDoorUnlock)
+
+        // Codifiche expansion OEM defaults
+        assertTrue(state.rearSeatbeltBeep)
+        assertEquals(DoorUnlockMode.ALL_DOORS, state.doorUnlockMode)
+        assertFalse(state.footwellLightingInDrive)
+        assertTrue(state.wiperSpeedLink)
+        assertTrue(state.rctaEnabled)
+        assertTrue(state.ltaEnabled)
+        assertFalse(state.pcsRememberLast)
+        assertTrue(state.blowerOnDefroster)
+        assertEquals(TemperatureCalibration.ZERO, state.temperatureCalibration)
     }
 
     @Test

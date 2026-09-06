@@ -180,6 +180,14 @@ enum class BsmSensitivity(val label: String, val code: String) {
     FAR("Lontano / Anticipato", "03")
 }
 
+enum class TemperatureCalibration(val label: String, val code: String) {
+    MINUS_2("-2°C", "00"),
+    MINUS_1("-1°C", "01"),
+    ZERO("0°C (Standard)", "02"),
+    PLUS_1("+1°C", "03"),
+    PLUS_2("+2°C", "04")
+}
+
 data class EcuCustomizationState(
     // 0. Toyota Touch 3 & Smart Connect (Infotainment)
     val touch3OpeningAnimation: Touch3OpeningScreen = Touch3OpeningScreen.GAZOO_RACING,
@@ -212,17 +220,22 @@ data class EcuCustomizationState(
     // 4. Luci, Frecce & Plafoniera
     val turnSignalFlashes: TurnSignalFlashes = TurnSignalFlashes.FLASHES_5,
     val interiorDimTime: InteriorLightDimTime = InteriorLightDimTime.SEC_15,
-    val footwellLightingInDrive: Boolean = true,
+    val footwellLightingInDrive: Boolean = false,
     val lightSensitivity: LightSensitivity = LightSensitivity.NORMAL,
     val followMeHome: FollowMeHomeDuration = FollowMeHomeDuration.SEC_30,
 
     // 5. ADAS & TSS 2.5
     val ldaWarningVolume: LdaWarningVolume = LdaWarningVolume.MEDIUM,
     val bsmSensitivity: BsmSensitivity = BsmSensitivity.NORMAL,
+    val rctaEnabled: Boolean = true,
+    val ltaEnabled: Boolean = true,
+    val pcsRememberLast: Boolean = false,
 
     // 6. Clima & Efficienza Eco
     val autoAcWithAutoButton: Boolean = false,
     val ecoAirConEfficiencyMode: Boolean = true,
+    val blowerOnDefroster: Boolean = true,
+    val temperatureCalibration: TemperatureCalibration = TemperatureCalibration.ZERO,
 
     // State Tracking
     val isReadCompleted: Boolean = false,
