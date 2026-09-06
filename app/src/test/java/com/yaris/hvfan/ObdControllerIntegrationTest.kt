@@ -539,11 +539,13 @@ class ObdControllerIntegrationTest {
         // Stage 2: Battery ECU and fallback chain
         assertEquals("7E2", ToyotaYarisCommands.HEADER_BATTERY_ECU)
         assertEquals("7EA", ToyotaYarisCommands.FILTER_BATTERY_ECU)
-        assertEquals(4, ToyotaYarisCommands.BATTERY_FALLBACK_PIDS.size)
+        assertEquals(6, ToyotaYarisCommands.BATTERY_FALLBACK_PIDS.size)
         assertEquals("2228C1", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[0]) // Primary TNGA Mode 22
         assertEquals("2228C0", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[1]) // Alternative Mode 22
-        assertEquals("21C3", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[2])   // Lithium Mode 21
-        assertEquals("2161", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[3])   // Legacy KWP Mode 21
+        assertEquals("220101", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[2]) // Mode 22 UDS 0101
+        assertEquals("2101", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[3])   // Mode 21 Local ID 01
+        assertEquals("21C3", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[4])   // Lithium Mode 21
+        assertEquals("2161", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[5])   // Legacy KWP Mode 21
 
         // Verify parsing for each fallback response variant
         // 1. Primary 2228C1 -> 6228C1
@@ -561,7 +563,21 @@ class ObdControllerIntegrationTest {
         assertEquals(27.0, b2!!.temp1, 0.1)
         assertEquals(2, b2.fanSpeedLevel)
 
-        // 3. Lithium Pack 21C3 -> 61C3
+        // 3. Mode 22 UDS 220101 -> 620101
+        val res220101 = "7EA 10 0E 62 01 01 42 43 42 41 3E 04 >" // T1=26, T2=27, T3=26, T4=25, Intake=22, Fan=4
+        val b3Uds = ToyotaYarisCommands.parseBatteryResponse(res220101, false)
+        assertNotNull(b3Uds)
+        assertEquals(26.0, b3Uds!!.temp1, 0.1)
+        assertEquals(4, b3Uds.fanSpeedLevel)
+
+        // 4. Mode 21 Local ID 2101 -> 6101
+        val res2101 = "7EA 08 61 01 41 42 41 40 3D 03 >" // T1=25, T2=26, T3=25, T4=24, Intake=21, Fan=3
+        val b4Kwp = ToyotaYarisCommands.parseBatteryResponse(res2101, false)
+        assertNotNull(b4Kwp)
+        assertEquals(25.0, b4Kwp!!.temp1, 0.1)
+        assertEquals(3, b4Kwp.fanSpeedLevel)
+
+        // 5. Lithium Pack 21C3 -> 61C3
         val res21C3 = "7EA 08 61 C3 41 42 41 40 3D 00 >" // T1=25, T2=26, T3=25, T4=24, Intake=21, Fan=0
         val b3 = ToyotaYarisCommands.parseBatteryResponse(res21C3, false)
         assertNotNull(b3)
@@ -569,7 +585,7 @@ class ObdControllerIntegrationTest {
         assertEquals(26.0, b3.temp2, 0.1)
         assertEquals(0, b3.fanSpeedLevel)
 
-        // 4. Legacy KWP 2161 -> 6161
+        // 6. Legacy KWP 2161 -> 6161
         val res2161 = "7EA 08 61 61 40 40 3F 3E 3C 01 >" // T1=24, T2=24, T3=23, T4=22, Intake=20, Fan=1
         val b4 = ToyotaYarisCommands.parseBatteryResponse(res2161, false)
         assertNotNull(b4)

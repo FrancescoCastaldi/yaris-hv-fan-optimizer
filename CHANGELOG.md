@@ -6,6 +6,15 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)
 - **MINOR (`0.X.0`)**: Aggiunta di nuove funzionalità, sensori, codifiche o telemetrie.
 - **PATCH (`0.0.X`)**: Bugfix, ottimizzazioni di performance o aggiustamenti grafici minori.
 
+## [2.9.12] - 2026-09-06
+### 🛡️ Risoluzione Watchdog Auto-Recovery, Fallback PID Batteria & Stabilizzazione CAN
+- **Watchdog di Silenzio CAN Resiliente**: Elevate le soglie di silenzio CAN da 5s a 15s (12s per standby) e l'intervallo di guardia dell'auto-recovery da 10s a 25s, eliminando il ciclo infinito di `AT WS` e reset che interrompeva continuamente la lettura e azzerava i buffer.
+- **Tester Present Keep-Alive su ECU Denso (`3E00`)**: Aggiunto invio preventivo di `3E00` prima delle query batteria su ECU `7E2`, mantenendo costantemente attiva la sessione diagnostica UDS Toyota senza timeout di sessione.
+- **Estensione Catena di Fallback PID Batteria**: Aggiunti PID alternativi Mode 22 (`220101`) e Mode 21 (`2101`) in `BATTERY_FALLBACK_PIDS` con gestione dei relativi identificatori di risposta (`620101` e `6101`), garantendo il recupero delle temperature anche su versioni firmware Denso non standard.
+- **Correzione Logging Temperatura Batteria**: Eliminato il log fuorviante `Batt: 0.0°C` in attesa del primo aggancio termico valido; l'app ora segnala esplicitamente `In attesa telemetria termica...` evitando false letture o attivazioni improprie.
+- **Calibrazione Switching Header CAN**: Esteso il ritardo post-`AT SH` a 120ms per garantire tempo di assestamento ai cloni ELM327 e ai dongle Vgate/Vlinker prima dell'invio dei frame successivi.
+- **Sincronizzazione Completa Release & Docs**: Aggiornati build script, workflow CI GitHub Actions, documentazione e portale web servito da GitHub Pages.
+
 ## [2.9.11] - 2026-09-06
 ### 📦 Download Sito Sempre Disponibile
 - **APK tracciato anche in `docs/`**: GitHub Pages (sorgente "Deploy from a branch", `main` + `/docs`) ora serve subito l'APK committato, senza attendere la pipeline CI.

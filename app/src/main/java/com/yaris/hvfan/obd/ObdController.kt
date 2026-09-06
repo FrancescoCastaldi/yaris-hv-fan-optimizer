@@ -413,7 +413,7 @@ class ObdController(
             }
             currentCanHeader = header
             // I cloni ELM327 perdono il primo frame se la richiesta arriva a ridosso del cambio header.
-            delay(100)
+            delay(120)
         }
     }
 
@@ -582,9 +582,9 @@ class ObdController(
         }
 
         // GESTIONE TRANSIZIONE A STANDBY SE L'AUTO VIENE SPENTA DURANTE IL FUNZIONAMENTO
-        val isCanSilentForStandby = (lastValidCanTimestamp > 0L && (now - lastValidCanTimestamp > 5000L)) ||
-                                    (lastValidCanTimestamp == 0L && (now - loopStartTimestamp > 5000L))
-        if (consecutiveCanErrors >= 5 && isCanSilentForStandby) {
+        val isCanSilentForStandby = (lastValidCanTimestamp > 0L && (now - lastValidCanTimestamp > 12000L)) ||
+                                    (lastValidCanTimestamp == 0L && (now - loopStartTimestamp > 12000L))
+        if (consecutiveCanErrors >= 6 && isCanSilentForStandby) {
             val voltRes = bleManager.sendCommand(Elm327Protocol.CMD_VOLTAGE)
             val volt = Elm327Protocol.parseBatteryVoltage(voltRes) ?: lastKnown12v
             lastKnown12v = volt
@@ -602,10 +602,10 @@ class ObdController(
             }
         }
 
-        // 0. Auto-Recovery se il bus CAN è silente da oltre 5000ms dopo che era attivo, o se bloccato all'avvio (>8s)
-        val isCanSilentAfterActive = lastValidCanTimestamp > 0L && (now - lastValidCanTimestamp > 5000L)
-        val isInitialCanStuck = lastValidCanTimestamp == 0L && (now - loopStartTimestamp > 8000L)
-        if (isProtocolInitialized && (isCanSilentAfterActive || isInitialCanStuck) && (now - lastAutoRecoveryTimestamp > 10000L)) {
+        // 0. Auto-Recovery se il bus CAN è silente da oltre 15000ms dopo che era attivo, o se bloccato all'avvio (>15s)
+        val isCanSilentAfterActive = lastValidCanTimestamp > 0L && (now - lastValidCanTimestamp > 15000L)
+        val isInitialCanStuck = lastValidCanTimestamp == 0L && (now - loopStartTimestamp > 15000L)
+        if (isProtocolInitialized && (isCanSilentAfterActive || isInitialCanStuck) && (now - lastAutoRecoveryTimestamp > 25000L)) {
             lastAutoRecoveryTimestamp = now
             executeCanBusAutoRecovery()
         }
@@ -630,6 +630,9 @@ class ObdController(
 
     private suspend fun executeBatteryThermalCycle() {
         ensureCanHeader(ToyotaYarisCommands.HEADER_BATTERY_ECU)
+
+        // Keep-alive preventivo su centralina batteria ibrida Denso per mantenere attiva la sessione UDS
+        bleManager.sendCommand(ToyotaYarisCommands.CMD_TESTER_PRESENT, timeoutMs = 1000L)
 
         var rawResponse = bleManager.sendCommand(activeBatteryPid, timeoutMs = BATTERY_PID_TIMEOUT_MS)
         var parsedStatus = ToyotaYarisCommands.parseBatteryResponse(rawResponse, _liveState.value.fanForcedMax)
@@ -687,7 +690,7 @@ class ObdController(
         }
 
         val isAutoCoolingActive = updatedAutoStatus.isEnabled && updatedAutoStatus.isActivelyCooling
-        val shouldForceFan = currentState.fanForcedMax || isAutoCoolingActive || (updatedBattery.maxTemp >= currentState.targetThreshold)
+        val shouldForceFan = currentState.fanForcedMax || isAutoCoolingActive || (updatedBattery.maxTemp >= currentState.targetThreshold && updatedBattery.maxTemp > 0.0)
         val activeTargetSpeed = if (currentState.fanForcedMax) 6 else if (isAutoCoolingActive) updatedAutoStatus.targetSpeed else 6
 
         if (shouldForceFan) {
@@ -697,7 +700,11 @@ class ObdController(
             if (cleanFanRes.contains("7F30") || cleanFanRes.contains("ERROR")) {
                 bleManager.sendCommand(ToyotaYarisCommands.CMD_FAN_MAX_SPEED_ALT)
             }
-            addLog("Ventola HV L$activeTargetSpeed | Batt: ${String.format(java.util.Locale.US, "%.1f", updatedBattery.maxTemp)}°C")
+            if (updatedBattery.maxTemp > 0.0) {
+                addLog("Ventola HV L$activeTargetSpeed | Batt: ${String.format(java.util.Locale.US, "%.1f", updatedBattery.maxTemp)}°C")
+            } else {
+                addLog("Ventola HV L$activeTargetSpeed | In attesa telemetria termica...")
+            }
         } else {
             if (currentState.batteryStatus.isFanForced) {
                 bleManager.sendCommand(ToyotaYarisCommands.CMD_FAN_STOP_OR_RESET)
@@ -776,7 +783,7 @@ class ObdController(
         processDragyTelemetry(sampleTimestamp, lastKnownSpeed, lastKnownThrottle)
 
         val currentState = _liveState.value
-        val hasRecentCanData = (sampleTimestamp - lastValidCanTimestamp <= 5000L) && lastValidCanTimestamp > 0L
+        val hasRecentCanData = (sampleTimestamp - lastValidCanTimestamp <= 10000L) && lastValidCanTimestamp > 0L
         val isEcuAlive = hasRecentCanData && isProtocolInitialized
         val alertBanner = when {
             currentState.isStandbyMode -> "Auto in standby a basso consumo: accendi la vettura (spia verde READY) per avviare la telemetria."

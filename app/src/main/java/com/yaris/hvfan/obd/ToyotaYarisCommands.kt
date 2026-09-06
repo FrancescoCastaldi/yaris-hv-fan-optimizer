@@ -299,6 +299,8 @@ object ToyotaYarisCommands {
     val BATTERY_FALLBACK_PIDS = listOf(
         PID_READ_BATTERY_DATA_TNGA,      // 2228C1
         PID_READ_BATTERY_DATA_ALT,       // 2228C0
+        "220101",                        // Mode 22 UDS Data Identifier 0101
+        "2101",                          // Mode 21 Local ID 01 (Denso / KWP)
         PID_READ_BATTERY_DATA_LITHIUM_1, // 21C3
         PID_READ_BATTERY_DATA_LEGACY     // 2161
     )
@@ -553,6 +555,8 @@ object ToyotaYarisCommands {
             when {
                 hexPayload.contains("6228C1") -> hexPayload = hexPayload.substring(hexPayload.indexOf("6228C1") + 6)
                 hexPayload.contains("6228C0") -> hexPayload = hexPayload.substring(hexPayload.indexOf("6228C0") + 6)
+                hexPayload.contains("620101") -> hexPayload = hexPayload.substring(hexPayload.indexOf("620101") + 6)
+                hexPayload.contains("6101")   -> hexPayload = hexPayload.substring(hexPayload.indexOf("6101") + 4)
                 hexPayload.contains("6161")   -> hexPayload = hexPayload.substring(hexPayload.indexOf("6161") + 4)
                 hexPayload.contains("61C3")   -> hexPayload = hexPayload.substring(hexPayload.indexOf("61C3") + 4)
                 hexPayload.contains("61C4")   -> hexPayload = hexPayload.substring(hexPayload.indexOf("61C4") + 4)
