@@ -47,7 +47,7 @@ data class DiscoveredBleDevice(
 )
 
 @SuppressLint("MissingPermission")
-class BleManager(private val context: Context) {
+class BleManager(private val context: Context) : com.yaris.hvfan.obd.ObdTransport {
 
     companion object {
         private const val TAG = "BleManager"
@@ -86,7 +86,7 @@ class BleManager(private val context: Context) {
     private val managerScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     private val _connectionState = MutableStateFlow<BleConnectionState>(BleConnectionState.Disconnected)
-    val connectionState: StateFlow<BleConnectionState> = _connectionState
+    override val connectionState: StateFlow<BleConnectionState> = _connectionState
 
     private val _discoveredDevices = MutableStateFlow<List<DiscoveredBleDevice>>(emptyList())
     val discoveredDevices: StateFlow<List<DiscoveredBleDevice>> = _discoveredDevices
@@ -99,7 +99,7 @@ class BleManager(private val context: Context) {
     private var activeResponseDeferred: CompletableDeferred<String>? = null
     private val commandMutex = Mutex()
 
-    fun getConnectedDeviceName(): String? = lastDeviceName
+    override fun getConnectedDeviceName(): String? = lastDeviceName
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var isScanning = false
@@ -869,7 +869,7 @@ class BleManager(private val context: Context) {
      * Invia la sequenza di risveglio preventiva "\r\r" per svegliare Vgate iCar Pro / chip ELM327
      * dallo stato di sleep / low-power standby senza attendere il terminatore rigido.
      */
-    suspend fun sendWakeSequence() = commandMutex.withLock {
+    override suspend fun sendWakeSequence(): Unit = commandMutex.withLock {
         try {
             synchronized(responseBuffer) {
                 responseBuffer.setLength(0)
@@ -895,11 +895,12 @@ class BleManager(private val context: Context) {
         } catch (e: Exception) {
             Log.w(TAG, "Errore durante invio sequenza di sveglia Vgate", e)
         }
+        Unit
     }
 
-    suspend fun sendCommand(
+    override suspend fun sendCommand(
         command: String,
-        timeoutMs: Long = COMMAND_TIMEOUT_MS
+        timeoutMs: Long
     ): String = commandMutex.withLock {
         // Purge preventivo del buffer di risposta e registrazione deferred atomica
         val deferred = CompletableDeferred<String>()
