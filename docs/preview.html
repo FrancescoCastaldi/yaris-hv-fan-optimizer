@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Live UI Simulator - Yaris HV Fan & GR Cockpit v2.9.6</title>
+    <title>Live UI Simulator - Yaris HV Fan & GR Cockpit v2.9.7</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-dark: #0B0E14;
-            --surface-card: #121824;
+            --bg-dark: #080A0E;
+            --surface-card: #141924;
             --surface-inner: #181E2A;
-            --border-card: #1E293B;
+            --border-card: #2A364B;
             --border-subtle: #2A3850;
             --gr-red: #FF1801;
             --accent-cyan: #00E5FF;
@@ -31,12 +31,13 @@
         }
 
         body {
-            background-color: #07090D;
+            background-color: #080A0E;
             background-image: 
-                radial-gradient(circle at 50% 30%, rgba(18, 22, 31, 0.72) 0%, rgba(6, 8, 12, 0.96) 80%),
-                repeating-linear-gradient(45deg, #0F131C 0px, #0F131C 3px, #161B27 3px, #161B27 6px),
-                repeating-linear-gradient(-45deg, #111622 0px, #111622 3px, #0A0D14 3px, #0A0D14 6px);
-            background-blend-mode: normal, overlay;
+                radial-gradient(circle at 50% 30%, rgba(20, 26, 38, 0.35) 0%, rgba(8, 10, 14, 0.82) 85%),
+                url('carbon-pattern-3k.svg');
+            background-size: 100% 100%, 48px 48px;
+            background-repeat: no-repeat, repeat;
+            background-attachment: fixed, scroll;
             color: var(--text-primary);
             min-height: 100vh;
             display: flex;
@@ -82,7 +83,12 @@
             width: 100%;
             max-width: 400px;
             height: 820px;
-            background: var(--bg-dark);
+            background-color: #080A0E;
+            background-image: 
+                radial-gradient(circle at 50% 35%, rgba(20, 26, 38, 0.25) 0%, rgba(8, 10, 14, 0.75) 100%),
+                url('carbon-pattern-3k.svg');
+            background-size: 100% 100%, 44px 44px;
+            background-repeat: no-repeat, repeat;
             border-radius: 44px;
             border: 8px solid #1E293B;
             box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.9), 0 0 40px rgba(0, 229, 255, 0.15);
@@ -407,8 +413,18 @@
 <body>
 
     <div class="preview-header">
+        <div style="display: flex; gap: 12px; justify-content: center; align-items: center; margin-bottom: 16px; flex-wrap: wrap;">
+            <a href="index.html" style="color: var(--accent-cyan); text-decoration: none; font-weight: 700; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px; background: rgba(0, 229, 255, 0.08); border: 1px solid rgba(0, 229, 255, 0.25); border-radius: 999px; transition: all 0.2s;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+                Torna al Portale
+            </a>
+            <a href="YarisHvFanControl-v2.9.7.apk" download style="color: var(--gr-red); text-decoration: none; font-weight: 800; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px; background: rgba(255, 24, 1, 0.08); border: 1px solid rgba(255, 24, 1, 0.25); border-radius: 999px; transition: all 0.2s;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Scarica APK v2.9.7
+            </a>
+        </div>
         <div class="preview-badge">⚡ LIVE INTERACTIVE SIMULATOR</div>
-        <h1 class="preview-title">Yaris HV Fan & GR Cockpit v2.9.6</h1>
+        <h1 class="preview-title">Yaris HV Fan & GR Cockpit v2.9.7</h1>
         <p class="preview-subtitle">Testa dal vivo la nuova interfaccia con griglie 2x2 e stile Gazoo Racing Cyber Neon</p>
     </div>
 

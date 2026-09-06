@@ -1,8 +1,8 @@
 # Toyota Yaris MK4 Hybrid - HV Battery Cooling, GR Cockpit & ECU Coding Suite 🏎️⚡
 
 [![Website](https://img.shields.io/badge/Website-Live%20Portal-00E5FF.svg?style=for-the-badge&logo=googlechrome)](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/)
-[![Download APK](https://img.shields.io/badge/Download-APK%20Release%20(v2.9.6)-D71920.svg?style=for-the-badge&logo=android)](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisHvFanControl-v2.9.6.apk)
-[![Android](https://img.shields.io/badge/Platform-Android%208.0%2B%20(API%2026%2B)-3DDC84.svg?style=flat&logo=android)](https://www.android.com/)
+[![Download APK](https://img.shields.io/badge/Download-APK%20Release%20(v2.9.7)-D71920.svg?style=for-the-badge&logo=android)](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisHvFanControl-v2.9.7.apk)
+[![Platform](https://img.shields.io/badge/Platform-Android%208.0%2B%20(API%2026%2B)-3DDC84.svg?style=flat&logo=android)](https://www.android.com/)
 [![Kotlin](https://img.shields.io/badge/Kotlin-1.9.24-7F52FF.svg?style=flat&logo=kotlin)](https://kotlinlang.org/)
 [![Jetpack Compose](https://img.shields.io/badge/UI-Jetpack%20Compose%20M3-4285F4.svg?style=flat&logo=jetpackcompose)](https://developer.android.com/jetpack/compose)
 [![Tests](https://img.shields.io/badge/Tests-100%25%20Passing-brightgreen.svg?style=flat&logo=githubactions)](https://github.com/FrancescoCastaldi/yaris-hv-fan-optimizer)
@@ -10,7 +10,7 @@
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Applicazione Android nativa ad altissime prestazioni per **Toyota Yaris MK4 Hybrid (Piattaforma XP210 / TNGA-B, MY2020 - MY2025+)**. Interagisce via Bluetooth Low Energy (BLE) o Bluetooth Classic SPP con l'infrastruttura CAN bus dell'auto per offrire:
-1. **Handshake Avanzato Intelligente Stile Hybrid Assistant & Dr. Prius (v2.9.6)**:
+1. **Handshake Avanzato Intelligente Stile Hybrid Assistant & Dr. Prius (v2.9.6+)**:
    - Sequenza preventiva di risveglio `\r\r` per svegliare Vgate iCar Pro da sleep/low-power standby;
    - Warm Start / Reset (`AT WS` / `AT Z`) con attesa dedicata a 600ms senza bloccare il baudrate;
    - Rilevamento robusto dello stato READY auto tramite tensione reale batteria 12V (`AT RV >= 13.0V` convertitore DC-DC attivo) immune a banner di versione firmware, con sincronizzazione periodica via probe frame CAN;
@@ -20,7 +20,7 @@ Applicazione Android nativa ad altissime prestazioni per **Toyota Yaris MK4 Hybr
 3. **Watchdog di Riconnessione Silenziosa & Auto-Connect Istantaneo all'Avvio**:
    - Closed-loop watchdog con backoff esponenziale automatico e socket streaming thread-safe, senza dialog bloccanti o fastidiosi in caso di disconnessione o spegnimento vettura;
    - Connessione istantanea in background al dispositivo Vgate salvato o già associato in Android senza forzare la modale di scansione;
-4. **Sfondo Esclusivo Motorsport Micro-Twill Carbon Fiber**: Texture in fibra di carbonio 2x2 ad accelerazione hardware nativa sia nell'app che nel portale web, con vignettatura OLED radiale morbida ad alto contrasto;
+4. **Sfondo Esclusivo Motorsport Carbon Fiber 3K High-Definition (v2.9.7)**: Texture in fibra di carbonio 2x2 Twill ad alta definizione scalata sulla densità AMOLED (36dp / 400+ PPI), fotometria con riflessi titanio/grafite realistici (`#2A303E` / `#363F50`), mezzitoni (`#161B24`), solchi d'ombra carbonio puro (`#080A0E`) e vignettatura radiale GPU;
 5. **Smart Auto-Cooling Protection Suite**: Controllo termico predittivo con soglia regolabile (28°C–42°C), isteresi di spegnimento (1°C–5°C), selettore di velocità bersaglio (L1–L6), esecuzione continua in background 24/7 con segnale audio e vibrazione haptic all'innesco;
 6. **Telemetria MoTeC / Gazoo Racing & Cronometro Dragy 0-100 km/h** con interpolazione lineare ad alta precisione;
 7. **Gestione Termica Attiva & Forzatura Ventola Batteria HV Denso con Closed-Loop ECU ACK e Hall RPM**;
@@ -31,7 +31,7 @@ Applicazione Android nativa ad altissime prestazioni per **Toyota Yaris MK4 Hybr
 ## 🌐 Sito Web Ufficiale & Download Diretto
 - **Portale Web Ufficiale**: 👉 **[https://francescocastaldi.github.io/yaris-hv-fan-optimizer/](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/)**
 - **Simulatore Interattivo Web**: 👉 **[https://francescocastaldi.github.io/yaris-hv-fan-optimizer/preview.html](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/preview.html)**
-- **Download Diretto Ultimo APK (v2.9.6)**: 👉 **[Scarica YarisHvFanControl-v2.9.6.apk](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisHvFanControl-v2.9.6.apk)** (disponibile anche come [YarisHvFanControl.apk](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisHvFanControl.apk))
+- **Download Diretto Ultimo APK (v2.9.7)**: 👉 **[Scarica YarisHvFanControl-v2.9.7.apk](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisHvFanControl-v2.9.7.apk)** (disponibile anche come [YarisHvFanControl.apk](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisHvFanControl.apk))
 
 ---
 

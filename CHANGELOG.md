@@ -6,6 +6,13 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)
 - **MINOR (`0.X.0`)**: Aggiunta di nuove funzionalità, sensori, codifiche o telemetrie.
 - **PATCH (`0.0.X`)**: Bugfix, ottimizzazioni di performance o aggiustamenti grafici minori.
 
+## [2.9.7] - 2026-09-06
+### 🏎️ 3K Motorsport High-Definition Carbon Fiber Weave & Cockpit Integration
+- **Texture Procedurale 3K Motorsport Twill 2x2 in Jetpack Compose**: Sostituito il microscopico tile 8x8 con un pattern procedurale ad alta risoluzione calibrato su scala reale motorsport per display AMOLED ad alta densità (36dp / 400+ PPI come Oppo A94 5G).
+- **Fotometria Anisotropa Realistica**: Chiara differenziazione fisica tra fibre orizzontali ad alto riflesso titanio/grafite (`#2A303E` / `#363F50`), fibre verticali a riflessione diffusa in mezzitoni grafite (`#161B24`), e solchi d'ombra carbonio puro (`#080A0E`) a delimitazione dei fasci.
+- **Integrazione Cockpit MoTeC / Gazoo Racing Continua (Portrait & Landscape)**: Sfondo monoscocca a fibra di carbonio esteso e continuo a tutto schermo sia in Portrait che Landscape (incluso safe margin punch-hole da 32dp), con bordi card telemetriche ad alto contrasto al titanio (`#2A364B`) e vignettatura radiale GPU morbida.
+- **Sincronizzazione Web & Simulatore Interattivo**: Nuova trama vettoriale SVG/CSS ad alta fedeltà integrata sul portale GitHub Pages (`docs/index.html`, `docs/404.html`) e attorno alla cornice del simulatore interattivo (`docs/preview.html`).
+
 ## [2.9.6] - 2026-09-06
 ### ⚡ Dual-Engine OBD Connection Architecture (Dr. Prius + Hybrid Assistant)
 - **Architettura Dual-Engine Dr. Prius & Hybrid Assistant**: Stack universale di base ispirato a Dr. Prius con `AT CAF 1` (CAN Auto-Formatting nativo standard per l'assemblaggio trasparente dei frame ISO-TP multi-frame), combinato con rilevamento hardware non distruttivo STN/OBDLink (`ST DI`, `ATI`) per attivare il Flow Control avanzato solo sui chip che lo supportano nativamente.

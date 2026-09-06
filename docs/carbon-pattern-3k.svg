@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+<defs>
+  <!-- Horizontal tow transverse gradient -->
+  <linearGradient id="gh" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#080A0E"/>
+    <stop offset="18%" stop-color="#161B24"/>
+    <stop offset="50%" stop-color="#363F50"/>
+    <stop offset="82%" stop-color="#161B24"/>
+    <stop offset="100%" stop-color="#080A0E"/>
+  </linearGradient>
+  <!-- Vertical tow transverse gradient -->
+  <linearGradient id="gv" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0%" stop-color="#080A0E"/>
+    <stop offset="20%" stop-color="#141924"/>
+    <stop offset="50%" stop-color="#222A3A"/>
+    <stop offset="80%" stop-color="#141924"/>
+    <stop offset="100%" stop-color="#080A0E"/>
+  </linearGradient>
+  <!-- Dive shadow gradient along X for horizontal tow ends -->
+  <linearGradient id="g_dive_h" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0%" stop-color="#080A0E" stop-opacity="0.8"/>
+    <stop offset="12%" stop-color="#080A0E" stop-opacity="0"/>
+    <stop offset="88%" stop-color="#080A0E" stop-opacity="0"/>
+    <stop offset="100%" stop-color="#080A0E" stop-opacity="0.8"/>
+  </linearGradient>
+  <!-- Dive shadow gradient along Y for vertical tow ends -->
+  <linearGradient id="g_dive_v" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#080A0E" stop-opacity="0.8"/>
+    <stop offset="12%" stop-color="#080A0E" stop-opacity="0"/>
+    <stop offset="88%" stop-color="#080A0E" stop-opacity="0"/>
+    <stop offset="100%" stop-color="#080A0E" stop-opacity="0.8"/>
+  </linearGradient>
+</defs>
+<rect width="48" height="48" fill="#080A0E"/>
+<!-- Horizontal Tows -->
+<g id="tow-h0">
+  <rect x="0" y="0" width="24" height="12" fill="url(#gh)"/>
+  <rect x="0" y="0" width="24" height="12" fill="url(#g_dive_h)"/>
+  <line x1="0" y1="3" x2="24" y2="3" stroke="#2A303E" stroke-width="0.5" opacity="0.7"/>
+  <line x1="0" y1="6" x2="24" y2="6" stroke="#363F50" stroke-width="0.6" opacity="0.95"/>
+  <line x1="0" y1="9" x2="24" y2="9" stroke="#2A303E" stroke-width="0.5" opacity="0.7"/>
+</g>
+<g id="tow-h2">
+  <rect x="24" y="24" width="24" height="12" fill="url(#gh)"/>
+  <rect x="24" y="24" width="24" height="12" fill="url(#g_dive_h)"/>
+  <line x1="24" y1="27" x2="48" y2="27" stroke="#2A303E" stroke-width="0.5" opacity="0.7"/>
+  <line x1="24" y1="30" x2="48" y2="30" stroke="#363F50" stroke-width="0.6" opacity="0.95"/>
+  <line x1="24" y1="33" x2="48" y2="33" stroke="#2A303E" stroke-width="0.5" opacity="0.7"/>
+</g>
+<g id="tow-h3">
+  <rect x="12" y="36" width="24" height="12" fill="url(#gh)"/>
+  <rect x="12" y="36" width="24" height="12" fill="url(#g_dive_h)"/>
+  <line x1="12" y1="39" x2="36" y2="39" stroke="#2A303E" stroke-width="0.5" opacity="0.7"/>
+  <line x1="12" y1="42" x2="36" y2="42" stroke="#363F50" stroke-width="0.6" opacity="0.95"/>
+  <line x1="12" y1="45" x2="36" y2="45" stroke="#2A303E" stroke-width="0.5" opacity="0.7"/>
+</g>
+<g id="tow-h1-right">
+  <rect x="36" y="12" width="24" height="12" fill="url(#gh)"/>
+  <rect x="36" y="12" width="24" height="12" fill="url(#g_dive_h)"/>
+  <line x1="36" y1="15" x2="60" y2="15" stroke="#2A303E" stroke-width="0.5" opacity="0.7"/>
+  <line x1="36" y1="18" x2="60" y2="18" stroke="#363F50" stroke-width="0.6" opacity="0.95"/>
+  <line x1="36" y1="21" x2="60" y2="21" stroke="#2A303E" stroke-width="0.5" opacity="0.7"/>
+</g>
+<g id="tow-h1-left">
+  <rect x="-12" y="12" width="24" height="12" fill="url(#gh)"/>
+  <rect x="-12" y="12" width="24" height="12" fill="url(#g_dive_h)"/>
+  <line x1="-12" y1="15" x2="12" y2="15" stroke="#2A303E" stroke-width="0.5" opacity="0.7"/>
+  <line x1="-12" y1="18" x2="12" y2="18" stroke="#363F50" stroke-width="0.6" opacity="0.95"/>
+  <line x1="-12" y1="21" x2="12" y2="21" stroke="#2A303E" stroke-width="0.5" opacity="0.7"/>
+</g>
+<!-- Vertical Tows -->
+<g id="tow-v2">
+  <rect x="24" y="0" width="12" height="24" fill="url(#gv)"/>
+  <rect x="24" y="0" width="12" height="24" fill="url(#g_dive_v)"/>
+  <line x1="27" y1="0" x2="27" y2="24" stroke="#181F2C" stroke-width="0.5" opacity="0.7"/>
+  <line x1="30" y1="0" x2="30" y2="24" stroke="#222A3A" stroke-width="0.6" opacity="0.95"/>
+  <line x1="33" y1="0" x2="33" y2="24" stroke="#181F2C" stroke-width="0.5" opacity="0.7"/>
+</g>
+<g id="tow-v1">
+  <rect x="12" y="12" width="12" height="24" fill="url(#gv)"/>
+  <rect x="12" y="12" width="12" height="24" fill="url(#g_dive_v)"/>
+  <line x1="15" y1="12" x2="15" y2="36" stroke="#181F2C" stroke-width="0.5" opacity="0.7"/>
+  <line x1="18" y1="12" x2="18" y2="36" stroke="#222A3A" stroke-width="0.6" opacity="0.95"/>
+  <line x1="21" y1="12" x2="21" y2="36" stroke="#181F2C" stroke-width="0.5" opacity="0.7"/>
+</g>
+<g id="tow-v0">
+  <rect x="0" y="24" width="12" height="24" fill="url(#gv)"/>
+  <rect x="0" y="24" width="12" height="24" fill="url(#g_dive_v)"/>
+  <line x1="3" y1="24" x2="3" y2="48" stroke="#181F2C" stroke-width="0.5" opacity="0.7"/>
+  <line x1="6" y1="24" x2="6" y2="48" stroke="#222A3A" stroke-width="0.6" opacity="0.95"/>
+  <line x1="9" y1="24" x2="9" y2="48" stroke="#181F2C" stroke-width="0.5" opacity="0.7"/>
+</g>
+<g id="tow-v3-bottom">
+  <rect x="36" y="36" width="12" height="24" fill="url(#gv)"/>
+  <rect x="36" y="36" width="12" height="24" fill="url(#g_dive_v)"/>
+  <line x1="39" y1="36" x2="39" y2="60" stroke="#181F2C" stroke-width="0.5" opacity="0.7"/>
+  <line x1="42" y1="36" x2="42" y2="60" stroke="#222A3A" stroke-width="0.6" opacity="0.95"/>
+  <line x1="45" y1="36" x2="45" y2="60" stroke="#181F2C" stroke-width="0.5" opacity="0.7"/>
+</g>
+<g id="tow-v3-top">
+  <rect x="36" y="-12" width="12" height="24" fill="url(#gv)"/>
+  <rect x="36" y="-12" width="12" height="24" fill="url(#g_dive_v)"/>
+  <line x1="39" y1="-12" x2="39" y2="12" stroke="#181F2C" stroke-width="0.5" opacity="0.7"/>
+  <line x1="42" y1="-12" x2="42" y2="12" stroke="#222A3A" stroke-width="0.6" opacity="0.95"/>
+  <line x1="45" y1="-12" x2="45" y2="12" stroke="#181F2C" stroke-width="0.5" opacity="0.7"/>
+</g>
+</svg>

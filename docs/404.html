@@ -3,18 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>Toyota Yaris MK4 Hybrid - HV Fan & GR Cockpit Optimizer v2.9.6</title>
+    <title>Toyota Yaris MK4 Hybrid - HV Fan & GR Cockpit Optimizer v2.9.7</title>
     <meta name="description" content="Applicazione Android per il controllo attivo della ventola batteria ad alto voltaggio, telemetria Gazoo Racing e cronometro accelerazione 0-100 km/h.">
-    <meta name="theme-color" content="#090A0E">
+    <meta name="theme-color" content="#080A0E">
     <link rel="icon" type="image/x-icon" href="favicon.ico">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-dark: #090A0E;
-            --surface-dark: #11141C;
-            --card-bg: #151A24;
+            --bg-dark: #080A0E;
+            --surface-dark: #10141D;
+            --card-bg: #141924;
             --accent-cyan: #38BDF8;
             --gr-red: #D71920;
             --gr-red-dark: #9F1239;
@@ -22,7 +22,7 @@
             --success-green: #10B981;
             --text-primary: #F8FAFC;
             --text-secondary: #94A3B8;
-            --border-color: #222B3D;
+            --border-color: #2A364B;
         }
 
         * {
@@ -33,7 +33,7 @@
         }
 
         body {
-            background-color: #07090D;
+            background-color: #080A0E;
             color: var(--text-primary);
             font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
             min-height: 100vh;
@@ -41,10 +41,11 @@
             overflow-x: hidden;
             padding-bottom: 90px;
             background-image: 
-                radial-gradient(circle at 50% 30%, rgba(18, 22, 31, 0.72) 0%, rgba(6, 8, 12, 0.96) 80%),
-                repeating-linear-gradient(45deg, #0F131C 0px, #0F131C 3px, #161B27 3px, #161B27 6px),
-                repeating-linear-gradient(-45deg, #111622 0px, #111622 3px, #0A0D14 3px, #0A0D14 6px);
-            background-blend-mode: normal, overlay;
+                radial-gradient(circle at 50% 30%, rgba(20, 26, 38, 0.35) 0%, rgba(8, 10, 14, 0.82) 85%),
+                url('carbon-pattern-3k.svg');
+            background-size: 100% 100%, 48px 48px;
+            background-repeat: no-repeat, repeat;
+            background-attachment: fixed, scroll;
         }
 
         .container {
@@ -614,7 +615,7 @@
             <div class="nav-links">
                 <a href="https://github.com/FrancescoCastaldi/yaris-hv-fan-optimizer" class="nav-btn" target="_blank">GitHub</a>
                 <a href="preview.html" class="nav-btn" style="color: var(--warning-orange); font-weight: 700;">Simulatore Web</a>
-                <a href="YarisHvFanControl-v2.9.6.apk" download class="nav-btn" style="color: var(--gr-red); font-weight: 800;">APK v2.9.6</a>
+                <a href="YarisHvFanControl-v2.9.7.apk" download class="nav-btn" style="color: var(--gr-red); font-weight: 800;">APK v2.9.7</a>
             </div>
         </div>
     </header>
@@ -623,7 +624,7 @@
         <div class="container">
             <div class="hero-badge">
                 <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--gr-red);"></span>
-                <span>TOYOTA GAZOO RACING EDITION v2.9.6</span>
+                <span>TOYOTA GAZOO RACING EDITION v2.9.7</span>
             </div>
             <h1 class="hero-title">
                 Sblocca il <span class="accent">100% Boost Elettrico</span> & Cruscotto <span class="gr">GR Cockpit</span>
@@ -633,9 +634,9 @@
             </p>
 
             <div class="cta-group">
-                <a href="YarisHvFanControl-v2.9.6.apk" download class="btn-primary">
+                <a href="YarisHvFanControl-v2.9.7.apk" download class="btn-primary">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                    Scarica APK v2.9.6 (Release)
+                    Scarica APK v2.9.7 (Release)
                 </a>
                 <a href="https://github.com/FrancescoCastaldi/yaris-hv-fan-optimizer" target="_blank" class="btn-secondary">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
@@ -790,10 +791,23 @@
             </div>
 
             <div class="changelog-card">
+                <!-- v2.9.7 -->
+                <div class="release-item">
+                    <div class="release-header">
+                        <span class="release-tag">v2.9.7 (Release Attuale)</span>
+                        <span class="release-date">06 Settembre 2026</span>
+                    </div>
+                    <ul class="release-list">
+                        <li><strong>Tessitura Carbon Fiber 3K Motorsport High-Definition</strong>: Nuovo pattern procedurale Jetpack Compose ad alta definizione calibrato sulla densità AMOLED (36dp / 400+ PPI). Intreccio twill diagonale 2x2 fotometrico con fasci di riflesso titanio/grafite (#2A303E / #363F50), mezzitoni (#161B24) e solchi d'ombra carbonio puro (#080A0E).</li>
+                        <li><strong>Integrazione Continua Cockpit MoTeC / Gazoo Racing</strong>: Sfondo monoscocca continuo senza interruzioni sia in Portrait che Landscape (safe punch-hole Oppo A94 5G), con bordi card telemetriche ad alto contrasto (#2A364B) e vignettatura radiale calibrata GPU.</li>
+                        <li><strong>Sincronizzazione Web & Simulatore Live</strong>: Nuova trama SVG/CSS carbon 3K ad altissima fedeltà applicata al portale web e alla cornice interattiva dello smartphone nel simulatore live.</li>
+                    </ul>
+                </div>
+
                 <!-- v2.9.6 -->
                 <div class="release-item">
                     <div class="release-header">
-                        <span class="release-tag">v2.9.6 (Release Attuale)</span>
+                        <span class="release-tag" style="background: var(--surface-dark); border: 1px solid var(--border-color); color: var(--text-secondary);">v2.9.6</span>
                         <span class="release-date">06 Settembre 2026</span>
                     </div>
                     <ul class="release-list">
@@ -873,9 +887,9 @@
 
     <!-- Fixed Mobile Download Bar for 1-Tap Download -->
     <div class="mobile-bar">
-        <a href="YarisHvFanControl-v2.9.6.apk" download class="btn-download">
+        <a href="YarisHvFanControl-v2.9.7.apk" download class="btn-download">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Scarica APK v2.9.6 (Release)
+            Scarica APK v2.9.7 (Release)
         </a>
         <a href="https://github.com/FrancescoCastaldi/yaris-hv-fan-optimizer" target="_blank" class="btn-github" title="Vedi su GitHub">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>

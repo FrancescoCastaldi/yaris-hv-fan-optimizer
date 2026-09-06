@@ -77,14 +77,18 @@ fun DashboardScreen(
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
-    if (isLandscape) {
-        // --- 🏁 OPPO A94 5G MOTORSPORT LANDSCAPE LAYOUT (20:9 DUAL-COLUMN COCKPIT) ---
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .carbonFiberBackground()
-                .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp) // 32dp punch-hole safe margin
-        ) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .carbonFiberBackground()
+    ) {
+        if (isLandscape) {
+            // --- 🏁 OPPO A94 5G MOTORSPORT LANDSCAPE LAYOUT (20:9 DUAL-COLUMN COCKPIT) ---
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(start = 32.dp, end = 16.dp, top = 8.dp, bottom = 8.dp) // 32dp punch-hole safe margin
+            ) {
             // 1. VERTICAL COMPACT NAVIGATION SIDEBAR (Left Thumb Ergonomics)
             Surface(
                 modifier = Modifier
@@ -400,9 +404,8 @@ fun DashboardScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .carbonFiberBackground()
-                .padding(14.dp)
                 .verticalScroll(scrollState)
+                .padding(14.dp)
         ) {
             // --- Top App Header Bar (MoTeC / Bosch Precision Header) ---
             Surface(
@@ -820,9 +823,11 @@ fun DashboardScreen(
         }
 
         Spacer(modifier = Modifier.height(20.dp))
+        }
     }
 }
 }
+
 
 /**
  * =========================================================

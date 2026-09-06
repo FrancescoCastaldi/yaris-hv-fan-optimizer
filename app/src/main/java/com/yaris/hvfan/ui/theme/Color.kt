@@ -4,10 +4,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 
 // --- Slate & Carbon Precision Motorsport Palette ---
-val DarkBackground = Color(0xFF090A0E)       // Deep Obsidian Matte (Anti-glare OLED)
-val SurfaceDark = Color(0xFF11141C)          // Technical Slate Surface
-val CardBackground = Color(0xFF151A24)       // Solid Modular Telemetry Panel
-val CardBorder = Color(0xFF222B3D)           // 1px Hairline Technical Border
+val DarkBackground = Color(0xFF080A0E)       // Deep Obsidian Matte (Pure Anti-glare OLED Carbon Base)
+val SurfaceDark = Color(0xFF10141D)          // Technical Slate Surface
+val CardBackground = Color(0xFF141924)       // Solid Modular Telemetry Panel (High contrast over 3K weave)
+val CardBorder = Color(0xFF2A364B)           // 1px Precision Titanium Hairline Border
 val CardBorderActive = Color(0xFFE11D48)     // Active Border Accent (No glow)
 
 val GrRedPrimary = Color(0xFFE11D48)         // Matte Gazoo Racing Corsa Red

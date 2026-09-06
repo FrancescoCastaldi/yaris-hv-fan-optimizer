@@ -1,0 +1,13 @@
+﻿{
+    "lsp":  {
+                "disabled":  false,
+                "servers":  {
+                                "kotlin":  {
+                                               "command":  [
+                                                               "kotlin-lsp"
+                                                           ],
+                                               "enabled":  true
+                                           }
+                            }
+            }
+}

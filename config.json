@@ -1,0 +1,5 @@
+{
+  "model": "nemotron-3-ultra-free",
+  "$schema": "https://opencode.ai/config.json",
+  "lsp": true
+}
