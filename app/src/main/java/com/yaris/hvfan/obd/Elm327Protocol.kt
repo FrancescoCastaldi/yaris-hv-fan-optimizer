@@ -133,6 +133,11 @@ object Elm327Protocol {
         return voltage != null && voltage >= 13.0f
     }
 
+    fun hasSupportedPidsResponse(response: String): Boolean {
+        val clean = cleanResponse(response).uppercase()
+        return !isError(clean) && clean.contains("4100")
+    }
+
     fun isError(response: String): Boolean {
         val clean = cleanResponse(response).uppercase()
         return clean.isEmpty() ||

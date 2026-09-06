@@ -86,6 +86,18 @@ class ObdInitSequenceTest {
     }
 
     @Test
+    fun testFunctionalBroadcastAndRealCanProbeValidation() {
+        assertEquals("7DF", ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST)
+        assertEquals("AT SP 0", Elm327Protocol.PROTOCOL_FALLBACK)
+
+        assertTrue(Elm327Protocol.hasSupportedPidsResponse("41 00 BE 7F A8 11 >"))
+        assertTrue(Elm327Protocol.hasSupportedPidsResponse("SEARCHING...\r\n7E8 06 41 00 BE 7F A8 11 >"))
+        assertFalse(Elm327Protocol.hasSupportedPidsResponse("OK\r\n>"))
+        assertFalse(Elm327Protocol.hasSupportedPidsResponse("NO DATA\r\n>"))
+        assertFalse(Elm327Protocol.hasSupportedPidsResponse("410C1F40"))
+    }
+
+    @Test
     fun testCleanResponseHandlesTotalLengthPrefixAndMultiFrame() {
         // Riga di lunghezza totale ELM327 ("014") seguita dai frame ISO-TP numerati "0:" e "1:"
         val raw = "014\r0:6228C1444546\r1:4341030000 00\r>"

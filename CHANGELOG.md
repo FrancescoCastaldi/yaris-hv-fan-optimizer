@@ -6,6 +6,14 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)
 - **MINOR (`0.X.0`)**: Aggiunta di nuove funzionalità, sensori, codifiche o telemetrie.
 - **PATCH (`0.0.X`)**: Bugfix, ottimizzazioni di performance o aggiustamenti grafici minori.
 
+## [2.9.13] - 2026-09-06
+### 🔌 Aggancio CAN Vlinker verificato e fallback protocollo automatico
+- **Header broadcast `7DF` esplicito**: ogni handshake iniziale, risveglio da standby e auto-recovery imposta realmente l'header funzionale, senza affidarsi allo stato precedente del clone ELM327.
+- **Fallback `AT SP 0` basato sui dati reali**: se `AT SP 6` risponde `OK` ma il PID `0100` restituisce `NO DATA`, l'app passa automaticamente all'auto-detect e ripete il probe con una finestra estesa.
+- **Conferma ECU prima del successo**: un comando AT accettato non viene più scambiato per comunicazione CAN; il recovery completo richiede dati validi dalla centralina batteria, mentre l'aggancio del solo bus motore è indicato come parziale.
+- **Risveglio da standby completo**: alla rilevazione READY viene verificato prima il bus broadcast e poi vengono interrogate le centraline motore e batteria.
+- **Test di regressione**: aggiunta copertura per header `7DF` e rifiuto di risposte `OK`, `NO DATA` o PID non corrispondenti come prova di connessione.
+
 ## [2.9.12] - 2026-09-06
 ### 🛡️ Risoluzione Watchdog Auto-Recovery, Fallback PID Batteria & Stabilizzazione CAN
 - **Watchdog di Silenzio CAN Resiliente**: Elevate le soglie di silenzio CAN da 5s a 15s (12s per standby) e l'intervallo di guardia dell'auto-recovery da 10s a 25s, eliminando il ciclo infinito di `AT WS` e reset che interrompeva continuamente la lettura e azzerava i buffer.

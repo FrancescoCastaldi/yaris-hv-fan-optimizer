@@ -247,6 +247,7 @@ object ToyotaYarisCommands {
     private const val TAG = "ToyotaYarisCommands"
 
     // CAN Headers & Filter IDs
+    const val HEADER_FUNCTIONAL_BROADCAST = "7DF"
     const val HEADER_BATTERY_ECU = "7E2"
     const val FILTER_BATTERY_ECU = "7EA"
     const val CRA_BATTERY_ECU = "7EA"

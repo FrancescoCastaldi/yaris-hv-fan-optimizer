@@ -44,6 +44,11 @@ class ObdController(
         private const val BATTERY_PID_TIMEOUT_MS = 4000L
     }
 
+    private data class CanProbeResult(
+        val isValid: Boolean,
+        val response: String
+    )
+
     var onAutoCoolingStateChanged: ((Boolean) -> Unit)? = null
 
     private val _liveState = MutableStateFlow(
@@ -238,34 +243,15 @@ class ObdController(
                     )
                 } else {
                     // 7. Handshake CAN a tre stadi con aggancio rapido (R2)
-                    // Stadio 0: richiesta funzionale in broadcast (7DF, header di default dopo AT Z)
-                    // prima di qualsiasi AT SH. E' il modo canonico di completare la fase SEARCHING...
-                    // dopo un AT SP fisso: partire direttamente da un header fisico lascia il bus non
-                    // agganciato e ogni PID successivo torna NO DATA.
+                    // Stadio 0: richiesta funzionale con header 7DF esplicito. Non ci si affida
+                    // all'header predefinito del clone, che puo' sopravvivere a warm start e standby.
                     addLog("Stadio 0: aggancio bus CAN in broadcast (7DF)...")
-                    bleManager.sendCommand(Elm327Protocol.CMD_AUTO_RECEIVE)
-                    delay(30)
-                    bleManager.sendCommand(Elm327Protocol.CMD_TIMEOUT_HANDSHAKE)
-                    delay(30)
-                    var stage0Ok = false
-                    var cleanStage0 = ""
-                    for (attempt in 1..2) {
-                        val stage0Res = bleManager.sendCommand(ToyotaYarisCommands.PID_SUPPORTED_PIDS, timeoutMs = 6000L)
-                        cleanStage0 = Elm327Protocol.cleanResponse(stage0Res)
-                        if (cleanStage0.contains("4100")) {
-                            stage0Ok = true
-                            break
-                        }
-                        if (attempt == 1) {
-                            addLog("Stadio 0: nessuna risposta in broadcast (risposta: $cleanStage0), secondo tentativo...")
-                            delay(250)
-                        }
-                    }
+                    val stage0Ok = probeBroadcastCanWithAutomaticFallback("Stadio 0")
                     if (stage0Ok) {
                         addLog("✅ Stadio 0 completato: bus CAN 11-bit 500k agganciato in broadcast (7DF).")
                         lastValidCanTimestamp = System.currentTimeMillis()
                     } else {
-                        addLog("⚠️ Stadio 0 fallito: nessun frame CAN valido nemmeno in broadcast 7DF (risposta: $cleanStage0). Possibili cause: quadro non in READY (spia verde spenta), dongle non inserito a fondo nella presa OBD, o adattatore incompatibile con ISO 15765-4. Proseguo comunque con gli stadi successivi...")
+                        addLog("⚠️ Stadio 0 fallito anche dopo auto-detect: nessun frame CAN valido in broadcast 7DF. Possibili cause: quadro non in READY (spia verde spenta), dongle non inserito a fondo nella presa OBD, o adattatore incompatibile. Proseguo comunque con gli stadi successivi...")
                     }
 
                     // Stadio 1: aggancio rapido centralina motore standard (7E0 / 7E8)
@@ -386,6 +372,58 @@ class ObdController(
     private var currentCanHeader: String = ""
 
     /**
+     * Esegue un probe OBD-II funzionale impostando sempre 7DF. Alcuni Vlinker/cloni conservano
+     * l'ultimo AT SH dopo standby o warm start, quindi AT AR da solo non ripristina l'header TX.
+     */
+    private suspend fun probeBroadcastCan(
+        attempts: Int = 2,
+        timeoutMs: Long = 6000L
+    ): CanProbeResult {
+        bleManager.sendCommand(Elm327Protocol.CMD_AUTO_RECEIVE)
+        currentCanHeader = ""
+        ensureCanHeader(ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST)
+        bleManager.sendCommand(Elm327Protocol.CMD_TIMEOUT_HANDSHAKE)
+        delay(30)
+
+        var cleanResponse = ""
+        repeat(attempts) { index ->
+            val response = bleManager.sendCommand(
+                ToyotaYarisCommands.PID_SUPPORTED_PIDS,
+                timeoutMs = timeoutMs
+            )
+            cleanResponse = Elm327Protocol.cleanResponse(response)
+            if (Elm327Protocol.hasSupportedPidsResponse(cleanResponse)) {
+                return CanProbeResult(true, cleanResponse)
+            }
+            if (index < attempts - 1) delay(250)
+        }
+        return CanProbeResult(false, cleanResponse)
+    }
+
+    /**
+     * Un clone puo' rispondere OK ad AT SP 6 pur non riuscendo ad agganciare il bus. Il fallback
+     * viene quindi deciso dalla prova CAN reale, non dalla sola risposta al comando AT.
+     */
+    private suspend fun probeBroadcastCanWithAutomaticFallback(context: String): Boolean {
+        var probe = probeBroadcastCan()
+        if (probe.isValid) return true
+
+        addLog("$context: nessuna risposta con protocollo 6 (risposta: ${probe.response}). Provo auto-detect ELM327 (AT SP 0)...")
+        bleManager.sendCommand(Elm327Protocol.PROTOCOL_FALLBACK, timeoutMs = 2000L)
+        delay(200)
+        currentCanHeader = ""
+        probe = probeBroadcastCan(attempts = 2, timeoutMs = 12000L)
+        if (probe.isValid) {
+            val dpnResponse = bleManager.sendCommand(Elm327Protocol.CMD_PROTOCOL_NUMBER, timeoutMs = 1500L)
+            addLog("✅ $context: CAN agganciato tramite auto-detect (AT DPN: ${Elm327Protocol.cleanResponse(dpnResponse)}).")
+            return true
+        }
+
+        addLog("$context: auto-detect senza risposta CAN valida (risposta: ${probe.response}).")
+        return false
+    }
+
+    /**
      * Imposta l'header di trasmissione CAN dell'ECU bersaglio. Non viene mai inviato AT CRA:
      * con AT SH 7Ex l'ELM327 filtra da solo la risposta fisica corrispondente, mentre sui cloni
      * un CRA attivo risponde OK e poi scarta ogni frame in ingresso (NO DATA su qualsiasi PID).
@@ -453,16 +491,12 @@ class ObdController(
             bleManager.sendCommand(Elm327Protocol.PROTOCOL_FALLBACK)
         }
         bleManager.sendCommand("AT CAF 1")
-        bleManager.sendCommand(Elm327Protocol.CMD_AUTO_RECEIVE)
         currentCanHeader = "" // Forza riapplicazione degli header
 
-        // Stadio 0: riaggancio del bus in broadcast (7DF) prima di tornare agli header fisici
-        bleManager.sendCommand(Elm327Protocol.CMD_TIMEOUT_HANDSHAKE)
-        val s0Res = bleManager.sendCommand(ToyotaYarisCommands.PID_SUPPORTED_PIDS, timeoutMs = 6000L)
-        val cleanS0 = Elm327Protocol.cleanResponse(s0Res)
-        val s0Ok = cleanS0.contains("4100")
+        // Stadio 0: riaggancio 7DF, con fallback basato sulla risposta CAN reale.
+        val s0Ok = probeBroadcastCanWithAutomaticFallback("Auto-recovery Stadio 0")
         if (!s0Ok) {
-            addLog("Auto-recovery Stadio 0: nessuna risposta in broadcast 7DF (risposta: $cleanS0).")
+            addLog("Auto-recovery Stadio 0: nessuna risposta in broadcast 7DF.")
         }
 
         // Handshake Stadio 1: aggancio rapido centralina motore per completare fase SEARCHING... su CAN 11-bit 500k
@@ -497,10 +531,14 @@ class ObdController(
             }
         }
 
-        if (s0Ok || s1Ok || s2Ok) {
+        if (s2Ok) {
             lastValidCanTimestamp = System.currentTimeMillis()
             consecutiveCanErrors = 0
-            addLog("✅ Procedura auto-recovery completata: bus CAN riagganciato con successo.")
+            addLog("✅ Procedura auto-recovery completata: centralina batteria HV e bus CAN riagganciati.")
+        } else if (s0Ok || s1Ok) {
+            lastValidCanTimestamp = System.currentTimeMillis()
+            consecutiveCanErrors = 0
+            addLog("⚠️ Bus CAN motore riagganciato, ma centralina batteria HV ancora in sincronizzazione.")
         } else {
             addLog("⚠️ Procedura auto-recovery completata: in attesa di risposta CAN centralina.")
         }
@@ -521,8 +559,12 @@ class ObdController(
             val isReadyByVoltage = Elm327Protocol.isVehicleReady(volt)
 
             if (isReadyByVoltage) {
-                addLog("⚡ RILEVATO STATO READY AUTO (12V: ${volt}V >= 13.0V)! Uscita istantanea da standby e aggancio rapido...")
+                addLog("⚡ RILEVATO STATO READY AUTO (12V: ${volt}V >= 13.0V)! Verifica bus CAN e aggancio rapido...")
                 currentCanHeader = ""
+
+                // La tensione conferma il DC-DC attivo, ma il protocollo viene convalidato
+                // separatamente con una risposta ECU reale in broadcast.
+                val s0Ok = probeBroadcastCanWithAutomaticFallback("Risveglio da standby")
 
                 // Handshake Stadio 1: aggancio rapido motore
                 ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU)
@@ -549,7 +591,7 @@ class ObdController(
                     }
                 }
 
-                val canOk = s1Ok || s2Ok
+                val canOk = s0Ok || s1Ok || s2Ok
                 standbyCycleCounter = 0
                 if (canOk) {
                     lastValidCanTimestamp = now
