@@ -6,6 +6,15 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)
 - **MINOR (`0.X.0`)**: Aggiunta di nuove funzionalità, sensori, codifiche o telemetrie.
 - **PATCH (`0.0.X`)**: Bugfix, ottimizzazioni di performance o aggiustamenti grafici minori.
 
+## [2.9.8] - 2026-09-06
+### 🛡️ OBD CAN Init Fix: Rimozione Filtro AT CRA & Protocol Timing Calibration
+- **Risoluzione Definitiva Bug Connessione CAN Dongle Clone / Vlinker**: Rimosso l'invio del comando `AT CRA` (filtro di ricezione CAN) che su dongle cloni ELM327 e Vlinker causava il drop silenzioso di tutti i pacchetti in ingresso (`NO DATA` su ogni PID standard e proprietario). Aggiunto `AT AR` in sequenza di init per azzerare filtri residui sul chip.
+- **Riorganizzazione Sequenza Inizializzazione ELM327**: Selezione esplicita del protocollo CAN 11-bit 500k (`AT SP 6`) anticipata rispetto alla configurazione del timing (`AT ST 96` a ~614ms) con verifica di conformità via `AT DPN`.
+- **Nuovo Stadio 0 di Aggancio Bus CAN in Broadcast (`7DF`)**: Handshake preliminare con query PID `0100` su header funzionale broadcast per agganciare il bus ed eliminare lo stato `SEARCHING...` prima dell'applicazione degli header fisici (`7E0` / `7E2`).
+- **Calibrazione Timeout e Delay di Stabilizzazione**: Sostituito `AT ST 20` (131ms, sotto il default ELM327) con `AT ST 32` (~205ms) per la telemetria continua ed esteso il timeout a 4000ms per le risposte multi-frame UDS batteria (`2228C1`), con delay di 100ms prima del primo comando UDS.
+- **Logging Diagnostico Trasparente**: Log completo della risposta grezza ricevuta per ciascun PID in caso di fallimento o fallback, con avvisi chiari sullo stato READY e tensione 12V.
+- **Aggiornamento Descrittore BLE Android 13+ (API 33+)**: Implementata gestione moderna `writeDescriptor` su Android 13+ con fallback deprecato per versioni precedenti e correzione codifica stringhe.
+
 ## [2.9.7] - 2026-09-06
 ### 🏎️ 3K Motorsport High-Definition Carbon Fiber Weave & Cockpit Integration
 - **Texture Procedurale 3K Motorsport Twill 2x2 in Jetpack Compose**: Sostituito il microscopico tile 8x8 con un pattern procedurale ad alta risoluzione calibrato su scala reale motorsport per display AMOLED ad alta densità (36dp / 400+ PPI come Oppo A94 5G).

@@ -253,7 +253,9 @@ object ToyotaYarisCommands {
 
     const val CMD_SET_HEADER_BATTERY_ECU = "AT SH 7E2"  // Toyota HV Battery Management ECU
     const val CMD_SET_HEADER_ENGINE_ECU  = "AT SH 7E0"  // Toyota Engine / Hybrid Main ECU
-    const val CMD_SET_RECEIVE_FILTER     = "AT CRA 7EA" // Filter for Battery ECU responses
+    // Da non inviare: AT SH 7Ex filtra già la risposta fisica corrispondente, mentre su molti cloni
+    // ELM327 un AT CRA attivo risponde OK e poi scarta ogni frame in ingresso (NO DATA su ogni PID).
+    const val CMD_SET_RECEIVE_FILTER     = "AT CRA 7EA"
 
     // Hardware Flow Control ISO-TP Multi-Frame (Hybrid Assistant Specification)
     const val CMD_FC_SH_BATTERY          = "AT FC SH 7E2"   // Flow Control Header per ECU Batteria

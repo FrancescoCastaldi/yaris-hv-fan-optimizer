@@ -89,7 +89,7 @@ class ObdControllerIntegrationTest {
     fun testElm327ProtocolInitAndErrorHandling() {
         assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT Z"))
         assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT AT 1"))
-        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT ST 64"))
+        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT ST 96"))
         assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT SP 6"))
         assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT CAF 1"))
         assertEquals("AT SP 0", Elm327Protocol.PROTOCOL_FALLBACK)
@@ -584,9 +584,9 @@ class ObdControllerIntegrationTest {
         assertEquals("ATI", Elm327Protocol.CMD_DEVICE_INFO)
         assertEquals("ST DI", Elm327Protocol.CMD_DEVICE_ID_STN)
 
-        // Must start with AT Z and conclude with AT CAF 1
+        // Must start with AT Z and conclude with the wide handshake timeout
         assertEquals("AT Z", Elm327Protocol.INIT_COMMANDS.first())
-        assertEquals("AT CAF 1", Elm327Protocol.INIT_COMMANDS.last())
+        assertEquals("AT ST 96", Elm327Protocol.INIT_COMMANDS.last())
 
         // Must not contain AT D (which would reset parameters)
         assertFalse(Elm327Protocol.INIT_COMMANDS.contains("AT D"))
@@ -597,9 +597,19 @@ class ObdControllerIntegrationTest {
         assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT S0"))
         assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT H0"))
         assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT AT 1"))
-        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT ST 64"))
         assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT SP 6"))
         assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT CAF 1"))
+        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT AR"))
+        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT ST 96"))
+
+        // Exact Dr. Prius base stack order: protocollo prima del timing, filtro ricezione azzerato
+        assertEquals(
+            listOf(
+                "AT Z", "AT E0", "AT L0", "AT S0", "AT H0", "AT AT 1",
+                "AT SP 6", "AT CAF 1", "AT AR", "AT ST 96"
+            ),
+            Elm327Protocol.INIT_COMMANDS
+        )
     }
 
     @Test

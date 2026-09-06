@@ -15,6 +15,17 @@ object Elm327Protocol {
     const val CMD_FLOW_CONTROL_MODE_CUSTOM = "AT FC SM 1"       // Custom Flow Control mode
     const val CMD_FLOW_CONTROL_MODE_DEFAULT = "AT FC SM 0"      // Standard Flow Control mode
 
+    // Ripristino del filtro di ricezione automatico: sui cloni ELM327 / Vlinker un AT CRA rimasto
+    // attivo risponde OK ma scarta ogni frame in ingresso, producendo NO DATA su qualsiasi PID.
+    const val CMD_AUTO_RECEIVE = "AT AR"
+    const val CMD_PROTOCOL_NUMBER = "AT DPN"
+
+    // Timeout di ricezione AT ST hh (hh esadecimale x 4.096 ms). Il default di fabbrica ELM327 e'
+    // 0x32 (~205 ms): sotto questa soglia la finestra si chiude prima che la ECU Toyota risponda.
+    const val CMD_TIMEOUT_HANDSHAKE = "AT ST 96"    // ~614 ms per l'aggancio iniziale del bus
+    const val CMD_TIMEOUT_BATTERY_ECU = "AT ST 64"  // ~410 ms per il multi-frame UDS 2228C1
+    const val CMD_TIMEOUT_TELEMETRY = "AT ST 32"    // ~205 ms, default ELM327, per il loop rapido
+
     // Sequenza Dr. Prius universale ad alta compatibilita'
     val INIT_COMMANDS = listOf(
         "AT Z",       // Reset ELM327 / Vgate / STN (gestito con delay speciale)
@@ -23,9 +34,10 @@ object Elm327Protocol {
         "AT S0",      // Spaces Off
         "AT H0",      // Headers Off
         "AT AT 1",    // Standard Adaptive Timing (stabile su multi-frame CAN)
-        "AT ST 64",   // Timeout a ~400ms (necessario per UDS 2228C1 Toyota TNGA)
-        "AT SP 6",    // Select ISO 15765-4 CAN 11-bit 500kbaud (Toyota Standard)
-        "AT CAF 1"    // CAN Auto-Formatting On
+        "AT SP 6",    // ISO 15765-4 CAN 11-bit 500kbaud: il protocollo va scelto prima del timing
+        "AT CAF 1",   // CAN Auto-Formatting On
+        CMD_AUTO_RECEIVE,      // Azzera eventuali filtri AT CRA residui
+        CMD_TIMEOUT_HANDSHAKE  // Finestra ampia per l'handshake sul bus
     )
 
     const val PROTOCOL_FALLBACK = "AT SP 0" // Auto-detect protocol if SP 6 fails
