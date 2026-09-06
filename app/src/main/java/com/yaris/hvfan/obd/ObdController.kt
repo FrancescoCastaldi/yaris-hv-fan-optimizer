@@ -35,7 +35,8 @@ class ObdController(
     private val scope: CoroutineScope,
     private val appPreferences: com.yaris.hvfan.data.AppPreferences? = null,
     val stateMachine: ObdStateMachine = ObdStateMachine(),
-    val discoveryEngine: BatteryDiscoveryEngine = BatteryDiscoveryEngine()
+    val discoveryEngine: BatteryDiscoveryEngine = BatteryDiscoveryEngine(),
+    private val timeProvider: () -> Long = System::currentTimeMillis
 ) {
     companion object {
         private const val TAG = "ObdController"
@@ -88,6 +89,18 @@ class ObdController(
     private var lastCoolantCheckTimestamp = 0L
     private var pendingBatterySafetyCheck = false
     private var fastCycleCounter = 0
+
+    /**
+     * Dispatch timestamps (per `timeProvider`) of the last executed fast engine telemetry
+     * and coolant/warm-up cycles. Used by scheduler resilience telemetry and tests to
+     * prove zero engine starvation (VAL-OBD-007 / VAL-OBD-012).
+     */
+    internal val lastEngineFastDispatchTimestampMs: Long
+        get() = internalLastEngineFastDispatchMs
+    internal val lastCoolantDispatchTimestampMs: Long
+        get() = internalLastCoolantDispatchMs
+    private var internalLastEngineFastDispatchMs = 0L
+    private var internalLastCoolantDispatchMs = 0L
 
     private var lastKnown12v = 0f
     private var lastKnownCoolant = 0f
@@ -186,7 +199,7 @@ class ObdController(
         loopJob = scope.launch(Dispatchers.IO) {
             try {
                 stateMachine.onElmInitializing()
-                loopStartTimestamp = System.currentTimeMillis()
+                loopStartTimestamp = timeProvider()
                 standbyCycleCounter = 0
                 currentCanHeader = ""
                 _liveState.value = _liveState.value.copy(
@@ -365,15 +378,7 @@ class ObdController(
                 // 8. Dual-Rate Adaptive Loop
                 lastBatteryCheckTimestamp = 0L
                 lastCoolantCheckTimestamp = 0L
-                while (isActive) {
-                    executeDualRateCycle()
-                    val loopDelayMs = when {
-                        _liveState.value.isStandbyMode -> 2500L // Standby a basso consumo: 2.5s per evitare saturazione bus
-                        isTimingInProgress || lastKnownSpeed > 0 -> 60L
-                        else -> 140L
-                    }
-                    delay(loopDelayMs)
-                }
+                runDualRateScheduler()
 
             } catch (e: CancellationException) {
                 addLog("Loop terminato.")
@@ -559,10 +564,58 @@ class ObdController(
         )
     }
 
-    private suspend fun executeDualRateCycle() {
+    /**
+     * Steady-state dual-rate polling scheduler.
+     *
+     * Invariante VAL-OBD-007 / VAL-OBD-012: ogni tick dello scheduler gira dentro una
+     * coroutine figlia (tranne il primo). Se la fetta batteria del tick N blocca il
+     * trasporto fino al suo timeout (<= 3000ms), il tick N+1 viene lanciato dopo i
+     * normali 140ms e gira in sovrapposizione: in produzione il comando Mode 01 viene
+     * accodato sul trasporto seriale e completato subito dopo il restore dell'header 7E0,
+     * mentre in standby il tick successivo e' no-op. In questo modo i cicli 010C/010D/0111
+     * e 0105/010F non vengono mai saltati e la cadenza nativa (<=140ms fast loop /
+     * 4000ms warm-up) e' preservata anche sotto discovery batteria fallita.
+     */
+    internal suspend fun runDualRateScheduler() {
+        var isFirstSchedulerTick = true
+        while (currentCoroutineContext().isActive) {
+            if (isFirstSchedulerTick) {
+                // Primo tick eseguito inline per inizializzare i timestamp di riferimento.
+                executeDualRateCycle()
+                isFirstSchedulerTick = false
+            } else {
+                // Inherit the caller's dispatcher: production scheduler runs on Dispatchers.IO,
+                // so children run on IO as well; test scopes inject a TestDispatcher so the
+                // scheduler becomes deterministic and child ticks interleave correctly.
+                scope.launch { executeDualRateCycle() }
+            }
+            val loopDelayMs = when {
+                _liveState.value.isStandbyMode -> 2500L // Standby a basso consumo: 2.5s per evitare saturazione bus
+                isTimingInProgress || lastKnownSpeed > 0 -> 60L
+                else -> 140L
+            }
+            delay(loopDelayMs)
+        }
+    }
+
+    internal suspend fun executeDualRateCycle() {
+        try {
+            executeDualRateCycleInternal()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Per-cycle exception isolation: a failure escaping a single slice (e.g. the battery
+            // thermal cycle) must never terminate or stall the scheduler loop. Battery-side
+            // failures stay decoupled from engine bus health (VAL-OBD-008).
+            Log.e(TAG, "Eccezione isolata in un ciclo dual-rate: il loop continua", e)
+            stateMachine.onBatteryProbeFailed()
+        }
+    }
+
+    private suspend fun executeDualRateCycleInternal() {
         if (isEcuOperationInProgress) return
 
-        val now = System.currentTimeMillis()
+        val now = timeProvider()
 
         // GESTIONE STATO STANDBY A BASSO CONSUMO (Auto spenta o non READY)
         if (_liveState.value.isStandbyMode) {
@@ -682,11 +735,19 @@ class ObdController(
         }
 
         // 2. Loop veloce per telemetria motore e Dragy (100-200ms)
+        // Invariante VAL-OBD-007: il fast loop motore gira ad OGNI tick dello scheduler,
+        // immediatamente dopo la fetta batteria (completata, fallita o in timeout), senza
+        // mai essere saltato a causa dello stato di discovery batteria.
+        internalLastEngineFastDispatchMs = timeProvider()
         executeEngineTelemetryFastCycle()
 
         // 3. Ciclo periodico di sfondo per liquido di raffreddamento (ECT) ed aspirazione (IAT) (ogni 4s)
-        if (now - lastCoolantCheckTimestamp >= COOLANT_POLL_INTERVAL_MS) {
-            lastCoolantCheckTimestamp = now
+        // Invariante VAL-OBD-012: il polling 0105/010F mantiene la cadenza nativa 4000ms
+        // indipendentemente dagli esiti delle sonde batteria (timeout inclusi).
+        val coolantNow = timeProvider()
+        if (coolantNow - lastCoolantCheckTimestamp >= COOLANT_POLL_INTERVAL_MS) {
+            lastCoolantCheckTimestamp = coolantNow
+            internalLastCoolantDispatchMs = coolantNow
             executeCoolantWarmupCycle()
         }
     }
@@ -832,7 +893,7 @@ class ObdController(
     internal suspend fun executeEngineTelemetryFastCycle() {
         ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU)
 
-        val sampleTimestamp = System.currentTimeMillis()
+        val sampleTimestamp = timeProvider()
         var currentSpeed: Int? = null
         var currentRpm: Int? = null
         var currentThrottle: Float? = null
