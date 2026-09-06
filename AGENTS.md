@@ -5,11 +5,11 @@ Ad ogni modifica, fix, push o rilascio:
 1. **Incremento di Versione Obbligatorio e Mai Riciclato**:
    - **MAI** riutilizzare la stessa versione o tag usati in precedenza.
    - Incrementare SEMPRE `versionName` nel formato numerico standard `num.num.num` (es. `2.8.0` -> `2.8.1` -> `2.8.2`...) e incrementare `versionCode` in `app/build.gradle.kts`.
-2. **Sempre e Solo 1 Singolo File APK nel Repository e sulla Chiavetta**:
-   - Nella root del repository e sulla chiavetta deve essere presente **SOLO 1 file APK**: `YarisHvFanControl-vX.Y.Z.apk` (con versione dinamica aggiornata).
+2. **Sempre e Solo 1 Singolo File APK per Versione (Root + Docs)**:
+   - Nella root del repository deve essere presente **SOLO 1 file APK**: `YarisHvFanControl-vX.Y.Z.apk` (con versione dinamica aggiornata).
    - **MAI** duplicare l'APK con file rolling (`YarisHvFanControl.apk`) o file multipli.
    - Prima di generare la nuova release, eliminare sempre il file APK della versione precedente.
-   - La cartella `docs/` non deve tracciare file `.apk` nel repository (l'APK per il sito web GitHub Pages viene generato e posizionato dinamicamente in `docs/` dalla pipeline CI GitHub Actions durante il deploy).
+   - La cartella `docs/` traccia **solo** l'APK della versione corrente (`docs/YarisHvFanControl-vX.Y.Z.apk`): GitHub Pages è configurato con "Deploy from a branch" (`main` + `/docs`) e serve direttamente la cartella `docs/` committata, quindi il download dal sito deve funzionare anche prima che la pipeline CI termini.
 3. **Aggiornamento di tutti i riferimenti Web & Deploy**:
    - `docs/index.html`, `docs/404.html` e `docs/preview.html` (header, hero badge, download button, changelog e sticky mobile bar con la nuova versione)
    - `build_apk.bat` e `.github/workflows/deploy.yml`

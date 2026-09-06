@@ -12,4 +12,3 @@ app/build/
 *.hprof
 .agents/
 *.zip
-docs/*.apk

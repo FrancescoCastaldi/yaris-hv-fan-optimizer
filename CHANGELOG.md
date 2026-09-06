@@ -6,6 +6,13 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)
 - **MINOR (`0.X.0`)**: Aggiunta di nuove funzionalità, sensori, codifiche o telemetrie.
 - **PATCH (`0.0.X`)**: Bugfix, ottimizzazioni di performance o aggiustamenti grafici minori.
 
+## [2.9.11] - 2026-09-06
+### 📦 Download Sito Sempre Disponibile
+- **APK tracciato anche in `docs/`**: GitHub Pages (sorgente "Deploy from a branch", `main` + `/docs`) ora serve subito l'APK committato, senza attendere la pipeline CI.
+- **Script di build sincronizzato**: `build_apk.bat` genera l'APK sia in root che in `docs/`.
+- **Policy aggiornata**: `AGENTS.md` riflette il nuovo flusso (un solo APK versionato in root e in docs, nessun file rolling).
+- Nessuna modifica alla logica dell'app rispetto a v2.9.10.
+
 ## [2.9.10] - 2026-09-06
 ### 🛠️ Espansione Codifiche: ADAS, Clima & Opzioni Mancanti
 - **Nuove codifiche ADAS (ECU 7A0)**: RCTA Allerta Traffico Posteriore (`3B62`), LTA Mantenimento Corsia (`3B63`) e PCS con memoria dell'ultimo stato (`3B64`).
