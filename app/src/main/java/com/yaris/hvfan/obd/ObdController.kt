@@ -24,6 +24,7 @@ data class ObdLiveState(
     val targetThreshold: Int = 20,
     val fanForcedMax: Boolean = true,
     val autoCoolingStatus: AutoCoolingStatus = AutoCoolingStatus(),
+    val capabilityState: ObdCapabilityState = ObdCapabilityState(),
     val lastLogMessage: String = "In attesa di connessione...",
     val logs: List<String> = emptyList(),
     val errorCount: Int = 0
@@ -51,6 +52,11 @@ class ObdController(
 
     var onAutoCoolingStateChanged: ((Boolean) -> Unit)? = null
 
+    val stateMachine = ObdStateMachine()
+    val capabilityState: StateFlow<ObdCapabilityState> = stateMachine.capabilityState
+    val consecutiveCanErrors: Int get() = stateMachine.consecutiveCanErrors
+    val consecutiveBatteryErrors: Int get() = stateMachine.consecutiveBatteryErrors
+
     private val _liveState = MutableStateFlow(
         ObdLiveState(
             accelerationState = AccelerationRunState(
@@ -62,7 +68,8 @@ class ObdController(
                 triggerTemp = appPreferences?.autoCoolingTriggerTemp ?: 34.0f,
                 hysteresis = appPreferences?.autoCoolingHysteresis ?: 2.0f,
                 targetSpeed = appPreferences?.autoCoolingTargetSpeed ?: 6
-            )
+            ),
+            capabilityState = stateMachine.currentCapabilityState
         )
     )
     val liveState: StateFlow<ObdLiveState> = _liveState
@@ -72,7 +79,6 @@ class ObdController(
     private var isMultiPidSupported = false
     private var isCustomFcSupported = false
     private var activeBatteryPid: String = ToyotaYarisCommands.PID_READ_BATTERY_DATA_TNGA
-    private var consecutiveCanErrors = 0
     private var lastValidCanTimestamp = 0L
     private var loopStartTimestamp = 0L
     private var standbyCycleCounter = 0
@@ -106,19 +112,24 @@ class ObdController(
             bleManager.connectionState.collect { state ->
                 when (state) {
                     is BleConnectionState.Ready -> {
+                        stateMachine.onTransportStateChanged(BleTransportState.Ready)
+                        _liveState.value = _liveState.value.copy(
+                            capabilityState = stateMachine.currentCapabilityState
+                        )
                         addLog("Dispositivo pronto. Avvio inizializzazione ECU Toyota Yaris...")
                         initializeAndStartLoop()
                     }
                     is BleConnectionState.Reconnecting -> {
                         stopLoop()
                         isProtocolInitialized = false
-                        consecutiveCanErrors = 0
+                        stateMachine.onTransportStateChanged(BleTransportState.Connecting)
                         _liveState.value = _liveState.value.copy(
                             isInitialized = false,
                             isLoopRunning = false,
                             hasEcuCommunication = false,
                             isVehicleReady = false,
                             isStandbyMode = false,
+                            capabilityState = stateMachine.currentCapabilityState,
                             ecuAlertMessage = "Riconnessione automatica a ${state.deviceName} (#${state.attempt})...",
                             lastLogMessage = "Riconnessione in corso a ${state.deviceName} (tentativo #${state.attempt})..."
                         )
@@ -126,15 +137,28 @@ class ObdController(
                     is BleConnectionState.Disconnected, is BleConnectionState.Error -> {
                         stopLoop()
                         isProtocolInitialized = false
-                        consecutiveCanErrors = 0
+                        stateMachine.teardownAllCapabilities(BleTransportState.Disconnected)
                         _liveState.value = _liveState.value.copy(
                             isInitialized = false,
                             isLoopRunning = false,
                             hasEcuCommunication = false,
                             isVehicleReady = false,
                             isStandbyMode = false,
+                            capabilityState = stateMachine.currentCapabilityState,
                             ecuAlertMessage = null,
                             lastLogMessage = if (state is BleConnectionState.Error) state.message else "Disconnesso"
+                        )
+                    }
+                    is BleConnectionState.Connecting -> {
+                        stateMachine.onTransportStateChanged(BleTransportState.Connecting)
+                        _liveState.value = _liveState.value.copy(
+                            capabilityState = stateMachine.currentCapabilityState
+                        )
+                    }
+                    is BleConnectionState.Connected -> {
+                        stateMachine.onTransportStateChanged(BleTransportState.Connected)
+                        _liveState.value = _liveState.value.copy(
+                            capabilityState = stateMachine.currentCapabilityState
                         )
                     }
                     else -> {}
@@ -159,7 +183,7 @@ class ObdController(
         loopJob?.cancel()
         loopJob = scope.launch(Dispatchers.IO) {
             try {
-                consecutiveCanErrors = 0
+                stateMachine.onElmInitializing()
                 loopStartTimestamp = System.currentTimeMillis()
                 standbyCycleCounter = 0
                 currentCanHeader = ""
@@ -169,6 +193,7 @@ class ObdController(
                     hasEcuCommunication = false,
                     isVehicleReady = false,
                     isStandbyMode = false,
+                    capabilityState = stateMachine.currentCapabilityState,
                     ecuAlertMessage = null
                 )
 
@@ -201,6 +226,7 @@ class ObdController(
                 // protocollo 6 (CAN 11-bit 500k) sia attivo e non un auto-detect andato altrove.
                 val dpnRes = bleManager.sendCommand(Elm327Protocol.CMD_PROTOCOL_NUMBER, timeoutMs = 1500L)
                 addLog("Protocollo ELM327 attivo (AT DPN): ${Elm327Protocol.cleanResponse(dpnRes)} (atteso 6 = ISO 15765-4 CAN 11-bit 500k)")
+                stateMachine.onElmReady()
 
                 // 4. Rilevamento non distruttivo chipset STN / OBDLink prima di applicare comandi AT FC (R1)
                 addLog("Rilevamento identità adapter OBD (ATI / ST DI)...")
@@ -232,20 +258,27 @@ class ObdController(
                 if (!isReady && real12v > 0f) {
                     addLog("💤 Auto in Standby (12V: ${real12v}V < 13.0V, quadro spento). Standby a basso consumo attivo.")
                     isProtocolInitialized = true
+                    stateMachine.onVehicleStandby()
+                    activeBatteryPid = ToyotaYarisCommands.PID_READ_BATTERY_DATA_TNGA
                     _liveState.value = _liveState.value.copy(
                         isInitialized = true,
                         isLoopRunning = true,
                         hasEcuCommunication = false,
                         isVehicleReady = false,
                         isStandbyMode = true,
+                        capabilityState = stateMachine.currentCapabilityState,
                         auxiliary12vVoltage = real12v,
                         ecuAlertMessage = "Auto in standby a basso consumo: accendi la vettura (spia verde READY) per avviare la telemetria."
                     )
                 } else {
+                    if (isReady) {
+                        stateMachine.onVehicleReady()
+                    }
                     // 7. Handshake CAN a tre stadi con aggancio rapido (R2)
                     // Stadio 0: richiesta funzionale con header 7DF esplicito. Non ci si affida
                     // all'header predefinito del clone, che puo' sopravvivere a warm start e standby.
                     addLog("Stadio 0: aggancio bus CAN in broadcast (7DF)...")
+                    stateMachine.onCanSearching()
                     val stage0Ok = probeBroadcastCanWithAutomaticFallback("Stadio 0")
                     if (stage0Ok) {
                         addLog("✅ Stadio 0 completato: bus CAN 11-bit 500k agganciato in broadcast (7DF).")
@@ -272,6 +305,7 @@ class ObdController(
                     if (stage1Ok) {
                         addLog("✅ Handshake CAN Stadio 1 completato: bus CAN 11-bit 500k agganciato!")
                         lastValidCanTimestamp = System.currentTimeMillis()
+                        stateMachine.onEngineTelemetrySuccess()
                     } else {
                         addLog("ℹ️ Handshake CAN Stadio 1: risposta non standard ($cleanStage1), procedo a Stadio 2...")
                     }
@@ -279,6 +313,7 @@ class ObdController(
                     // Stadio 2: centralina ibrida Denso HV Battery (7E2 / 7EA) con catena di fallback trasparente
                     addLog("Handshake CAN Stadio 2: interrogazione Centralina Ibrida Denso HV Battery (7E2 / 7EA)...")
                     ensureCanHeader(ToyotaYarisCommands.HEADER_BATTERY_ECU)
+                    stateMachine.onBatteryDiscoveryProbing()
                     var stage2Ok = false
                     var initialBatteryStatus: HvBatteryStatus? = null
 
@@ -291,11 +326,15 @@ class ObdController(
                             stage2Ok = true
                             initialBatteryStatus = parsed
                             lastValidCanTimestamp = System.currentTimeMillis()
+                            stateMachine.onBatteryDiscovered(bPid)
                             addLog("✅ Handshake CAN Stadio 2 confermato con PID $bPid! Dati pacco batteria ricevuti.")
                             break
                         } else {
                             addLog("PID $bPid non ha risposto o formato non riconosciuto (risposta: ${Elm327Protocol.cleanResponse(bRes)}), provo fallback successivo...")
                         }
+                    }
+                    if (!stage2Ok) {
+                        stateMachine.onBatteryProbeFailed()
                     }
 
                     val canOk = stage0Ok || stage1Ok || stage2Ok
@@ -307,6 +346,7 @@ class ObdController(
                         hasEcuCommunication = canOk,
                         isVehicleReady = isActuallyReady,
                         isStandbyMode = !isActuallyReady,
+                        capabilityState = stateMachine.currentCapabilityState,
                         auxiliary12vVoltage = real12v,
                         ecuAlertMessage = when {
                             canOk -> null
@@ -466,15 +506,22 @@ class ObdController(
         if (!Elm327Protocol.isVehicleReady(volt) && volt > 0f) {
             addLog("Auto non in READY (12V: ${volt}V < 13.0V): passaggio a standby a basso consumo.")
             currentCanHeader = ""
+            activeBatteryPid = ToyotaYarisCommands.PID_READ_BATTERY_DATA_TNGA
+            stateMachine.onVehicleStandby()
             _liveState.value = _liveState.value.copy(
                 isVehicleReady = false,
                 isStandbyMode = true,
                 hasEcuCommunication = false,
+                capabilityState = stateMachine.currentCapabilityState,
                 auxiliary12vVoltage = volt,
                 ecuAlertMessage = "Auto in standby a basso consumo (12V: ${volt}V): in attesa di spia verde READY..."
             )
             return
         }
+
+        // Auto-Recovery: resetta lo stato delle capacità e forza ri-scoperta pulita
+        stateMachine.onCanBusAutoRecovery()
+        activeBatteryPid = ToyotaYarisCommands.PID_READ_BATTERY_DATA_TNGA
 
         // Reset rapido dello stack seriale ELM327 senza perdita connessione BLE
         bleManager.sendWakeSequence()
@@ -492,6 +539,7 @@ class ObdController(
         }
         bleManager.sendCommand("AT CAF 1")
         currentCanHeader = "" // Forza riapplicazione degli header
+        stateMachine.onElmReady()
 
         // Stadio 0: riaggancio 7DF, con fallback basato sulla risposta CAN reale.
         val s0Ok = probeBroadcastCanWithAutomaticFallback("Auto-recovery Stadio 0")
@@ -509,14 +557,19 @@ class ObdController(
         }
         val s1Ok = !Elm327Protocol.isError(cleanS1) &&
             (cleanS1.contains("4100") || cleanS1.contains("410C"))
+        if (s1Ok) {
+            stateMachine.onEngineTelemetrySuccess()
+        }
 
         // Handshake Stadio 2: centralina ibrida Denso HV Battery con activeBatteryPid o fallback
         ensureCanHeader(ToyotaYarisCommands.HEADER_BATTERY_ECU)
+        stateMachine.onBatteryDiscoveryProbing()
         var s2Ok = false
         val bRes = bleManager.sendCommand(activeBatteryPid, timeoutMs = BATTERY_PID_TIMEOUT_MS)
         val parsed = ToyotaYarisCommands.parseBatteryResponse(bRes, _liveState.value.fanForcedMax)
         if (parsed != null) {
             s2Ok = true
+            stateMachine.onBatteryDiscovered(activeBatteryPid)
         } else {
             addLog("Auto-recovery: PID batteria $activeBatteryPid non riconosciuto (risposta: ${Elm327Protocol.cleanResponse(bRes)}).")
             for (fallbackPid in ToyotaYarisCommands.BATTERY_FALLBACK_PIDS) {
@@ -526,22 +579,28 @@ class ObdController(
                 if (fbParsed != null) {
                     activeBatteryPid = fallbackPid
                     s2Ok = true
+                    stateMachine.onBatteryDiscovered(fallbackPid)
                     break
                 }
+            }
+            if (!s2Ok) {
+                stateMachine.onBatteryProbeFailed()
             }
         }
 
         if (s2Ok) {
             lastValidCanTimestamp = System.currentTimeMillis()
-            consecutiveCanErrors = 0
             addLog("✅ Procedura auto-recovery completata: centralina batteria HV e bus CAN riagganciati.")
         } else if (s0Ok || s1Ok) {
             lastValidCanTimestamp = System.currentTimeMillis()
-            consecutiveCanErrors = 0
             addLog("⚠️ Bus CAN motore riagganciato, ma centralina batteria HV ancora in sincronizzazione.")
         } else {
             addLog("⚠️ Procedura auto-recovery completata: in attesa di risposta CAN centralina.")
         }
+
+        _liveState.value = _liveState.value.copy(
+            capabilityState = stateMachine.currentCapabilityState
+        )
     }
 
     private suspend fun executeDualRateCycle() {
@@ -559,11 +618,13 @@ class ObdController(
             val isReadyByVoltage = Elm327Protocol.isVehicleReady(volt)
 
             if (isReadyByVoltage) {
+                stateMachine.onVehicleReady()
                 addLog("⚡ RILEVATO STATO READY AUTO (12V: ${volt}V >= 13.0V)! Verifica bus CAN e aggancio rapido...")
                 currentCanHeader = ""
 
                 // La tensione conferma il DC-DC attivo, ma il protocollo viene convalidato
                 // separatamente con una risposta ECU reale in broadcast.
+                stateMachine.onCanSearching()
                 val s0Ok = probeBroadcastCanWithAutomaticFallback("Risveglio da standby")
 
                 // Handshake Stadio 1: aggancio rapido motore
@@ -576,9 +637,13 @@ class ObdController(
                 }
                 val s1Ok = !Elm327Protocol.isError(cleanS1) &&
                     (cleanS1.contains("4100") || cleanS1.contains("410C"))
+                if (s1Ok) {
+                    stateMachine.onEngineTelemetrySuccess()
+                }
 
                 // Handshake Stadio 2: aggancio centralina batteria con fallback trasparente
                 ensureCanHeader(ToyotaYarisCommands.HEADER_BATTERY_ECU)
+                stateMachine.onBatteryDiscoveryProbing()
                 var s2Ok = false
                 var parsedBattery: HvBatteryStatus? = null
                 for (bPid in ToyotaYarisCommands.BATTERY_FALLBACK_PIDS) {
@@ -587,20 +652,24 @@ class ObdController(
                     if (parsedBattery != null) {
                         activeBatteryPid = bPid
                         s2Ok = true
+                        stateMachine.onBatteryDiscovered(bPid)
                         break
                     }
+                }
+                if (!s2Ok) {
+                    stateMachine.onBatteryProbeFailed()
                 }
 
                 val canOk = s0Ok || s1Ok || s2Ok
                 standbyCycleCounter = 0
                 if (canOk) {
                     lastValidCanTimestamp = now
-                    consecutiveCanErrors = 0
                 }
                 _liveState.value = _liveState.value.copy(
                     isVehicleReady = true,
                     isStandbyMode = false,
                     hasEcuCommunication = canOk,
+                    capabilityState = stateMachine.currentCapabilityState,
                     auxiliary12vVoltage = volt,
                     ecuAlertMessage = if (canOk) null else {
                         if (volt > 0f) {
@@ -612,10 +681,13 @@ class ObdController(
                     batteryStatus = parsedBattery ?: _liveState.value.batteryStatus
                 )
             } else {
+                stateMachine.onVehicleStandby()
+                activeBatteryPid = ToyotaYarisCommands.PID_READ_BATTERY_DATA_TNGA
                 _liveState.value = _liveState.value.copy(
                     isVehicleReady = false,
                     isStandbyMode = true,
                     hasEcuCommunication = false,
+                    capabilityState = stateMachine.currentCapabilityState,
                     auxiliary12vVoltage = volt,
                     ecuAlertMessage = "Auto in standby a basso consumo: accendi la vettura (spia verde READY) per avviare la telemetria."
                 )
@@ -633,11 +705,19 @@ class ObdController(
             if (!Elm327Protocol.isVehicleReady(volt) && volt > 0f) {
                 addLog("💤 Auto spenta (12V: ${volt}V < 13.0V, CAN silente). Entrata in standby a basso consumo.")
                 currentCanHeader = ""
+                activeBatteryPid = ToyotaYarisCommands.PID_READ_BATTERY_DATA_TNGA
+                stateMachine.onVehicleStandby()
                 _liveState.value = _liveState.value.copy(
                     isVehicleReady = false,
                     isStandbyMode = true,
                     hasEcuCommunication = false,
+                    capabilityState = stateMachine.currentCapabilityState,
                     auxiliary12vVoltage = volt,
+                    batteryStatus = _liveState.value.batteryStatus.copy(
+                        isFanForced = false,
+                        isEcuAckConfirmed = false,
+                        estimatedFanRpm = 0
+                    ),
                     ecuAlertMessage = "Auto in standby a basso consumo (12V: ${volt}V): in attesa di spia verde READY..."
                 )
                 return
@@ -699,9 +779,10 @@ class ObdController(
         val autoStatus = currentState.autoCoolingStatus
         val updatedBattery = if (parsedStatus != null) {
             lastValidCanTimestamp = System.currentTimeMillis()
-            consecutiveCanErrors = 0
+            stateMachine.onBatteryDiscovered(activeBatteryPid)
             parsedStatus
         } else {
+            stateMachine.onBatteryProbeFailed()
             currentState.batteryStatus.copy(timestamp = System.currentTimeMillis())
         }
 
@@ -741,6 +822,10 @@ class ObdController(
             val cleanFanRes = Elm327Protocol.cleanResponse(fanCmdRes)
             if (cleanFanRes.contains("7F30") || cleanFanRes.contains("ERROR")) {
                 bleManager.sendCommand(ToyotaYarisCommands.CMD_FAN_MAX_SPEED_ALT)
+                stateMachine.onFanActuationStateChanged(FanActuationState.REQUESTED)
+            } else {
+                stateMachine.onFanControlConfirmed()
+                stateMachine.onFanActuationStateChanged(FanActuationState.CONFIRMED)
             }
             if (updatedBattery.maxTemp > 0.0) {
                 addLog("Ventola HV L$activeTargetSpeed | Batt: ${String.format(java.util.Locale.US, "%.1f", updatedBattery.maxTemp)}°C")
@@ -752,10 +837,12 @@ class ObdController(
                 bleManager.sendCommand(ToyotaYarisCommands.CMD_FAN_STOP_OR_RESET)
             }
             bleManager.sendCommand(ToyotaYarisCommands.CMD_TESTER_PRESENT)
+            stateMachine.onFanActuationStateChanged(FanActuationState.OEM_AUTOMATIC)
         }
 
         _liveState.value = _liveState.value.copy(
             autoCoolingStatus = updatedAutoStatus,
+            capabilityState = stateMachine.currentCapabilityState,
             batteryStatus = updatedBattery.copy(
                 isFanForced = shouldForceFan,
                 fanSpeedLevel = if (shouldForceFan) activeTargetSpeed else updatedBattery.fanSpeedLevel
@@ -815,10 +902,10 @@ class ObdController(
 
         val anyData = currentSpeed != null || currentRpm != null
         if (anyData) {
-            consecutiveCanErrors = 0
+            stateMachine.onEngineTelemetrySuccess()
             lastValidCanTimestamp = sampleTimestamp
         } else {
-            consecutiveCanErrors++
+            stateMachine.onEngineTelemetryFailure()
         }
 
         // Elaborazione Dragy con interpolazione lineare ad alta precisione
@@ -851,6 +938,7 @@ class ObdController(
 
         _liveState.value = _liveState.value.copy(
             hasEcuCommunication = isEcuAlive,
+            capabilityState = stateMachine.currentCapabilityState,
             ecuAlertMessage = alertBanner,
             lastDataReceivedTimestamp = if (anyData) sampleTimestamp else currentState.lastDataReceivedTimestamp,
             performanceStatus = updatedPerformance
@@ -1014,7 +1102,17 @@ class ObdController(
         loopJob?.cancel()
         loopJob = null
         currentCanHeader = ""
-        _liveState.value = _liveState.value.copy(isLoopRunning = false)
+        activeBatteryPid = ToyotaYarisCommands.PID_READ_BATTERY_DATA_TNGA
+        stateMachine.teardownAllCapabilities(BleTransportState.Disconnected)
+        _liveState.value = _liveState.value.copy(
+            isLoopRunning = false,
+            capabilityState = stateMachine.currentCapabilityState,
+            batteryStatus = _liveState.value.batteryStatus.copy(
+                isFanForced = false,
+                isEcuAckConfirmed = false,
+                estimatedFanRpm = 0
+            )
+        )
     }
 
     // --- ECU CUSTOMIZATION & CODING OPERATIONS ---
