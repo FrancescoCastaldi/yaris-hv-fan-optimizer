@@ -6,6 +6,14 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)
 - **MINOR (`0.X.0`)**: Aggiunta di nuove funzionalità, sensori, codifiche o telemetrie.
 - **PATCH (`0.0.X`)**: Bugfix, ottimizzazioni di performance o aggiustamenti grafici minori.
 
+## [2.9.9] - 2026-09-06
+### 🏁 Nuovo Pit Wall Digitale & Portale Motorsport Responsive
+- **Nuova identità visiva del portale web**: Tipografia Barlow Condensed / Barlow / IBM Plex Mono, palette carbonio/alluminio/rosso/ghiaccio e layout a pit wall per `docs/index.html`, `docs/preview.html` e `docs/404.html`.
+- **Demo interattiva condivisa**: Simulatore unico (`docs/simulator.js` + `docs/site.css`) con scheda ventola (L1–L6), cronometro Dragy 0-100 con avvio, pausa e reset, shift-light e matrice 4 celle Denso.
+- **Scena termica hero animata**: Vista concettuale del pacco HV con flusso d'aria e toggle demo L3/L6 sulla home.
+- **Repository a singolo APK**: Un solo file `YarisHvFanControl-v2.9.9.apk` nella root; la cartella `docs/` non traccia più file `.apk` (generati dalla pipeline CI durante il deploy).
+- **Sincronizzazione completa riferimenti**: `build_apk.bat`, `.github/workflows/deploy.yml`, `README.md` e `AGENTS.md` allineati alla release v2.9.9.
+
 ## [2.9.8] - 2026-09-06
 ### 🛡️ OBD CAN Init Fix: Rimozione Filtro AT CRA & Protocol Timing Calibration
 - **Risoluzione Definitiva Bug Connessione CAN Dongle Clone / Vlinker**: Rimosso l'invio del comando `AT CRA` (filtro di ricezione CAN) che su dongle cloni ELM327 e Vlinker causava il drop silenzioso di tutti i pacchetti in ingresso (`NO DATA` su ogni PID standard e proprietario). Aggiunto `AT AR` in sequenza di init per azzerare filtri residui sul chip.
