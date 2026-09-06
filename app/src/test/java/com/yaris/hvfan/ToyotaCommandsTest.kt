@@ -32,6 +32,21 @@ class ToyotaCommandsTest {
     }
 
     @Test
+    fun testParseBatteryResponse_nonBatteryFramesReturnNull() {
+        // Engine frame from Mode 01 PID 00 must return null
+        val engineFrame = "7E8 06 41 00 BE 7F A8 11 >"
+        assertNull(ToyotaYarisCommands.parseBatteryResponse(engineFrame, isForced = false))
+
+        // Engine RPM response must return null
+        val rpmFrame = "7E8 04 41 0C 1F 40 >"
+        assertNull(ToyotaYarisCommands.parseBatteryResponse(rpmFrame, isForced = false))
+
+        // Arbitrary hex garbage must return null
+        val garbageFrame = "7EA 08 AA BB CC DD EE FF >"
+        assertNull(ToyotaYarisCommands.parseBatteryResponse(garbageFrame, isForced = false))
+    }
+
+    @Test
     fun testActiveTestCommandConstants() {
         assertEquals("300806", ToyotaYarisCommands.CMD_FAN_MAX_SPEED_UDS)
         assertEquals("AT SH 7E2", ToyotaYarisCommands.CMD_SET_HEADER_BATTERY_ECU)

@@ -254,6 +254,7 @@ fun DashboardScreen(
                             connectionState = connectionState,
                             isInitialized = liveState.isInitialized,
                             hasEcuCommunication = liveState.hasEcuCommunication,
+                            isVehicleReady = liveState.isVehicleReady,
                             isStandbyMode = liveState.isStandbyMode,
                             auxiliary12vVoltage = liveState.auxiliary12vVoltage
                         )
@@ -266,10 +267,15 @@ fun DashboardScreen(
                 if ((connectionState is BleConnectionState.Ready || connectionState is BleConnectionState.Connected) &&
                     (!liveState.hasEcuCommunication || liveState.isStandbyMode) && liveState.ecuAlertMessage != null) {
                     val isStandby = liveState.isStandbyMode
-                    val bannerBorder = if (isStandby) AccentCyan.copy(alpha = 0.5f) else WarningOrange
-                    val bannerColor = if (isStandby) AccentCyan else WarningOrange
-                    val bannerTitle = if (isStandby) "MODALITÀ STANDBY" else "CENTRALINA NON RISPONDE"
-                    val bannerIcon = if (isStandby) Icons.Default.HourglassEmpty else Icons.Default.Warning
+                    val isReadySync = liveState.isVehicleReady && !liveState.hasEcuCommunication
+                    val bannerBorder = if (isStandby || isReadySync) AccentCyan.copy(alpha = 0.5f) else WarningOrange
+                    val bannerColor = if (isStandby || isReadySync) AccentCyan else WarningOrange
+                    val bannerTitle = when {
+                        isStandby -> "MODALITÀ STANDBY"
+                        isReadySync -> "SINCRONIZZAZIONE CAN"
+                        else -> "CENTRALINA NON RISPONDE"
+                    }
+                    val bannerIcon = if (isStandby || isReadySync) Icons.Default.HourglassEmpty else Icons.Default.Warning
 
                     Surface(
                         modifier = Modifier
@@ -437,6 +443,7 @@ fun DashboardScreen(
                         connectionState = connectionState,
                         isInitialized = liveState.isInitialized,
                         hasEcuCommunication = liveState.hasEcuCommunication,
+                        isVehicleReady = liveState.isVehicleReady,
                         isStandbyMode = liveState.isStandbyMode,
                         auxiliary12vVoltage = liveState.auxiliary12vVoltage
                     )
@@ -448,11 +455,16 @@ fun DashboardScreen(
                 (!liveState.hasEcuCommunication || liveState.isStandbyMode) && liveState.ecuAlertMessage != null) {
                 Spacer(modifier = Modifier.height(10.dp))
                 val isStandby = liveState.isStandbyMode
-                val bannerBorder = if (isStandby) AccentCyan.copy(alpha = 0.6f) else WarningOrange
-                val bannerColor = if (isStandby) AccentCyan else WarningOrange
-                val bannerTitle = if (isStandby) "MODALITÀ STANDBY A BASSO CONSUMO" else "CENTRALINA NON RISPONDE"
-                val bannerIcon = if (isStandby) Icons.Default.HourglassEmpty else Icons.Default.Warning
-                val buttonText = if (isStandby) "SVEGLIA" else "RIPROVA"
+                val isReadySync = liveState.isVehicleReady && !liveState.hasEcuCommunication
+                val bannerBorder = if (isStandby || isReadySync) AccentCyan.copy(alpha = 0.6f) else WarningOrange
+                val bannerColor = if (isStandby || isReadySync) AccentCyan else WarningOrange
+                val bannerTitle = when {
+                    isStandby -> "MODALITÀ STANDBY A BASSO CONSUMO"
+                    isReadySync -> "SINCRONIZZAZIONE CAN IN CORSO"
+                    else -> "CENTRALINA NON RISPONDE"
+                }
+                val bannerIcon = if (isStandby || isReadySync) Icons.Default.HourglassEmpty else Icons.Default.Warning
+                val buttonText = if (isStandby) "SVEGLIA" else if (isReadySync) "SINCRONIZZA" else "RIPROVA"
 
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
@@ -868,12 +880,14 @@ fun GrCockpitSection(
                     // Hybrid Powertrain Status Indicator
                     val (statusColor, statusText) = when {
                         !isConnected -> Pair(TextMuted, "DISCONNESSO")
-                        !liveState.hasEcuCommunication -> Pair(WarningOrange, "ATTESA READY")
+                        liveState.isStandbyMode -> Pair(WarningOrange, "ATTESA READY")
+                        !liveState.hasEcuCommunication && !liveState.isVehicleReady -> Pair(WarningOrange, "ATTESA READY")
+                        !liveState.hasEcuCommunication && liveState.isVehicleReady -> Pair(AccentCyan, "SINCRONIZZAZIONE")
                         accel.isLaunchReady -> Pair(SuccessGreen, "LAUNCH READY")
                         accel.isTimingActive -> Pair(WarningOrange, "SCATTO ATTIVO")
                         isFullBoost -> Pair(AccentCyan, "FULL BOOST 59kW")
                         liveState.batteryStatus.isThermalThrottled -> Pair(DangerRed, "TAGLIO TERMICO")
-                        else -> Pair(SuccessGreen, "IBRIDO PRONTO")
+                        else -> Pair(SuccessGreen, "ONLINE")
                     }
 
                     Surface(
@@ -2725,6 +2739,7 @@ fun ConnectionBadge(
     connectionState: BleConnectionState,
     isInitialized: Boolean = false,
     hasEcuCommunication: Boolean = false,
+    isVehicleReady: Boolean = false,
     isStandbyMode: Boolean = false,
     auxiliary12vVoltage: Float = 0f
 ) {
@@ -2750,12 +2765,22 @@ fun ConnectionBadge(
                     "▲ STANDBY - ATTESA READY"
                 }
             } else if (isInitialized) {
-                borderColor = WarningOrange
-                textColor = WarningOrange
-                text = if (auxiliary12vVoltage > 0f) {
-                    "▲ DONGLE OK (${String.format(java.util.Locale.US, "%.1f", auxiliary12vVoltage)}V)"
+                if (isVehicleReady || auxiliary12vVoltage >= 13.0f) {
+                    borderColor = AccentCyan
+                    textColor = AccentCyan
+                    text = if (auxiliary12vVoltage > 0f) {
+                        "◌ SINCRONIZZAZIONE (${String.format(java.util.Locale.US, "%.1f", auxiliary12vVoltage)}V)"
+                    } else {
+                        "◌ SINCRONIZZAZIONE"
+                    }
                 } else {
-                    "▲ DONGLE OK - ATTESA ECU"
+                    borderColor = WarningOrange
+                    textColor = WarningOrange
+                    text = if (auxiliary12vVoltage > 0f) {
+                        "▲ DONGLE OK (${String.format(java.util.Locale.US, "%.1f", auxiliary12vVoltage)}V)"
+                    } else {
+                        "▲ DONGLE OK - ATTESA ECU"
+                    }
                 }
             } else {
                 borderColor = AccentCyan

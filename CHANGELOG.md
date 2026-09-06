@@ -6,6 +6,14 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)
 - **MINOR (`0.X.0`)**: Aggiunta di nuove funzionalità, sensori, codifiche o telemetrie.
 - **PATCH (`0.0.X`)**: Bugfix, ottimizzazioni di performance o aggiustamenti grafici minori.
 
+## [2.9.6] - 2026-09-06
+### ⚡ Dual-Engine OBD Connection Architecture (Dr. Prius + Hybrid Assistant)
+- **Architettura Dual-Engine Dr. Prius & Hybrid Assistant**: Stack universale di base ispirato a Dr. Prius con `AT CAF 1` (CAN Auto-Formatting nativo standard per l'assemblaggio trasparente dei frame ISO-TP multi-frame), combinato con rilevamento hardware non distruttivo STN/OBDLink (`ST DI`, `ATI`) per attivare il Flow Control avanzato solo sui chip che lo supportano nativamente.
+- **Risoluzione Definitiva per Vlinker & Cloni ELM327**: Mantenimento rigoroso del Flow Control automatico di sistema su adapter Vlinker (`Android-Vlink`) e cloni ELM327 senza invio di comandi `AT FC` che corrompono il buffer seriale.
+- **Handshake CAN a Due Stadi con Aggancio Rapido**: Sincronizzazione preliminare su ECU motore (`7E0`/`7E8`) con PID standard OBD-II `0100` per consentire al dongle di completare la fase `SEARCHING...` del protocollo CAN 11-bit 500k, seguita da aggancio istantaneo su Denso HV Battery ECU (`7E2`/`7EA`).
+- **Catena di Fallback Dinamica per Pacco Batteria**: Sequenza automatica e trasparente `2228C1` &rarr; `2228C0` &rarr; `21C3` &rarr; `2161` in caso di risposte negative o varianti firmware della centralina batteria.
+- **Streaming RFCOMM Thread-Safe & Rilevamento READY Resiliente**: Buffer seriale atomico con sincronizzazione continua e rilevamento dello stato READY senza blocchi o falsi allarmi di "CENTRALINA NON RISPONDE".
+
 ## [2.9.5] - 2026-09-06
 - Fix critico: Negoziazione protocollo CAN con PID OBD-II standard (0100) prima delle query UDS Toyota
 - Fix critico: Rilevamento supporto Flow Control (AT FC) prima della configurazione — compatibilità Vlinker/clone

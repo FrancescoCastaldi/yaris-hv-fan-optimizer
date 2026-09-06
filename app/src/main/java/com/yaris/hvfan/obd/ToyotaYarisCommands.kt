@@ -262,6 +262,7 @@ object ToyotaYarisCommands {
     const val CMD_FC_SM_DEFAULT          = "AT FC SM 0"      // Standard Flow Control Mode
 
     // Standard OBD-II PIDs (Mode 01 for Engine & Atmosphere)
+    const val PID_SUPPORTED_PIDS   = "0100" // Mode 01 PID 00 (Supported PIDs) - rapid bus lock
     const val PID_VEHICLE_SPEED    = "010D" // Formula: A (km/h)
     const val PID_COOLANT_TEMP     = "0105" // Formula: A - 40 (°C)
     const val PID_INTAKE_AIR_TEMP  = "010F" // Formula: A - 40 (°C)
@@ -278,6 +279,14 @@ object ToyotaYarisCommands {
     const val PID_READ_BATTERY_DATA_LITHIUM_1 = "21C3"   // TNGA Lithium Pack Fallback 1
     const val PID_READ_BATTERY_DATA_LITHIUM_2 = "21C4"   // TNGA Lithium Pack Fallback 2
     const val PID_READ_BATTERY_DATA_ALT = "2228C0"       // Alternative Mode 22
+
+    // Fallback chain trasparente centralina ibrida Denso HV Battery (R2)
+    val BATTERY_FALLBACK_PIDS = listOf(
+        PID_READ_BATTERY_DATA_TNGA,      // 2228C1
+        PID_READ_BATTERY_DATA_ALT,       // 2228C0
+        PID_READ_BATTERY_DATA_LITHIUM_1, // 21C3
+        PID_READ_BATTERY_DATA_LEGACY     // 2161
+    )
 
     // Active Test / IO Control: Set Battery Cooling Fan to Level 6 (MAX)
     const val CMD_FAN_MAX_SPEED_UDS = "300806"           // Mode 30 IO Control (Fan Level 6)
@@ -532,6 +541,7 @@ object ToyotaYarisCommands {
                 hexPayload.contains("6161")   -> hexPayload = hexPayload.substring(hexPayload.indexOf("6161") + 4)
                 hexPayload.contains("61C3")   -> hexPayload = hexPayload.substring(hexPayload.indexOf("61C3") + 4)
                 hexPayload.contains("61C4")   -> hexPayload = hexPayload.substring(hexPayload.indexOf("61C4") + 4)
+                else -> return null
             }
 
             if (hexPayload.length < 8) {

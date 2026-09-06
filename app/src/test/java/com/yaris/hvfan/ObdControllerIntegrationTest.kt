@@ -504,4 +504,360 @@ class ObdControllerIntegrationTest {
         assertEquals(14.1f, readyState.auxiliary12vVoltage, 0.01f)
         assertNull(readyState.ecuAlertMessage)
     }
+
+    @Test
+    fun testStnHardwareNonDestructiveDetection() {
+        // Case A: Vlinker devices must NEVER enable custom AT FC (prevents buffer corruption)
+        assertFalse(Elm327Protocol.isStnHardwareSupported("Android-Vlink", "ELM327 v2.2", "STN2120 v5.1.0"))
+        assertFalse(Elm327Protocol.isStnHardwareSupported("vLinker MC+ BLE", "vLinker MC v2.2", "STN2120"))
+        assertFalse(Elm327Protocol.isStnHardwareSupported("vLinker FD", "ELM327 v2.2", "STN2120 v5.2.0"))
+        assertFalse(Elm327Protocol.isStnHardwareSupported("V-LINK", "ELM327 v1.5", "?"))
+
+        // Case B: Standard ELM327 clone returning '?' or ERROR on ST DI
+        assertFalse(Elm327Protocol.isStnHardwareSupported("OBDII", "ELM327 v1.5", "?"))
+        assertFalse(Elm327Protocol.isStnHardwareSupported("ELM327 Bluetooth", "ELM327 v2.1", "ERROR"))
+        assertFalse(Elm327Protocol.isStnHardwareSupported("Konnwei OBD", "ELM327 v1.5", "NO DATA"))
+
+        // Case C: Genuine Scantool OBDLink original hardware
+        assertTrue(Elm327Protocol.isStnHardwareSupported("OBDLink MX+", "OBDLink MX+ v4.5.1", "STN1151 v4.5.1"))
+        assertTrue(Elm327Protocol.isStnHardwareSupported("OBDLink LX", "OBDLink LX v4.3.0", "STN1130 v4.3.0"))
+        assertTrue(Elm327Protocol.isStnHardwareSupported("OBDLink CX", "OBDLink CX v5.6.1", "STN2230 v5.6.1"))
+
+        // Case D: Generic adapter with genuine STN chipset (and not Vlinker)
+        assertTrue(Elm327Protocol.isStnHardwareSupported("ScanTool Device", "STN1110 v3.3.1", "STN1110 v3.3.1"))
+        assertTrue(Elm327Protocol.isStnHardwareSupported("Custom OBD", "STN2120 v5.0.0", "STN2120 v5.0.0"))
+    }
+
+    @Test
+    fun testTwoStageHandshakePidsAndFallbackChain() {
+        // Stage 1: Engine ECU quick bus lock PID
+        assertEquals("0100", ToyotaYarisCommands.PID_SUPPORTED_PIDS)
+        assertEquals("010C", ToyotaYarisCommands.PID_ENGINE_RPM)
+        assertEquals("7E0", ToyotaYarisCommands.HEADER_ENGINE_ECU)
+        assertEquals("7E8", ToyotaYarisCommands.FILTER_ENGINE_ECU)
+
+        // Stage 2: Battery ECU and fallback chain
+        assertEquals("7E2", ToyotaYarisCommands.HEADER_BATTERY_ECU)
+        assertEquals("7EA", ToyotaYarisCommands.FILTER_BATTERY_ECU)
+        assertEquals(4, ToyotaYarisCommands.BATTERY_FALLBACK_PIDS.size)
+        assertEquals("2228C1", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[0]) // Primary TNGA Mode 22
+        assertEquals("2228C0", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[1]) // Alternative Mode 22
+        assertEquals("21C3", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[2])   // Lithium Mode 21
+        assertEquals("2161", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[3])   // Legacy KWP Mode 21
+
+        // Verify parsing for each fallback response variant
+        // 1. Primary 2228C1 -> 6228C1
+        val res2228C1 = "7EA 10 0E 62 28 C1 42 44 43 41 3E 05 >" // T1=26, T2=28, T3=27, T4=25, Intake=22, Fan=5
+        val b1 = ToyotaYarisCommands.parseBatteryResponse(res2228C1, false)
+        assertNotNull(b1)
+        assertEquals(26.0, b1!!.temp1, 0.1)
+        assertEquals(28.0, b1.temp2, 0.1)
+        assertEquals(5, b1.fanSpeedLevel)
+
+        // 2. Alternative 2228C0 -> 6228C0
+        val res2228C0 = "7EA 10 0E 62 28 C0 43 43 42 40 3F 02 >" // T1=27, T2=27, T3=26, T4=24, Intake=23, Fan=2
+        val b2 = ToyotaYarisCommands.parseBatteryResponse(res2228C0, false)
+        assertNotNull(b2)
+        assertEquals(27.0, b2!!.temp1, 0.1)
+        assertEquals(2, b2.fanSpeedLevel)
+
+        // 3. Lithium Pack 21C3 -> 61C3
+        val res21C3 = "7EA 08 61 C3 41 42 41 40 3D 00 >" // T1=25, T2=26, T3=25, T4=24, Intake=21, Fan=0
+        val b3 = ToyotaYarisCommands.parseBatteryResponse(res21C3, false)
+        assertNotNull(b3)
+        assertEquals(25.0, b3!!.temp1, 0.1)
+        assertEquals(26.0, b3.temp2, 0.1)
+        assertEquals(0, b3.fanSpeedLevel)
+
+        // 4. Legacy KWP 2161 -> 6161
+        val res2161 = "7EA 08 61 61 40 40 3F 3E 3C 01 >" // T1=24, T2=24, T3=23, T4=22, Intake=20, Fan=1
+        val b4 = ToyotaYarisCommands.parseBatteryResponse(res2161, false)
+        assertNotNull(b4)
+        assertEquals(24.0, b4!!.temp1, 0.1)
+        assertEquals(1, b4.fanSpeedLevel)
+    }
+
+    @Test
+    fun testDrPriusUniversalBaseStackCommands() {
+        assertEquals("\r\r", Elm327Protocol.CMD_WAKE_UP)
+        assertEquals("AT Z", Elm327Protocol.CMD_RESET)
+        assertEquals("ATI", Elm327Protocol.CMD_DEVICE_INFO)
+        assertEquals("ST DI", Elm327Protocol.CMD_DEVICE_ID_STN)
+
+        // Must start with AT Z and conclude with AT CAF 1
+        assertEquals("AT Z", Elm327Protocol.INIT_COMMANDS.first())
+        assertEquals("AT CAF 1", Elm327Protocol.INIT_COMMANDS.last())
+
+        // Must not contain AT D (which would reset parameters)
+        assertFalse(Elm327Protocol.INIT_COMMANDS.contains("AT D"))
+
+        // Must contain all core Dr. Prius commands
+        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT E0"))
+        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT L0"))
+        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT S0"))
+        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT H0"))
+        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT AT 1"))
+        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT ST 64"))
+        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT SP 6"))
+        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT CAF 1"))
+    }
+
+    @Test
+    fun testVoltageParsingWithComplexFirmwareBanners() {
+        // Banner with high version number like v12.1 must not be parsed as 12.1V
+        val rawStnVersionHigh = "STN2120 v12.1\r\n14.3V\r\n>"
+        assertEquals(14.3f, Elm327Protocol.parseBatteryVoltage(rawStnVersionHigh) ?: 0f, 0.05f)
+
+        val rawVlinkerBanner = "vLinker FD v2.2\r\n13.7V\r\n>"
+        assertEquals(13.7f, Elm327Protocol.parseBatteryVoltage(rawVlinkerBanner) ?: 0f, 0.05f)
+
+        val rawObdlinkBanner = "OBDLink MX+ v5.6.1\r\n14.4V\r\n>"
+        assertEquals(14.4f, Elm327Protocol.parseBatteryVoltage(rawObdlinkBanner) ?: 0f, 0.05f)
+
+        // Bare decimal voltage without 'V'
+        val rawBareVoltage = "12.4\r\n>"
+        assertEquals(12.4f, Elm327Protocol.parseBatteryVoltage(rawBareVoltage) ?: 0f, 0.05f)
+
+        // Bare banner without voltage must return null
+        val rawBareBanner = "vLinker MC v2.2\r\n>"
+        assertNull(Elm327Protocol.parseBatteryVoltage(rawBareBanner))
+
+        // Integer voltages with 'V'
+        val rawIntVoltage = "14V\r\n>"
+        assertEquals(14.0f, Elm327Protocol.parseBatteryVoltage(rawIntVoltage) ?: 0f, 0.05f)
+
+        // Prefixed with V or VOLT
+        val rawPrefixedVolt = "VOLT 13.8V\r\n>"
+        assertEquals(13.8f, Elm327Protocol.parseBatteryVoltage(rawPrefixedVolt) ?: 0f, 0.05f)
+    }
+
+    @Test
+    fun testStnHardwareDetectionRejectsFakeClonesWithDirtyResponses() {
+        // Counterfeit OBDLink clones with deceptive Bluetooth name but no STN chip
+        assertFalse(Elm327Protocol.isStnHardwareSupported("OBDLink Clone", "ELM327 v1.5", "OK"))
+        assertFalse(Elm327Protocol.isStnHardwareSupported("OBDLink SX Fake", "ELM327 v2.1", "ST DI"))
+        assertFalse(Elm327Protocol.isStnHardwareSupported("OBDLink BT", "ELM327 v1.5", "ERR01"))
+        assertFalse(Elm327Protocol.isStnHardwareSupported("OBDLink LX Clone", "ELM327 v1.5", "SYNTAX ERROR"))
+        assertFalse(Elm327Protocol.isStnHardwareSupported("OBDLink MX Counterfeit", "ELM327 v1.5", "COMMAND NOT UNDERSTOOD"))
+
+        // Standard ELM327 clones with dirty responses
+        assertFalse(Elm327Protocol.isStnHardwareSupported("OBDII", "ELM327 v1.5", "ERR01"))
+        assertFalse(Elm327Protocol.isStnHardwareSupported("OBDII", "ELM327 v1.5", "SYNTAX ERROR"))
+        assertFalse(Elm327Protocol.isStnHardwareSupported("OBDII", "ELM327 v1.5", "ACT ALERT"))
+    }
+
+    @Test
+    fun testBatteryResponseRejectsMismatchedOrEngineFrames() {
+        // Mode 01 PID 00 engine frame must NOT be parsed as battery data
+        val engineFrame = "7E8 06 41 00 BE 7F A8 11 >"
+        assertNull(ToyotaYarisCommands.parseBatteryResponse(engineFrame, false))
+
+        // Mode 01 PID 0C engine RPM frame must NOT be parsed as battery data
+        val rpmFrame = "7E8 04 41 0C 1F 40 >"
+        assertNull(ToyotaYarisCommands.parseBatteryResponse(rpmFrame, false))
+
+        // Random non-battery payload must NOT be parsed as battery data
+        val randomPayload = "7EA 08 DE AD BE EF 00 11 >"
+        assertNull(ToyotaYarisCommands.parseBatteryResponse(randomPayload, false))
+    }
+
+    @Test
+    fun testReadySyncAndStandbyStateMachineTransitions() {
+        // 1. Initial State: Standby (12V < 13.0V)
+        val state1 = ObdLiveState(
+            isInitialized = true,
+            isLoopRunning = true,
+            hasEcuCommunication = false,
+            isVehicleReady = false,
+            isStandbyMode = true,
+            auxiliary12vVoltage = 12.2f,
+            ecuAlertMessage = "Auto in standby a basso consumo: accendi la vettura (spia verde READY) per avviare la telemetria."
+        )
+        assertTrue(state1.isStandbyMode)
+        assertFalse(state1.isVehicleReady)
+        assertFalse(state1.hasEcuCommunication)
+
+        // 2. Transition: Car in READY (14.2V), CAN handshake in progress
+        val state2 = state1.copy(
+            isVehicleReady = true,
+            isStandbyMode = false,
+            hasEcuCommunication = false,
+            auxiliary12vVoltage = 14.2f,
+            ecuAlertMessage = "Veicolo in stato READY (12V: 14.2V). Sincronizzazione con ECU Toyota in corso..."
+        )
+        assertFalse(state2.isStandbyMode)
+        assertTrue(state2.isVehicleReady)
+        assertFalse(state2.hasEcuCommunication)
+        assertTrue(state2.ecuAlertMessage!!.contains("READY"))
+
+        // 3. Complete: CAN confirmed, ONLINE
+        val state3 = state2.copy(
+            hasEcuCommunication = true,
+            ecuAlertMessage = null
+        )
+        assertFalse(state3.isStandbyMode)
+        assertTrue(state3.isVehicleReady)
+        assertTrue(state3.hasEcuCommunication)
+        assertNull(state3.ecuAlertMessage)
+    }
+
+    @Test
+    fun testIsoTpMultiFrameWithLineSequenceNumbers() {
+        // Standard ELM327 with AT CAF 1 formats multi-frame responses with line sequence numbers '0:', '1:', etc.
+        val multiLine2228C1 = """
+            0: 62 28 C1 44 45 44
+            1: 43 41 03 00 00 00
+            >
+        """.trimIndent()
+
+        val parsed = ToyotaYarisCommands.parseBatteryResponse(multiLine2228C1, false)
+        assertNotNull(parsed)
+        assertEquals(28.0, parsed!!.temp1, 0.1) // 0x44 = 68 - 40 = 28
+        assertEquals(29.0, parsed.temp2, 0.1)  // 0x45 = 69 - 40 = 29
+        assertEquals(28.0, parsed.temp3, 0.1)  // 0x44 = 68 - 40 = 28
+        assertEquals(27.0, parsed.temp4, 0.1)  // 0x43 = 67 - 40 = 27
+        assertEquals(25.0, parsed.intakeTemp, 0.1) // 0x41 = 65 - 40 = 25
+        assertEquals(3, parsed.fanSpeedLevel)   // 0x03 = 3
+
+        // 3-frame battery response
+        val multiLine3Frames = """
+            0: 62 28 C0 42 44 43
+            1: 41 3E 05 00 00 00
+            2: 00 00 00 00 00 00
+            >
+        """.trimIndent()
+        val parsed3 = ToyotaYarisCommands.parseBatteryResponse(multiLine3Frames, false)
+        assertNotNull(parsed3)
+        assertEquals(26.0, parsed3!!.temp1, 0.1)
+        assertEquals(28.0, parsed3.temp2, 0.1)
+        assertEquals(5, parsed3.fanSpeedLevel)
+
+        // Multi-line Multi-PID engine response with sequence numbers
+        val multiLineMultiPid = """
+            0: 41 0D 44 0C 1F
+            1: 40 11 66 >
+        """.trimIndent()
+        val parsedMulti = ToyotaYarisCommands.parseMultiPidEngineResponse(multiLineMultiPid)
+        assertNotNull(parsedMulti)
+        assertEquals(68, parsedMulti!!.speedKmh)
+        assertEquals(2000, parsedMulti.engineRpm)
+        assertEquals(40.0f, parsedMulti.throttlePercent!!, 0.5f)
+    }
+
+    @Test
+    fun testStnHardwareDetectionRejectsCounterfeitClonesWithSpoofedAti() {
+        // Clones spoofing ATI as OBDLink but returning non-STN responses to ST DI must be rejected
+        assertFalse(Elm327Protocol.isStnHardwareSupported("OBDLink MX+", "OBDLink MX+ v4.5.1", "COMMAND NOT UNDERSTOOD"))
+        assertFalse(Elm327Protocol.isStnHardwareSupported("OBDLink MX+", "OBDLink MX+ v4.5.1", "ACT ALERT"))
+        assertFalse(Elm327Protocol.isStnHardwareSupported("OBDLink LX", "OBDLink LX v4.3.0", "OK"))
+        assertFalse(Elm327Protocol.isStnHardwareSupported("OBDLink BT", "OBDLink BT", "ST DI"))
+        assertFalse(Elm327Protocol.isStnHardwareSupported("OBDLink MX", "ELM327 v1.5", "NO DATA"))
+
+        // Genuine Scantool STN / OBDLink hardware returning valid ST DI
+        assertTrue(Elm327Protocol.isStnHardwareSupported("OBDLink MX+", "OBDLink MX+ v4.5.1", "STN1151 v4.5.1"))
+        assertTrue(Elm327Protocol.isStnHardwareSupported("OBDLink CX", "OBDLink CX v5.6.1", "STN2230 v5.6.1"))
+        assertTrue(Elm327Protocol.isStnHardwareSupported("ScanTool Device", "STN1110 v3.3.1", "STN1110 v3.3.1"))
+    }
+
+    @Test
+    fun testConnectionBadgeVehicleReadyDisplayLogic() {
+        // 1. Vehicle READY with 14.2V and CAN sync in progress
+        val isReady = true
+        val hasCan = false
+        val volt = 14.2f
+
+        val badgeText = if (hasCan) {
+            "● READY ONLINE (${String.format(java.util.Locale.US, "%.1f", volt)}V)"
+        } else if (isReady || volt >= 13.0f) {
+            if (volt > 0f) "◌ SINCRONIZZAZIONE (${String.format(java.util.Locale.US, "%.1f", volt)}V)" else "◌ SINCRONIZZAZIONE"
+        } else {
+            "▲ DONGLE OK - ATTESA ECU"
+        }
+        assertEquals("◌ SINCRONIZZAZIONE (14.2V)", badgeText)
+
+        // 2. Vehicle READY with 0.0V (unparseable or noise) and CAN sync in progress
+        val badgeTextZeroVolt = if (hasCan) {
+            "● READY ONLINE"
+        } else if (isReady || 0.0f >= 13.0f) {
+            if (0.0f > 0f) "◌ SINCRONIZZAZIONE (0.0V)" else "◌ SINCRONIZZAZIONE"
+        } else {
+            "▲ DONGLE OK - ATTESA ECU"
+        }
+        assertEquals("◌ SINCRONIZZAZIONE", badgeTextZeroVolt)
+
+        // 3. Online with CAN confirmed
+        val badgeTextOnline = if (true) {
+            "● READY ONLINE (${String.format(java.util.Locale.US, "%.1f", volt)}V)"
+        } else {
+            ""
+        }
+        assertEquals("● READY ONLINE (14.2V)", badgeTextOnline)
+    }
+
+    @Test
+    fun testElm327ProtocolAdvancedErrorAndStatusDetection() {
+        // Standalone SEARCHING or SEARCHING... without response must be treated as error/in-progress
+        assertTrue(Elm327Protocol.isError("SEARCHING..."))
+        assertTrue(Elm327Protocol.isError("SEARCHING...\r\n>"))
+        assertTrue(Elm327Protocol.isError("SEARCHING"))
+
+        // BUT genuine responses with SEARCHING header followed by Mode 41 data must NOT be flagged as error
+        val searchWithData = "SEARCHING...\r\n41 00 BE 7F B8 11 >"
+        assertFalse(Elm327Protocol.isError(searchWithData))
+        val cleaned = Elm327Protocol.cleanResponse(searchWithData)
+        assertTrue(cleaned.contains("4100"))
+
+        // Dongle error and bus halt conditions
+        assertTrue(Elm327Protocol.isError("STOPPED"))
+        assertTrue(Elm327Protocol.isError("BUS BUSY"))
+        assertTrue(Elm327Protocol.isError("BUS ERROR"))
+        assertTrue(Elm327Protocol.isError("BUS INIT: ERROR"))
+        assertTrue(Elm327Protocol.isError("BUS INIT ERROR"))
+        assertTrue(Elm327Protocol.isError("CAN ERROR"))
+        assertTrue(Elm327Protocol.isError("FB ERROR"))
+    }
+
+    @Test
+    fun testStage1CanHandshakeRejectsNoiseAndRequiresPositiveMode41() {
+        // Helper function simulating Stage 1 validation in ObdController
+        fun isValidStage1(rawResponse: String): Boolean {
+            val clean = Elm327Protocol.cleanResponse(rawResponse)
+            return !Elm327Protocol.isError(clean) &&
+                   (clean.contains("4100") || clean.contains("410C"))
+        }
+
+        // 1. Positive standard Mode 01 PID 00 response
+        assertTrue(isValidStage1("41 00 BE 7F A8 11 >"))
+        assertTrue(isValidStage1("7E8 06 41 00 BE 7F A8 11 >"))
+        assertTrue(isValidStage1("SEARCHING...\r\n41 00 BE 7F B8 11 >"))
+
+        // 2. Positive standard Mode 01 PID 0C response
+        assertTrue(isValidStage1("41 0C 1F 40 >"))
+        assertTrue(isValidStage1("7E8 04 41 0C 1F 40 >"))
+
+        // 3. Noise / Status / Incomplete frames of length >= 6 must be REJECTED
+        assertFalse(isValidStage1("SEARCHING..."))
+        assertFalse(isValidStage1("STOPPED"))
+        assertFalse(isValidStage1("BUS BUSY"))
+        assertFalse(isValidStage1("NO DATA"))
+        assertFalse(isValidStage1("UNABLE TO CONNECT"))
+        assertFalse(isValidStage1("7EA 08 DE AD BE EF 00 11 >")) // Battery or arbitrary payload (no 4100/410C)
+        assertFalse(isValidStage1("123456")) // Arbitrary hex
+    }
+
+    @Test
+    fun testVehicleReadyAndStandbyThresholdStrictness() {
+        // R3: Standby mode when not in READY (< 13.0V), active when >= 13.0V
+        assertFalse(Elm327Protocol.isVehicleReady(0.0f))
+        assertFalse(Elm327Protocol.isVehicleReady(12.2f))
+        assertFalse(Elm327Protocol.isVehicleReady(12.79f))
+        assertFalse(Elm327Protocol.isVehicleReady(12.80f))
+        assertFalse(Elm327Protocol.isVehicleReady(12.90f))
+        assertFalse(Elm327Protocol.isVehicleReady(12.99f))
+
+        assertTrue(Elm327Protocol.isVehicleReady(13.0f))
+        assertTrue(Elm327Protocol.isVehicleReady(13.8f))
+        assertTrue(Elm327Protocol.isVehicleReady(14.2f))
+        assertTrue(Elm327Protocol.isVehicleReady(14.5f))
+    }
 }

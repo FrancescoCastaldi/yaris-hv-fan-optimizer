@@ -95,8 +95,11 @@ class BleManager(private val context: Context) {
     val incomingData: SharedFlow<String> = _incomingData
 
     private val responseBuffer = StringBuilder()
+    @Volatile
     private var activeResponseDeferred: CompletableDeferred<String>? = null
     private val commandMutex = Mutex()
+
+    fun getConnectedDeviceName(): String? = lastDeviceName
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var isScanning = false
@@ -583,6 +586,9 @@ class BleManager(private val context: Context) {
             try {
                 while (isActive && bluetoothSocket?.isConnected == true) {
                     val bytesRead = stream.read(buffer)
+                    if (bytesRead == -1) {
+                        throw java.io.IOException("Bluetooth SPP socket stream reached EOF")
+                    }
                     if (bytesRead > 0) {
                         val chunk = String(buffer, 0, bytesRead, Charsets.US_ASCII)
                         handleIncomingChunk(chunk)
@@ -646,6 +652,11 @@ class BleManager(private val context: Context) {
         } catch (e: Exception) {
             Log.w(TAG, "Errore durante disconnect", e)
         } finally {
+            synchronized(responseBuffer) {
+                activeResponseDeferred?.completeExceptionally(java.io.IOException("Bluetooth connection closed"))
+                activeResponseDeferred = null
+                responseBuffer.setLength(0)
+            }
             socketInputStream = null
             socketOutputStream = null
             bluetoothSocket = null
@@ -812,7 +823,7 @@ class BleManager(private val context: Context) {
     private fun handleIncomingChunk(chunk: String) {
         synchronized(responseBuffer) {
             responseBuffer.append(chunk)
-            if (chunk.contains(">") || responseBuffer.contains(">")) {
+            if (responseBuffer.contains(">")) {
                 val fullResponse = responseBuffer.toString()
                 responseBuffer.setLength(0)
                 activeResponseDeferred?.complete(fullResponse)
@@ -876,51 +887,59 @@ class BleManager(private val context: Context) {
         command: String,
         timeoutMs: Long = COMMAND_TIMEOUT_MS
     ): String = commandMutex.withLock {
-        // 0. Purge preventivo del buffer di risposta per eliminare residui precedenti (thread-safe)
+        // Purge preventivo del buffer di risposta e registrazione deferred atomica
+        val deferred = CompletableDeferred<String>()
         synchronized(responseBuffer) {
             responseBuffer.setLength(0)
+            activeResponseDeferred = deferred
         }
-
-        val deferred = CompletableDeferred<String>()
-        activeResponseDeferred = deferred
 
         val cmdString = command.trim() + "\r"
         val cmdBytes = cmdString.toByteArray(Charsets.US_ASCII)
 
-        // 1. Invia tramite Classic Bluetooth SPP Socket se connesso
-        val outStream = socketOutputStream
-        if (bluetoothSocket?.isConnected == true && outStream != null) {
-            withContext(Dispatchers.IO) {
-                outStream.write(cmdBytes)
-                outStream.flush()
-            }
-        } else {
-            // 2. Altrimenti invia tramite BLE GATT Characteristic
-            val gatt = bluetoothGatt ?: throw IllegalStateException("Nessun canale Bluetooth connesso")
-            val writeCh = writeCharacteristic ?: throw IllegalStateException("Caratteristica Write non disponibile")
-
-            val writeType = if ((writeCh.properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0 &&
-                (writeCh.properties and BluetoothGattCharacteristic.PROPERTY_WRITE) == 0) {
-                BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+        try {
+            // 1. Invia tramite Classic Bluetooth SPP Socket se connesso
+            val outStream = socketOutputStream
+            if (bluetoothSocket?.isConnected == true && outStream != null) {
+                withContext(Dispatchers.IO) {
+                    outStream.write(cmdBytes)
+                    outStream.flush()
+                }
             } else {
-                BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                // 2. Altrimenti invia tramite BLE GATT Characteristic
+                val gatt = bluetoothGatt ?: throw IllegalStateException("Nessun canale Bluetooth connesso")
+                val writeCh = writeCharacteristic ?: throw IllegalStateException("Caratteristica Write non disponibile")
+
+                val writeType = if ((writeCh.properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0 &&
+                    (writeCh.properties and BluetoothGattCharacteristic.PROPERTY_WRITE) == 0) {
+                    BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+                } else {
+                    BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                }
+
+                val success = writeGattCharacteristic(gatt, writeCh, cmdBytes, writeType)
+                if (!success) {
+                    throw RuntimeException("Fallita scrittura su BLE per comando: $command")
+                }
             }
 
-            val success = writeGattCharacteristic(gatt, writeCh, cmdBytes, writeType)
-            if (!success) {
-                activeResponseDeferred = null
-                throw RuntimeException("Fallita scrittura su BLE per comando: $command")
+            return withTimeoutOrNull(timeoutMs) {
+                deferred.await()
+            } ?: run {
+                synchronized(responseBuffer) {
+                    val partial = responseBuffer.toString()
+                    responseBuffer.setLength(0)
+                    if (partial.isNotBlank()) partial else "TIMEOUT"
+                }
             }
-        }
-
-        return withTimeoutOrNull(timeoutMs) {
-            deferred.await()
-        } ?: run {
-            activeResponseDeferred = null
+        } catch (e: Exception) {
+            Log.w(TAG, "Errore invio comando OBD ($command): ${e.localizedMessage}")
+            throw e
+        } finally {
             synchronized(responseBuffer) {
-                val partial = responseBuffer.toString()
-                responseBuffer.setLength(0)
-                if (partial.isNotBlank()) partial else "TIMEOUT"
+                if (activeResponseDeferred === deferred) {
+                    activeResponseDeferred = null
+                }
             }
         }
     }

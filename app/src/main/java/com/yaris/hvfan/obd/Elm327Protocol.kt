@@ -6,6 +6,8 @@ object Elm327Protocol {
     const val CMD_WARM_START = "AT WS"
     const val CMD_RESET = "AT Z"
     const val CMD_VOLTAGE = "AT RV"
+    const val CMD_DEVICE_INFO = "ATI"
+    const val CMD_DEVICE_ID_STN = "ST DI"
 
     // Hardware Flow Control ISO-TP Constants for Denso Battery ECU (7E2 / 7EA)
     const val CMD_FLOW_CONTROL_BATTERY_HEADER = "AT FC SH 7E2"
@@ -13,9 +15,9 @@ object Elm327Protocol {
     const val CMD_FLOW_CONTROL_MODE_CUSTOM = "AT FC SM 1"       // Custom Flow Control mode
     const val CMD_FLOW_CONTROL_MODE_DEFAULT = "AT FC SM 0"      // Standard Flow Control mode
 
+    // Sequenza Dr. Prius universale ad alta compatibilita'
     val INIT_COMMANDS = listOf(
         "AT Z",       // Reset ELM327 / Vgate / STN (gestito con delay speciale)
-        "AT D",       // Set to defaults
         "AT E0",      // Echo Off
         "AT L0",      // Linefeeds Off
         "AT S0",      // Spaces Off
@@ -29,7 +31,8 @@ object Elm327Protocol {
     const val PROTOCOL_FALLBACK = "AT SP 0" // Auto-detect protocol if SP 6 fails
 
     fun cleanResponse(raw: String): String {
-        return raw.replace(">", "")
+        val withoutLinePrefixes = raw.replace(Regex("""(?:^|[\r\n\s])[0-9A-Fa-f]{1,2}:\s*"""), " ")
+        return withoutLinePrefixes.replace(">", "")
             .replace("\r", "")
             .replace("\n", "")
             .replace(" ", "")
@@ -40,26 +43,70 @@ object Elm327Protocol {
             .trim()
     }
 
-    private val VOLTAGE_WITH_UNIT_REGEX = Regex("""(\d{1,2}\.\d+)\s*V""", RegexOption.IGNORE_CASE)
+    private val VOLTAGE_WITH_UNIT_REGEX = Regex("""(\d{1,2}(?:\.\d+)?)\s*V""", RegexOption.IGNORE_CASE)
     private val GENERIC_DECIMAL_REGEX = Regex("""(\d{1,2}\.\d+)""")
 
     /**
-     * Estrae la tensione reale della batteria 12V da risposte AT RV (es. "14.2V", "13.8V", "12.4V").
-     * Previene l'errata estrazione di versioni firmware del dongle (es. "ELM327 v1.5" o "v2.2").
+     * Rileva in modo non distruttivo se l'adattatore supporta nativamente il chipset STN / OBDLink
+     * prima di applicare comandi avanzati di Flow Control stile Hybrid Assistant (AT FC SM 1, AT FC SH, AT FC SD).
+     * In caso di adapter Vlinker, vLinker MC/FD o cloni ELM327 standard, mantiene rigorosamente il Flow Control
+     * automatico di sistema (AT CAF 1) senza inviare comandi AT FC che corrompono il buffer.
      */
-    fun parseBatteryVoltage(raw: String): Float? {
-        // 1. Cerca prima con suffisso 'V' (priorità massima per non confondersi con banner tipo "ELM327 v1.5")
-        val matchWithUnit = VOLTAGE_WITH_UNIT_REGEX.find(raw)
-        if (matchWithUnit != null) {
-            val v = matchWithUnit.groupValues[1].toFloatOrNull()
-            if (v != null && v in 5.0f..20.0f) return v
+    fun isStnHardwareSupported(
+        deviceName: String?,
+        atiResponse: String?,
+        stDiResponse: String?
+    ): Boolean {
+        val nameUpper = (deviceName ?: "").uppercase()
+        val atiUpper = (atiResponse ?: "").uppercase()
+        val stDiUpper = (stDiResponse ?: "").uppercase()
+
+        // 1. Esclusione tassativa di adapter Vlinker / vLinker (MC, FD, FS, Android-Vlink)
+        // anche se rispondono ad alcune istruzioni STN, il loro buffer CAN si corrompe se si alterano i parametri AT FC
+        if (nameUpper.contains("VLINK") || nameUpper.contains("V-LINK") ||
+            atiUpper.contains("VLINK") || atiUpper.contains("V-LINK") ||
+            stDiUpper.contains("VLINK") || stDiUpper.contains("V-LINK")
+        ) {
+            return false
         }
 
-        // 2. Fallback: cerca decimali che rientrino in un intervallo di tensione plausibile per batteria auto (8.0V - 18.0V)
-        val allMatches = GENERIC_DECIMAL_REGEX.findAll(raw)
+        val cleanStDi = cleanResponse(stDiUpper)
+
+        // 2. Cloni ELM327 generici che ritornano '?', errori o stringhe non comprese su comandi STN
+        if (stDiUpper.contains("?") || stDiUpper.contains("ERROR") || stDiUpper.contains("ERR") ||
+            stDiUpper.contains("UNKNOWN") || stDiUpper.contains("NOT UNDERSTOOD") ||
+            stDiUpper.contains("ALERT") || cleanStDi == "STDI" || cleanStDi == "OK" || isError(stDiUpper)
+        ) {
+            return false
+        }
+
+        // 3. Rilevamento chipset Scantool STN nativo (STN11xx, STN21xx) o dispositivo OBDLink originale.
+        // Richiede conferma univoca dal firmware del chipset sul comando ST DI:
+        return cleanStDi.contains("STN") || cleanStDi.contains("OBDLINK")
+    }
+
+    /**
+     * Estrae la tensione reale della batteria 12V da risposte AT RV (es. "14.2V", "13.8V", "12.4V", "14V").
+     * Immune al 100% da banner di versione o firmware del dongle (es. "ELM327 v1.5", "STN1110 v2.2", "v2.2").
+     */
+    fun parseBatteryVoltage(raw: String): Float? {
+        // 1. Rimuove prefissi o banner firmware contenenti versioni (es. "ELM327 v1.5", "STN1110 v2.2", "v1.5", "v2.2")
+        val sanitized = raw
+            .replace(Regex("""(?i)\b(?:ELM327|STN\d+|OBDLINK|VLINKER|VERSION|VER)\b[\s]*v?(\d+\.\d+)"""), " ")
+            .replace(Regex("""(?i)\bv\d+\.\d+\b"""), " ")
+
+        // 2. Cerca prima con suffisso 'V' (priorita' massima)
+        val matchWithUnit = VOLTAGE_WITH_UNIT_REGEX.find(sanitized)
+        if (matchWithUnit != null) {
+            val v = matchWithUnit.groupValues[1].toFloatOrNull()
+            if (v != null && v in 8.0f..18.0f) return v
+        }
+
+        // 3. Fallback: cerca decimali che rientrino in un intervallo di tensione plausibile per batteria auto (9.0V - 16.5V)
+        val allMatches = GENERIC_DECIMAL_REGEX.findAll(sanitized)
         for (match in allMatches) {
             val v = match.groupValues[1].toFloatOrNull()
-            if (v != null && v in 8.0f..18.0f) {
+            if (v != null && v in 9.0f..16.5f) {
                 return v
             }
         }
@@ -79,12 +126,20 @@ object Elm327Protocol {
         return clean.isEmpty() ||
                clean.contains("NODATA") ||
                clean.contains("ERROR") ||
+               clean.contains("ERR") ||
                clean.contains("UNABLETOCONNECT") ||
                clean.contains("TIMEOUT") ||
                clean.contains("CANERROR") ||
                clean.contains("FBERROR") ||
                clean.contains("BUFFERFULL") ||
                clean.contains("BUSINIT:ERROR") ||
+               clean.contains("BUSINITERROR") ||
+               clean.contains("NOTUNDERSTOOD") ||
+               clean.contains("STOPPED") ||
+               clean.contains("BUSBUSY") ||
+               clean.contains("BUSERROR") ||
+               clean == "SEARCHING..." ||
+               clean == "SEARCHING" ||
                clean.contains("?")
     }
 }
