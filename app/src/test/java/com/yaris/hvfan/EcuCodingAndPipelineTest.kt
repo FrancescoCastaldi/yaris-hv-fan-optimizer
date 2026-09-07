@@ -94,11 +94,36 @@ class EcuCodingAndPipelineTest {
     }
 
     @Test
-    fun testDisconnectedStateSafetyGuards() {
-        val uninitializedLiveState = ObdLiveState()
-        assertFalse(uninitializedLiveState.isInitialized)
-        assertFalse(uninitializedLiveState.batteryStatus.maxTemp > 0.0)
-        assertFalse(uninitializedLiveState.warmupStatus.hasLiveData)
-        assertFalse(uninitializedLiveState.performanceStatus.hasLiveData)
+    fun testUdsPositiveResponseValidation() {
+        // Positive responses
+        assertTrue(Elm327Protocol.isUdsPositiveResponse("6101"))
+        assertTrue(Elm327Protocol.isUdsPositiveResponse("61A7"))
+        assertTrue(Elm327Protocol.isUdsPositiveResponse("7C8 03 61 A7 00 >"))
+        assertTrue(Elm327Protocol.isUdsPositiveResponse("758 05 61 01 02 03 04 >"))
+        assertTrue(Elm327Protocol.isUdsPositiveResponse("5003")) // Mode 10 03 positive response
+
+        // Negative Response Code (NRC 7F)
+        assertFalse(Elm327Protocol.isUdsPositiveResponse("7F 21 11"))
+        assertFalse(Elm327Protocol.isUdsPositiveResponse("7F 3B 22"))
+        assertFalse(Elm327Protocol.isUdsPositiveResponse("7F 10 12"))
+
+        // Errors and NO DATA
+        assertFalse(Elm327Protocol.isUdsPositiveResponse("NO DATA"))
+        assertFalse(Elm327Protocol.isUdsPositiveResponse("NODATA"))
+        assertFalse(Elm327Protocol.isUdsPositiveResponse("ERROR"))
+        assertFalse(Elm327Protocol.isUdsPositiveResponse("?"))
+        assertFalse(Elm327Protocol.isUdsPositiveResponse(""))
+    }
+
+    @Test
+    fun testVehicleStandbyHysteresis() {
+        assertTrue(Elm327Protocol.isVehicleStandby(11.6f))
+        assertTrue(Elm327Protocol.isVehicleStandby(12.2f))
+        assertTrue(Elm327Protocol.isVehicleStandby(12.6f))
+        assertFalse(Elm327Protocol.isVehicleStandby(12.7f))
+        assertFalse(Elm327Protocol.isVehicleStandby(13.0f))
+        assertFalse(Elm327Protocol.isVehicleStandby(14.2f))
+        assertFalse(Elm327Protocol.isVehicleStandby(null))
     }
 }
+

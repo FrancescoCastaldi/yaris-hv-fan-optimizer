@@ -98,6 +98,8 @@ class ObdController(
     private var lastValidCanTimestamp = 0L
     private var loopStartTimestamp = 0L
     private var standbyCycleCounter = 0
+    private var consecutiveStandbyChecks = 0
+    private var lastStandbyExitTimestamp = 0L
     private var lastBatteryCheckTimestamp = 0L
     private var lastCoolantCheckTimestamp = 0L
     private var pendingBatterySafetyCheck = false
@@ -660,9 +662,13 @@ class ObdController(
             val isReadyByVoltage = Elm327Protocol.isVehicleReady(volt)
 
             if (isReadyByVoltage) {
+                consecutiveStandbyChecks = 0
                 stateMachine.onVehicleReady()
                 addLog("⚡ RILEVATO STATO READY AUTO (12V: ${volt}V >= 13.0V)! Verifica bus CAN e aggancio rapido...")
                 currentCanHeader = ""
+                lastAutoRecoveryTimestamp = now
+                lastStandbyExitTimestamp = now
+                delay(250) // Stabilizzazione ricetrasmettitore CAN su adapter e bus
 
                 // La tensione conferma il DC-DC attivo, ma il protocollo viene convalidato
                 // separatamente con una risposta ECU reale in broadcast.
@@ -709,6 +715,7 @@ class ObdController(
                     batteryAdapterLimitationWarning = null
                 )
             } else {
+                consecutiveStandbyChecks++
                 stateMachine.onVehicleStandby()
                 discoveryEngine.reset()
                 _liveState.value = _liveState.value.copy(
@@ -731,32 +738,40 @@ class ObdController(
             val voltRes = bleManager.sendCommand(Elm327Protocol.CMD_VOLTAGE)
             val volt = Elm327Protocol.parseBatteryVoltage(voltRes) ?: lastKnown12v
             lastKnown12v = volt
-            if (!Elm327Protocol.isVehicleReady(volt) && volt > 0f) {
-                addLog("💤 Auto spenta (12V: ${volt}V < 13.0V, CAN silente). Entrata in standby a basso consumo.")
-                currentCanHeader = ""
-                discoveryEngine.reset()
-                stateMachine.onVehicleStandby()
-                _liveState.value = _liveState.value.copy(
-                    isVehicleReady = false,
-                    isStandbyMode = true,
-                    hasEcuCommunication = false,
-                    capabilityState = stateMachine.currentCapabilityState,
-                    auxiliary12vVoltage = volt,
-                    batteryStatus = _liveState.value.batteryStatus.copy(
-                        isFanForced = false,
-                        isEcuAckConfirmed = false,
-                        estimatedFanRpm = 0
-                    ),
-                    ecuAlertMessage = "Auto in standby a basso consumo (12V: ${volt}V): in attesa di spia verde READY...",
-                    batteryAdapterLimitationWarning = null
-                )
-                return
+            val isStandbyVoltage = Elm327Protocol.isVehicleStandby(volt) || (!Elm327Protocol.isVehicleReady(volt) && volt > 0f)
+            if (isStandbyVoltage && volt > 0f) {
+                consecutiveStandbyChecks++
+                if (consecutiveStandbyChecks >= 2) {
+                    addLog("💤 Auto spenta (12V: ${volt}V <= 12.6V, CAN silente). Entrata in standby a basso consumo.")
+                    currentCanHeader = ""
+                    discoveryEngine.reset()
+                    stateMachine.onVehicleStandby()
+                    _liveState.value = _liveState.value.copy(
+                        isVehicleReady = false,
+                        isStandbyMode = true,
+                        hasEcuCommunication = false,
+                        capabilityState = stateMachine.currentCapabilityState,
+                        auxiliary12vVoltage = volt,
+                        batteryStatus = _liveState.value.batteryStatus.copy(
+                            isFanForced = false,
+                            isEcuAckConfirmed = false,
+                            estimatedFanRpm = 0
+                        ),
+                        ecuAlertMessage = "Auto in standby a basso consumo (12V: ${volt}V): in attesa di spia verde READY...",
+                        batteryAdapterLimitationWarning = null
+                    )
+                    return
+                }
+            } else {
+                consecutiveStandbyChecks = 0
             }
+        } else {
+            consecutiveStandbyChecks = 0
         }
 
         // 0. Auto-Recovery se il bus CAN è silente da oltre 15000ms dopo che era attivo, o se bloccato all'avvio (>15s)
         val isCanSilentAfterActive = lastValidCanTimestamp > 0L && (now - lastValidCanTimestamp > 15000L)
-        val isInitialCanStuck = lastValidCanTimestamp == 0L && (now - loopStartTimestamp > 15000L)
+        val isInitialCanStuck = lastValidCanTimestamp == 0L && (now - loopStartTimestamp > 15000L) && (now - lastStandbyExitTimestamp > 15000L)
         if (isProtocolInitialized && (isCanSilentAfterActive || isInitialCanStuck) && (now - lastAutoRecoveryTimestamp > 25000L)) {
             lastAutoRecoveryTimestamp = now
             executeCanBusAutoRecovery()
@@ -1219,35 +1234,55 @@ class ObdController(
                 // 1. Meter ECU (7C0 / 7C8) -> Reverse Beep & Seatbelts
                 ensureCanHeader(ToyotaYarisCommands.HEADER_METER_ECU)
                 val resMeter = bleManager.sendCommand("21A7")
-                addLog("Meter 7C0 Read: ${Elm327Protocol.cleanResponse(resMeter)}")
+                val cleanMeter = Elm327Protocol.cleanResponse(resMeter)
+                addLog("Meter 7C0 Read: $cleanMeter")
                 delay(80)
 
                 // 2. Main Body ECU (750 / 758) -> Doors, Windows, Turn Signals & Lights
                 ensureCanHeader(ToyotaYarisCommands.HEADER_BODY_ECU)
                 val resBody = bleManager.sendCommand("2101")
-                addLog("Body 750 Read: ${Elm327Protocol.cleanResponse(resBody)}")
+                val cleanBody = Elm327Protocol.cleanResponse(resBody)
+                addLog("Body 750 Read: $cleanBody")
                 delay(80)
 
                 // 3. Aircon ECU (7C4 / 7CC) -> A/C Behavior
                 ensureCanHeader(ToyotaYarisCommands.HEADER_AIRCON_ECU)
                 val resAc = bleManager.sendCommand("2101")
-                addLog("AirCon 7C4 Read: ${Elm327Protocol.cleanResponse(resAc)}")
+                val cleanAc = Elm327Protocol.cleanResponse(resAc)
+                addLog("AirCon 7C4 Read: $cleanAc")
                 delay(80)
 
                 // 4. TSS / ADAS (7A0 / 7A8) -> LDA & BSM
                 ensureCanHeader(ToyotaYarisCommands.HEADER_ADAS_ECU)
                 val resAdas = bleManager.sendCommand("2101")
-                addLog("ADAS 7A0 Read: ${Elm327Protocol.cleanResponse(resAdas)}")
+                val cleanAdas = Elm327Protocol.cleanResponse(resAdas)
+                addLog("ADAS 7A0 Read: $cleanAdas")
                 delay(80)
 
-                _liveState.value = _liveState.value.copy(
-                    ecuCodingState = _liveState.value.ecuCodingState.copy(
-                        isReadCompleted = true,
-                        isWriting = false,
-                        lastOperationStatus = "✅ Configurazione centralina letta con successo (Backup salvato)"
+                val anyPositive = Elm327Protocol.isUdsPositiveResponse(cleanMeter) ||
+                                  Elm327Protocol.isUdsPositiveResponse(cleanBody) ||
+                                  Elm327Protocol.isUdsPositiveResponse(cleanAc) ||
+                                  Elm327Protocol.isUdsPositiveResponse(cleanAdas)
+
+                if (anyPositive) {
+                    _liveState.value = _liveState.value.copy(
+                        ecuCodingState = _liveState.value.ecuCodingState.copy(
+                            isReadCompleted = true,
+                            isWriting = false,
+                            lastOperationStatus = "✅ Configurazione centralina letta con successo (Backup salvato)"
+                        )
                     )
-                )
-                addLog("Lettura parametri centralina completata.")
+                    addLog("Lettura parametri centralina completata con successo.")
+                } else {
+                    _liveState.value = _liveState.value.copy(
+                        ecuCodingState = _liveState.value.ecuCodingState.copy(
+                            isReadCompleted = false,
+                            isWriting = false,
+                            lastOperationStatus = "⚠️ Nessuna risposta dalle centraline: verifica quadro acceso in READY"
+                        )
+                    )
+                    addLog("⚠️ Nessuna centralina Body/Meter/Clima/ADAS ha risposto. Quadro non in READY o bus non sincronizzato.")
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Errore lettura ECU", e)
                 _liveState.value = _liveState.value.copy(
@@ -1306,7 +1341,8 @@ class ObdController(
 
                 // Read-After-Write Verification su Meter
                 val verifyMeter = bleManager.sendCommand("21A7")
-                addLog("Verifica Meter: ${Elm327Protocol.cleanResponse(verifyMeter)}")
+                val cleanVerifyMeter = Elm327Protocol.cleanResponse(verifyMeter)
+                addLog("Verifica Meter: $cleanVerifyMeter")
 
                 // 2. Main Body ECU (750 / 758) -> Smart Key, Doors, Windows, Turn Signals & Lights
                 ensureCanHeader(ToyotaYarisCommands.HEADER_BODY_ECU)
@@ -1357,7 +1393,8 @@ class ObdController(
 
                 // Read-After-Write Verification su Body ECU
                 val verifyBody = bleManager.sendCommand("2101")
-                addLog("Verifica Body ECU: ${Elm327Protocol.cleanResponse(verifyBody)}")
+                val cleanVerifyBody = Elm327Protocol.cleanResponse(verifyBody)
+                addLog("Verifica Body ECU: $cleanVerifyBody")
 
                 // 3. Aircon ECU (7C4 / 7CC) -> A/C with AUTO button & Eco Mode
                 ensureCanHeader(ToyotaYarisCommands.HEADER_AIRCON_ECU)
@@ -1390,14 +1427,30 @@ class ObdController(
                 bleManager.sendCommand("3B64" + if (updatedState.pcsRememberLast) "01" else "00")
                 delay(40)
 
-                _liveState.value = _liveState.value.copy(
-                    ecuCodingState = updatedState.copy(
-                        isWriting = false,
-                        isReadCompleted = true,
-                        lastOperationStatus = "✅ Scrittura completata e VERIFICATA in centralina!"
+                // Validazione rigorosa: se sia Meter che Body hanno risposto con NODATA, ERROR o UDS NRC (7F),
+                // la scrittura non è avvenuta e non dobbiamo dare falso positivo di successo.
+                val isMeterVerified = Elm327Protocol.isUdsPositiveResponse(cleanVerifyMeter)
+                val isBodyVerified = Elm327Protocol.isUdsPositiveResponse(cleanVerifyBody)
+
+                if (isMeterVerified || isBodyVerified) {
+                    _liveState.value = _liveState.value.copy(
+                        ecuCodingState = updatedState.copy(
+                            isWriting = false,
+                            isReadCompleted = true,
+                            lastOperationStatus = "✅ Scrittura completata e VERIFICATA in centralina!"
+                        )
                     )
-                )
-                addLog("✅ Scrittura centralina completata e verificata con successo!")
+                    addLog("✅ Scrittura centralina completata e verificata con successo!")
+                } else {
+                    _liveState.value = _liveState.value.copy(
+                        ecuCodingState = updatedState.copy(
+                            isWriting = false,
+                            isReadCompleted = false,
+                            lastOperationStatus = "❌ Scrittura non riuscita: centralina non ha risposto (NODATA). Verifica quadro in READY"
+                        )
+                    )
+                    addLog("❌ Scrittura centralina non verificata: centraline non hanno risposto (Meter: $cleanVerifyMeter, Body: $cleanVerifyBody).")
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Errore scrittura centralina", e)
                 _liveState.value = _liveState.value.copy(

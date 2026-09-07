@@ -139,9 +139,31 @@ object Elm327Protocol {
         return voltage != null && voltage >= 13.0f
     }
 
+    /**
+     * Verifica lo stato di Standby dell'auto per evitare oscillazioni rapide (isteresi).
+     * Quando l'auto è spenta o in accessori, la batteria 12V scende stabilmente a <= 12.6V.
+     */
+    fun isVehicleStandby(voltage: Float?): Boolean {
+        return voltage != null && voltage <= 12.6f
+    }
+
     fun hasSupportedPidsResponse(response: String): Boolean {
         val clean = cleanResponse(response).uppercase()
         return !isError(clean) && clean.contains("4100")
+    }
+
+    /**
+     * Verifica se una risposta UDS (ISO 14229) è positiva (non NRC 7F né NODATA/ERROR).
+     */
+    fun isUdsPositiveResponse(response: String, expectedService: String? = null): Boolean {
+        val clean = cleanResponse(response).uppercase()
+        if (isError(clean)) return false
+        if (clean.contains("7F")) return false // Negative Response Code (NRC)
+        if (expectedService != null) {
+            val positiveSid = String.format(java.util.Locale.US, "%02X", expectedService.toInt(16) + 0x40)
+            return clean.contains(positiveSid)
+        }
+        return true
     }
 
     fun isError(response: String): Boolean {
