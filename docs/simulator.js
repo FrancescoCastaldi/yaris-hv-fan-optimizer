@@ -25,7 +25,7 @@
     mount.innerHTML =
         '<div class="sim-topline">' +
             '<span class="sim-brand">YARIS <b>HV</b> / COCKPIT</span>' +
-            '<span class="micro">SIMULAZIONE WEB · v2.9.16</span>' +
+            '<span class="micro">SIMULAZIONE WEB · v2.9.17</span>' +
         '</div>' +
         '<div class="sim-disclaimer">DEMO INTERATTIVA — Nessun collegamento Bluetooth, nessun comando inviato all\'auto. I valori sono illustrativi.</div>' +
         '<div class="sim-tabs" role="tablist" aria-label="Sezioni simulatore">' +

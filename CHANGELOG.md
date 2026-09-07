@@ -6,6 +6,16 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)
 - **MINOR (`0.X.0`)**: Aggiunta di nuove funzionalità, sensori, codifiche o telemetrie.
 - **PATCH (`0.0.X`)**: Bugfix, ottimizzazioni di performance o aggiustamenti grafici minori.
 
+## [2.9.17] - 2026-09-07
+### ⚡ Pulizia Buffer UDS Batteria, Hardening Concorrenza Coding & Resilienza Eccezioni
+- **Rimozione 3E00 Incondizionato da Query Batteria UDS**:
+  - Rimosso definitivamente il comando `CMD_TESTER_PRESENT` (`3E00`) prima del candidate probe in `executeBatteryThermalCycle()`, azzerando l'inquinamento dei buffer seriali su adapter cloni ELM327 durante la negoziazione multi-frame.
+- **Hardening Concorrenza ECU Coding**:
+  - Resa volatile (`@Volatile`) la flag `isEcuOperationInProgress` e garantito il ripristino sicuro di `HEADER_ENGINE_ECU` con blocco `finally` annidato protetto contro eccezioni di trasporto I/O.
+  - Verifica di `isEcuOperationInProgress` estesa a ogni sotto-ciclo del dual-rate scheduler (batteria, fast loop e coolant) per prevenire qualsiasi interleaving su cambio header CAN.
+- **Resilienza Eccezioni di Trasporto**:
+  - Propagazione corretta di `IOException` ed eccezioni di canale fuori dalla fetta batteria per attivare l'isolamento per-ciclo VAL-OBD-008, garantendo il rispetto della cadenza termica e del polling 4000ms.
+
 ## [2.9.16] - 2026-09-07
 ### ⚡ Risoluzione Aggancio CAN Quadro Acceso, Timeout ECU UDS & Protezione Attuazione Ventola
 - **Aggancio CAN con Quadro Acceso (12V < 13.0V)**:
@@ -19,6 +29,8 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)
   - I comandi ventola e i relativi log non vengono più inviati se la centralina batteria non è ancora stata scoperta (`BatteryEcuDiscoveryState.Discovered`) o se la temperatura massima rilevata è 0.0°C, eliminando i comandi `Ventola HV L6 | Batt: 0.0°C` registrati in diagnostica.
 - **Ripristino Header CAN Corretto Post-Codifiche**:
   - Nei blocchi `finally` di `readEcuCustomizations` e `applyEcuCustomization`, l'header CAN ripristinato è `7E0` (Engine ECU standard), riallineando lo stato di comunicazione con il loop veloce di telemetria.
+- **Rimozione 3E00 Incondizionato da Query Batteria UDS**:
+  - Rimosso il keep-alive preventivo `3E00` (`CMD_TESTER_PRESENT`) prima del candidate probe in `executeBatteryThermalCycle()`, evitando che la risposta inquini i buffer seriali o le risposte multi-frame UDS su adapter cloni ELM327.
 
 ## [2.9.15] - 2026-09-07
 ### 🛡️ Eliminazione Falsi Positivi Scrittura Centralina, Isteresi Standby & Stabilizzazione Bus CAN

@@ -215,7 +215,7 @@ class ObdControllerBatteryDiscoveryTest {
         fakeTransport.commandResponder = { cmd, _ ->
             if (cmd.startsWith("AT SH 7E2")) {
                 "OK"
-            } else if (cmd == ToyotaYarisCommands.CMD_TESTER_PRESENT) {
+            } else if (cmd == ToyotaYarisCommands.CMD_TESTER_PRESENT || cmd.startsWith("22") || cmd.startsWith("21")) {
                 throw IOException("Simulated BLE communication failure on 7E2")
             } else {
                 "OK"
@@ -380,6 +380,80 @@ class ObdControllerBatteryDiscoveryTest {
         val warning = controller.liveState.value.batteryAdapterLimitationWarning
         assertNotNull("Warning must activate after repeated full failure cycles", warning)
         assertTrue("Warning must point the user at STN11xx/STN21xx hardware", warning!!.contains("STN"))
+    }
+
+    /**
+     * VAL-OBD-014: executeBatteryThermalCycle() must NOT send CMD_TESTER_PRESENT (3E00)
+     * before probing the candidate PID, preventing buffer pollution on clone adapters.
+     */
+    @Test
+    fun testValObd014_noTesterPresentBeforeCandidateProbe() = runTest {
+        val fakeTransport = FakeObdTransport()
+        fakeTransport.commandResponder = { cmd, _ ->
+            when {
+                cmd.startsWith("AT") -> "OK"
+                cmd == ToyotaYarisCommands.PID_READ_BATTERY_DATA_TNGA -> "7EA 10 23 62 28 C1 01 1C 1D >"
+                else -> "OK"
+            }
+        }
+
+        val controller = ObdController(
+            bleManager = fakeTransport,
+            scope = this,
+            stateMachine = ObdStateMachine(),
+            discoveryEngine = BatteryDiscoveryEngine()
+        )
+
+        controller.executeBatteryThermalCycle()
+
+        // Verify that CMD_TESTER_PRESENT was never sent before or during candidate probe
+        val dispatched = fakeTransport.dispatchedCommands
+        assertFalse(
+            "CMD_TESTER_PRESENT (3E00) must not be dispatched before candidate probe in battery cycle",
+            dispatched.contains(ToyotaYarisCommands.CMD_TESTER_PRESENT)
+        )
+        assertTrue(
+            "Candidate PID must be queried directly on 7E2",
+            dispatched.contains(ToyotaYarisCommands.PID_READ_BATTERY_DATA_TNGA)
+        )
+    }
+
+    /**
+     * VAL-OBD-015: Fan actuation commands must NOT be dispatched when the battery ECU
+     * is not in Discovered state or when temperature is <= 0.0°C.
+     */
+    @Test
+    fun testValObd015_fanActuationProtectedUntilBatteryDiscovered() = runTest {
+        val fakeTransport = FakeObdTransport()
+        fakeTransport.commandResponder = { cmd, _ ->
+            when {
+                cmd.startsWith("AT") -> "OK"
+                // Response without valid temperature data or failure
+                cmd == ToyotaYarisCommands.PID_READ_BATTERY_DATA_TNGA -> "NO DATA"
+                else -> "OK"
+            }
+        }
+
+        val stateMachine = ObdStateMachine()
+        val controller = ObdController(
+            bleManager = fakeTransport,
+            scope = this,
+            stateMachine = stateMachine,
+            discoveryEngine = BatteryDiscoveryEngine()
+        )
+
+        // When fanForcedMax is true by default, but battery is not discovered:
+        assertTrue(controller.liveState.value.fanForcedMax)
+        assertEquals(BatteryEcuDiscoveryState.Undiscovered, stateMachine.currentCapabilityState.batteryEcuDiscoveryState)
+
+        controller.executeBatteryThermalCycle()
+
+        val dispatched = fakeTransport.dispatchedCommands
+        val fanCommands = dispatched.filter { it.startsWith("3000") || it.startsWith("2F") }
+        assertTrue(
+            "Fan commands must NOT be dispatched while battery is not Discovered",
+            fanCommands.isEmpty()
+        )
     }
 }
 

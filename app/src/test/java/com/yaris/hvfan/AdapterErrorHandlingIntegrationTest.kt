@@ -178,7 +178,7 @@ class AdapterErrorHandlingIntegrationTest {
         val fakeTransport = FakeObdTransport()
         fakeTransport.commandResponder = { cmd, _ ->
             when {
-                cmd == ToyotaYarisCommands.CMD_TESTER_PRESENT ->
+                cmd == ToyotaYarisCommands.CMD_TESTER_PRESENT || cmd.startsWith("22") || cmd.startsWith("21") ->
                     throw IOException("Simulated GATT disconnect durante keep-alive 7E2")
                 cmd.startsWith("AT") -> "OK"
                 else -> "OK"

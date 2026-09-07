@@ -274,7 +274,7 @@ class EngineTelemetryResilienceTest {
         fakeTransport.commandResponder = { cmd, _ ->
             when {
                 cmd.startsWith("AT") -> "OK"
-                failBattery && cmd == ToyotaYarisCommands.CMD_TESTER_PRESENT ->
+                failBattery && (cmd == ToyotaYarisCommands.CMD_TESTER_PRESENT || cmd.startsWith("22") || cmd.startsWith("21")) ->
                     throw java.io.IOException("Simulated BLE transport failure during battery slice")
                 cmd == ToyotaYarisCommands.PID_VEHICLE_SPEED -> "7E8 03 41 0D 64 >"
                 cmd == ToyotaYarisCommands.PID_ENGINE_RPM -> "7E8 04 41 0C 1F 40 >"

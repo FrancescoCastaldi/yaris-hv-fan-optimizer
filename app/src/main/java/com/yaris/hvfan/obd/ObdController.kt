@@ -527,7 +527,7 @@ class ObdController(
         }
     }
 
-    private var isEcuOperationInProgress = false
+    @Volatile private var isEcuOperationInProgress = false
     private var lastAutoRecoveryTimestamp = 0L
 
     private suspend fun executeCanBusAutoRecovery() {
@@ -806,10 +806,13 @@ class ObdController(
         // 1. Safe Interruption o ciclo periodico lento (ogni 3.5s) per batteria HV Denso
         val isBatteryDue = pendingBatterySafetyCheck || (now - lastBatteryCheckTimestamp >= BATTERY_POLL_INTERVAL_MS)
         if (isBatteryDue) {
+            if (isEcuOperationInProgress) return
             pendingBatterySafetyCheck = false
             lastBatteryCheckTimestamp = now
             executeBatteryThermalCycle()
         }
+
+        if (isEcuOperationInProgress) return
 
         // 2. Loop veloce per telemetria motore e Dragy (100-200ms)
         // Invariante VAL-OBD-007: il fast loop motore gira ad OGNI tick dello scheduler,
@@ -817,6 +820,8 @@ class ObdController(
         // mai essere saltato a causa dello stato di discovery batteria.
         internalLastEngineFastDispatchMs = timeProvider()
         executeEngineTelemetryFastCycle()
+
+        if (isEcuOperationInProgress) return
 
         // 3. Ciclo periodico di sfondo per liquido di raffreddamento (ECT) ed aspirazione (IAT) (ogni 4s)
         // Invariante VAL-OBD-012: il polling 0105/010F mantiene la cadenza nativa 4000ms
@@ -832,9 +837,6 @@ class ObdController(
     internal suspend fun executeBatteryThermalCycle() {
         try {
             ensureCanHeader(ToyotaYarisCommands.HEADER_BATTERY_ECU)
-
-            // Keep-alive preventivo su centralina batteria ibrida Denso per mantenere attiva la sessione UDS
-            bleManager.sendCommand(ToyotaYarisCommands.CMD_TESTER_PRESENT, timeoutMs = 1000L)
 
             val latched = discoveryEngine.activeBatteryPid
             val candidateToProbe = latched ?: discoveryEngine.getNextCandidate()
@@ -857,6 +859,10 @@ class ObdController(
                     withTimeoutOrNull(timeoutMs) {
                         bleManager.sendCommand(candidateToProbe, timeoutMs = timeoutMs)
                     }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: java.io.IOException) {
+                    throw e
                 } catch (e: Exception) {
                     null
                 }
@@ -1217,6 +1223,7 @@ class ObdController(
         loopJob?.cancel()
         loopJob = null
         currentCanHeader = ""
+        isEcuOperationInProgress = false
         discoveryEngine.reset()
         stateMachine.teardownAllCapabilities(BleTransportState.Disconnected)
         _liveState.value = _liveState.value.copy(
@@ -1315,9 +1322,14 @@ class ObdController(
                     )
                 )
             } finally {
-                // Restore standard Engine CAN header for telemetry loop
-                ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU)
-                isEcuOperationInProgress = false
+                try {
+                    // Restore standard Engine CAN header for telemetry loop
+                    ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Errore ripristino header CAN 7E0 in finally", e)
+                } finally {
+                    isEcuOperationInProgress = false
+                }
             }
         }
     }
@@ -1483,9 +1495,14 @@ class ObdController(
                     )
                 )
             } finally {
-                // Restore standard Engine CAN header for telemetry loop
-                ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU)
-                isEcuOperationInProgress = false
+                try {
+                    // Restore standard Engine CAN header for telemetry loop
+                    ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Errore ripristino header CAN 7E0 in finally", e)
+                } finally {
+                    isEcuOperationInProgress = false
+                }
             }
         }
     }
