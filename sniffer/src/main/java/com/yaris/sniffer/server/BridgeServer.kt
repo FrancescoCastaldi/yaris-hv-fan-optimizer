@@ -66,10 +66,14 @@ class BridgeServer(
 
                 _serverState.value = BridgeServerState.Listening(port)
                 logger.logSystem("Server Bridge TCP avviato su 127.0.0.1:$port (in ascolto per Dr. Prius / Car Scanner)")
+                if (!logger.isRecording.value) {
+                    logger.startRecording(bluetoothManager.connectedDeviceName)
+                }
 
                 while (isActive && !ss.isClosed) {
                     try {
                         val client = ss.accept()
+                        client.tcpNoDelay = true
                         activeClientSocket = client
                         val remoteAddr = client.remoteSocketAddress.toString()
                         _serverState.value = BridgeServerState.ClientConnected(remoteAddr, port)
@@ -116,12 +120,27 @@ class BridgeServer(
                 if (charCode == -1) break // End of stream
 
                 val c = charCode.toChar()
-                if (c == '\r' || c == '\n') {
+                if (c == '\n') {
+                    // ELM327 standard explicitly ignores line feeds (0x0A)
+                    continue
+                }
+
+                if (c == '\r') {
                     val rawCmd = cmdBuffer.toString().trim()
                     cmdBuffer.setLength(0)
 
                     if (rawCmd.isNotEmpty()) {
                         processCommand(rawCmd, outputStream)
+                    } else {
+                        // Empty line / carriage return ping: respond with standard prompt
+                        try {
+                            outputStream.write(">\r".toByteArray(Charsets.US_ASCII))
+                            outputStream.flush()
+                        } catch (_: Exception) {}
+                    }
+                } else if (c == '\b' || charCode == 127) {
+                    if (cmdBuffer.isNotEmpty()) {
+                        cmdBuffer.setLength(cmdBuffer.length - 1)
                     }
                 } else {
                     cmdBuffer.append(c)
@@ -143,12 +162,25 @@ class BridgeServer(
                 "ERROR"
             }
         } else {
-            // Emulazione di base se il dongle BT non è collegato, per test locale
-            when (command.uppercase()) {
-                "ATZ", "AT WS" -> "ELM327 v1.5"
-                "ATE0", "ATE1", "ATH0", "ATH1", "ATL0", "ATSP0", "ATSP6", "ATAL", "ATCAF1" -> "OK"
-                "ATDPN" -> "6"
-                "ATRV" -> "14.1V"
+            // Emulazione offline avanzata per test locale con Dr. Prius e Car Scanner
+            val clean = command.replace(" ", "").uppercase()
+            when {
+                clean in listOf("ATZ", "ATWS", "ATD", "ATBD") -> "ELM327 v1.5"
+                clean.startsWith("ATE") || clean.startsWith("ATH") || clean.startsWith("ATL") ||
+                clean.startsWith("ATSP") || clean.startsWith("ATSH") || clean.startsWith("ATCRA") ||
+                clean.startsWith("ATFCS") || clean.startsWith("ATAL") || clean.startsWith("ATCAF") ||
+                clean.startsWith("ATST") || clean.startsWith("ATSW") || clean.startsWith("ATIB") ||
+                clean.startsWith("ATPB") || clean.startsWith("ATCM") || clean.startsWith("ATCF") -> "OK"
+                clean == "ATDPN" -> "6"
+                clean == "ATDP" -> "ISO 15765-4 (CAN 11/500)"
+                clean == "ATRV" -> "14.1V"
+                clean == "0100" -> "41 00 BE 3F B8 11"
+                clean == "0105" -> "41 05 5A"
+                clean == "010C" -> "41 0C 0F A0"
+                clean == "010D" -> "41 0D 28"
+                clean.startsWith("2101") || clean.startsWith("2181") ->
+                    "61 01 02 80 00 20 00 20 00 20 00 20 00 20 00 20 00 20 00 20 00 20 00 20 00 20 00 20 00 20 00 20 00 20 00 20 28 28 28 28 03"
+                clean.startsWith("2228C1") -> "62 28 C1 03"
                 else -> "NO DATA"
             }
         }
@@ -168,6 +200,7 @@ class BridgeServer(
     fun stop() {
         stopInternal()
         _serverState.value = BridgeServerState.Stopped
+        logger.pauseRecording()
         logger.logSystem("Server Bridge arrestato.")
     }
 

@@ -288,6 +288,7 @@ class BridgeBluetoothManager(private val context: Context) {
         val callback = object : BluetoothGattCallback() {
             override fun onConnectionStateChange(g: BluetoothGatt?, status: Int, newState: Int) {
                 if (newState == BluetoothProfile.STATE_CONNECTED) {
+                    g?.requestMtu(247)
                     g?.discoverServices()
                 } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                     internalDisconnect()
@@ -378,8 +379,15 @@ class BridgeBluetoothManager(private val context: Context) {
             } else if (gatt != null && writeChar != null) {
                 val g = gatt!!
                 val ch = writeChar!!
+                val writeType = if ((ch.properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0 &&
+                    (ch.properties and BluetoothGattCharacteristic.PROPERTY_WRITE) == 0) {
+                    BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+                } else {
+                    BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                }
+                ch.writeType = writeType
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    g.writeCharacteristic(ch, bytes, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+                    g.writeCharacteristic(ch, bytes, writeType)
                 } else {
                     @Suppress("DEPRECATION")
                     ch.value = bytes

@@ -104,4 +104,44 @@ class BridgeLoggerTest {
         assertEquals(0L, logger.txCount.value)
         assertEquals(0L, logger.rxCount.value)
     }
+
+    @Test
+    fun testPauseAndResumeContinuity() {
+        logger.startRecording("TestDongle")
+        val file1 = logger.getLogFile()
+        assertNotNull(file1)
+
+        logger.logTx("ATZ")
+        logger.pauseRecording()
+        assertFalse(logger.isRecording.value)
+
+        // Resuming must not create a new file or wipe the existing file
+        logger.startRecording("TestDongle")
+        assertTrue(logger.isRecording.value)
+        val file2 = logger.getLogFile()
+        assertEquals(file1?.absolutePath, file2?.absolutePath)
+
+        logger.logTx("0100")
+        logger.close()
+
+        val content = file2!!.readText()
+        assertTrue(content.contains("TX >>> ATZ"))
+        assertTrue(content.contains("REGISTRAZIONE RIPRESA"))
+        assertTrue(content.contains("TX >>> 0100"))
+    }
+
+    @Test
+    fun testResetSession() {
+        logger.startRecording("TestDongle")
+        logger.logTx("ATZ")
+        logger.logRx("OK")
+        assertEquals(1L, logger.txCount.value)
+        assertEquals(1L, logger.rxCount.value)
+
+        logger.resetSession()
+        assertFalse(logger.isRecording.value)
+        assertEquals(0L, logger.txCount.value)
+        assertEquals(0L, logger.rxCount.value)
+        assertTrue(logger.recentLogs.value.isEmpty())
+    }
 }

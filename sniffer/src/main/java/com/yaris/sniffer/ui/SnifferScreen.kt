@@ -352,7 +352,10 @@ fun SnifferScreen(
                         onClick = {
                             if (server.isRunning) {
                                 server.stop()
+                                com.yaris.sniffer.service.BridgeForegroundService.stop(context)
                             } else {
+                                onRequestPermissions()
+                                com.yaris.sniffer.service.BridgeForegroundService.start(context)
                                 server.start(35000)
                             }
                         },
@@ -369,7 +372,7 @@ fun SnifferScreen(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            if (server.isRunning) "Ferma Server" else "Avvia Server (35000)",
+                            if (server.isRunning) "Ferma Server Bridge" else "Avvia Server Bridge (127.0.0.1:35000)",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -439,7 +442,7 @@ fun SnifferScreen(
                     ) {
                         Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(14.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Ferma & Condividi", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("Ferma & Condividi Log", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }

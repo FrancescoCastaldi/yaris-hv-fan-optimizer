@@ -6,6 +6,19 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)
 - **MINOR (`0.X.0`)**: Aggiunta di nuove funzionalità, sensori, codifiche o telemetrie.
 - **PATCH (`0.0.X`)**: Bugfix, ottimizzazioni di performance o aggiustamenti grafici minori.
 
+## [2.9.19] - 2026-09-07
+### 🛡️ Hardening Background Bridge, Foreground Service & Robustezza Protocollo OBD
+- **Servizio in Primo Piano Dedicato `:sniffer` (`BridgeForegroundService`)**:
+  - Implementato `BridgeForegroundService` con tipo `connectedDevice` (Android 14+) e `PARTIAL_WAKE_LOCK` per garantire l'esecuzione senza interruzioni del server TCP e del polling Bluetooth quando Dr. Prius o Car Scanner girano in primo piano.
+  - Aggiunta notifica di stato persistente e richiesta runtime del permesso `POST_NOTIFICATIONS` su Android 13+.
+- **Hardening del Server TCP e del Parser ELM327**:
+  - Abilitato `tcpNoDelay = true` per eliminare l'algoritmo di Nagle e abbattere la latenza di scambio frame.
+  - Parsing conforme alle specifiche ELM327: caratteri Line Feed (`\n`) ignorati, delimitazione rigida su Carriage Return (`\r`), gestione tasto backspace/delete e risposta tempestiva al prompt per frame vuoti.
+  - Emulazione offline estesa con supporto per parametri spaziati, comandi header (`AT SH`, `AT CRA`, `AT FCS`), PID standard OBD-II (`0100`, `0105`, `010C`, `010D`) e frame UDS batteria ibrida (`2101`, `2181`, `2228C1`).
+- **Resilienza BLE e Gestione Traccia Log Continua**:
+  - Negoziazione MTU BLE fino a 247 byte alla connessione ed elezione automatica del tipo di scrittura GATT (`WRITE_TYPE_NO_RESPONSE` vs `WRITE_TYPE_DEFAULT`).
+  - Correzione della ripresa sessione nel logger: ripresa trasparente sul medesimo file di log senza sovrascritture o leak di descrittori file, con auto-generazione del file al tocco di "Ferma & Condividi Log".
+
 ## [2.9.18] - 2026-09-07
 ### 🚀 Rilascio Modulo Standalone OBD Bridge & Sniffer (:sniffer)
 - **Nuovo Modulo Autonomo `:sniffer`**:

@@ -57,6 +57,18 @@ class BridgeLogger(
         synchronized(logLock) {
             if (_isRecording.value) return
 
+            // Resume existing paused session file if present
+            if (currentLogFile != null && fileWriter != null) {
+                _isRecording.value = true
+                val nowMs = System.currentTimeMillis()
+                val resumeEntry = "[$nowMs] [${dateFormat.format(Date(nowMs))}] [SYS] REGISTRAZIONE RIPRESA"
+                fileWriter?.println(resumeEntry)
+                fileWriter?.flush()
+                appendUiLog("▶ REGISTRAZIONE RIPRESA: ${currentLogFile?.name}")
+                return
+            }
+
+            fileWriter?.close()
             val timeStamp = fileDateFormat.format(Date())
             logDirectory.mkdirs()
             val file = File(logDirectory, "obd_bridge_${timeStamp}.txt")
@@ -160,11 +172,32 @@ class BridgeLogger(
         val ctx = context ?: return null
         synchronized(logLock) {
             fileWriter?.flush()
-            val file = currentLogFile ?: return null
-            if (!file.exists() || file.length() == 0L) {
-                if (fileWriter == null) {
-                    fileWriter = PrintWriter(FileWriter(file, true))
+
+            var file = currentLogFile
+            if (file == null || !file.exists()) {
+                val timeStamp = fileDateFormat.format(Date())
+                logDirectory.mkdirs()
+                file = File(logDirectory, "obd_bridge_${timeStamp}.txt")
+                currentLogFile = file
+                fileWriter?.close()
+                fileWriter = PrintWriter(FileWriter(file, true))
+
+                val header = buildString {
+                    appendLine("================================================================")
+                    appendLine("  YARIS OBD BRIDGE & SNIFFER - LOG TRACE")
+                    appendLine("  Timestamp: ${dateFormat.format(Date())} (${System.currentTimeMillis()} ms)")
+                    appendLine("  TCP Port: 35000 (127.0.0.1)")
+                    appendLine("================================================================")
+                    appendLine()
                 }
+                fileWriter?.print(header)
+                _recentLogs.value.forEach { line ->
+                    fileWriter?.println(line)
+                }
+                fileWriter?.flush()
+            }
+
+            if (file.length() == 0L) {
                 fileWriter?.println("Log chiuso il: ${dateFormat.format(Date())}")
                 fileWriter?.flush()
             }
@@ -189,6 +222,18 @@ class BridgeLogger(
                 logSystem("Errore generazione Share Intent: ${e.message}")
                 null
             }
+        }
+    }
+
+    fun resetSession() {
+        synchronized(logLock) {
+            _isRecording.value = false
+            fileWriter?.flush()
+            fileWriter?.close()
+            fileWriter = null
+            currentLogFile = null
+            resetCounters()
+            clearUiLogs()
         }
     }
 
