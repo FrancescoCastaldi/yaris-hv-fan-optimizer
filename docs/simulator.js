@@ -25,7 +25,7 @@
     mount.innerHTML =
         '<div class="sim-topline">' +
             '<span class="sim-brand">YARIS <b>HV</b> / COCKPIT</span>' +
-            '<span class="micro">SIMULAZIONE WEB · v2.9.17</span>' +
+            '<span class="micro">SIMULAZIONE WEB · v2.9.20</span>' +
         '</div>' +
         '<div class="sim-disclaimer">DEMO INTERATTIVA — Nessun collegamento Bluetooth, nessun comando inviato all\'auto. I valori sono illustrativi.</div>' +
         '<div class="sim-tabs" role="tablist" aria-label="Sezioni simulatore">' +
@@ -62,7 +62,7 @@
                         '<button type="button" data-level="3" aria-pressed="true">L3</button>' +
                         '<button type="button" data-level="4" aria-pressed="false">L4</button>' +
                         '<button type="button" data-level="5" aria-pressed="false">L5</button>' +
-                        '<button type="button" data-level="6" aria-pressed="false">L6</button>' +
+                        '<button type="button" data-level="6" aria-pressed="false">L6 MAX</button>' +
                     '</div>' +
                     '<p class="level-description" data-fan-desc>' + FAN[3].desc + '</p>' +
                     '<p class="demo-event">COMANDO INVIATO · <span data-fan-cmd>' + FAN[3].cmd + '</span><br>ECU ACK · <span data-fan-ack>' + FAN[3].ack + '</span></p>' +
@@ -97,7 +97,7 @@
             '<span class="data-label">MATRICE 4 CELLE DENSO · PID 2228C1</span>' +
             '<div class="sensor-grid">' +
                 CELLS.map(function (c) {
-                    return '<div class="sensor"><small>' + c.name + '</small><output>' + c.temp.toFixed(1) + '°C</output></div>';
+                    return '<div class="sensor"><div style="display:flex;justify-content:space-between;align-items:center;"><small>' + c.name + '</small><span class="demo-tag" style="font-size:8px;padding:1px 5px;">NOMINALE</span></div><output>' + c.temp.toFixed(1) + '°C</output></div>';
                 }).join("") +
             '</div>' +
             '<p class="sensor-note">Valori simulati a scopo dimostrativo. La lettura reale dipende da vettura, adattatore e centralina.</p>' +
@@ -168,10 +168,16 @@
         fanDescEl.textContent = cfg.desc;
         fanCmdEl.textContent = cfg.cmd;
         fanAckEl.textContent = cfg.ack;
+        /* Drive reactive CSS (airflow color/speed, battery glow) via attribute selector */
+        if (level >= 1) {
+            mount.setAttribute("data-active-level", String(level));
+        } else {
+            mount.removeAttribute("data-active-level");
+        }
         if (cfg.rpm === 0) {
             rotorEl.style.animationPlayState = "paused";
         } else {
-            rotorEl.style.animationDuration = Math.max(0.35, 2.4 - level * 0.28) + "s";
+            rotorEl.style.animationDuration = Math.max(0.22, 2.0 - level * 0.28) + "s";
             rotorEl.style.animationPlayState = "running";
         }
         var current = parseFloat(fanTempEl.textContent) || cfg.temp;

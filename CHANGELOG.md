@@ -6,6 +6,25 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)
 - **MINOR (`0.X.0`)**: Aggiunta di nuove funzionalità, sensori, codifiche o telemetrie.
 - **PATCH (`0.0.X`)**: Bugfix, ottimizzazioni di performance o aggiustamenti grafici minori.
 
+## [2.9.20] - 2026-09-07
+### 🏎️ Cockpit Motorsport Ultra-Premium — Glassmorphism, Glow Neon & GPU Animations 60fps
+- **Restyling Visivo Ultra-Premium (R1)**:
+  - Sfondo `body` arricchito con 5 layer radiali volumetrici: luce conica da top (rosso corsa), bleeding ice sul bordo destro, contro-accento sinistro, cono luce centrale stile strumentazione da corsa, vignetta profonda agli angoli.
+  - Vignetta cockpit su `body::before` doppio-layer: vignetta radiale perimetrale + sfumatura superiore per profondità strumentazione.
+  - Card Feature List con glassmorphism ad alto contrasto: `backdrop-filter: blur(18px) saturate(1.4)`, bordo titanio, `inset` highlight e glow rosso neon su hover con `cubic-bezier(0.16, 1, 0.3, 1)`. Tutte le animazioni `will-change: transform, box-shadow` (GPU-accelerated).
+- **Simulatore Cockpit & Batteria HV (R2)**:
+  - Pulsanti L1–L6 con LED indicator graduato ice-blu→ambra→rosso-corsa al crescere del livello: ogni livello ha sfondo tintato, colore LED e animazione pulsazione propri.
+  - Attributo `data-active-level` settato su `.simulator` al cambio livello, che guida via CSS selector i moduli `.airflow` e `.battery-pack i` reattivi al livello selezionato (nessun JS style manipulation, solo attributo → CSS).
+  - Flussi `.airflow` con colore e velocità reattivi: L1=ice lento, L2=cyan, L3=argento, L4=ambra, L5=arancio corsa, L6=rosso MAX ultraveloce.
+  - Celle `.battery-pack i` con `border-top-color` e `box-shadow` reattivi al livello (ice→amber→red glow).
+- **Sezione Sniffer/Bridge & Badge (R3)**:
+  - Badge `APK V1.0.0 / STANDALONE MITM` con classe `badge-standalone` e animazione `badge-ice-pulse` 2.4s infinite: il bordo ice pulsa alternando opacity e box-shadow glow.
+  - Connettori verticali illuminati tra i 3 step della guida sniffer già presenti e potenziati con glow ice.
+- **Performance GPU 60/120 FPS (R4)**:
+  - `prefers-reduced-motion` media query già presente e rispettata.
+  - Nessun reflow/repaint: tutte le animazioni su `transform`, `opacity`, `box-shadow` e `border-color`.
+- **Bump versione**: `versionCode` 35, `versionName` 2.9.20. Aggiornati `build_apk.bat`, `deploy.yml`, tutti i riferimenti in `docs/`.
+
 ## [2.9.19] - 2026-09-07
 ### 🛡️ Hardening Background Bridge, Foreground Service & Robustezza Protocollo OBD
 - **Servizio in Primo Piano Dedicato `:sniffer` (`BridgeForegroundService`)**:
