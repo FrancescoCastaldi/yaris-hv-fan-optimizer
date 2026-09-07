@@ -17,4 +17,8 @@ Ad ogni modifica, fix, push o rilascio:
 4. **Flusso di Verifica & Consegna**:
    - `gradle testDebugUnitTest` prima di ogni build
    - `build_apk.bat` per generare e firmare l'unico APK con certificato RSA
-   - Commit, creazione nuovo tag git univoco `vX.Y.Z` e `git push origin main --tags`
+   - Commit, creazione nuovo tag git univoco `vX.Y.Z` e `git push origin main --tags` **solo dopo conferma umana esplicita** (vedi regola 5)
+5. **Regola Inviolabile: Nessun Commit/Tag/Push Automatico**:
+   - Qualsiasi agente AI (Warp/Oz o altro) DEVE preparare codice, test, versione, changelog, sito e APK, ma **MAI** eseguire `git commit`, `git tag` o `git push` senza che l'utente lo richieda esplicitamente nella stessa conversazione (es. "fai il commit e il push", "pubblica la release").
+   - Richieste generiche come "fixa", "aggiorna", "compila la nuova versione" **non** autorizzano da sole commit/tag/push: sono passaggi distinti che vanno confermati separatamente.
+   - Dettagli completi del processo e del toolchain di build in `PUSH_POLICY.md`.

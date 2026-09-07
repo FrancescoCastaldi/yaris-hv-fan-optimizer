@@ -6,6 +6,13 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)
 - **MINOR (`0.X.0`)**: Aggiunta di nuove funzionalità, sensori, codifiche o telemetrie.
 - **PATCH (`0.0.X`)**: Bugfix, ottimizzazioni di performance o aggiustamenti grafici minori.
 
+## [2.9.14] - 2026-09-07
+### 🔧 Resilienza Query Multi-Frame Batteria Denso HV & Diagnosi Compatibilità Adapter
+- **Timeout ELM esteso per risposta multi-frame PID `2228C1`**: Il timeout interno `AT ST` dedicato alla query UDS multi-frame della centralina batteria Denso (header `7E2`) è stato allungato da `AT ST 64` (~410ms) a `AT ST C8` (~819ms) per dare più margine ai cloni ELM327/Vlinker con implementazione lenta o carente del flow-control ISO-TP, senza penalizzare la reattività delle query single-frame su motore, body, meter e ADAS.
+- **Probing a fasi `BatteryDiscoveryEngine` più tollerante**: Rivista la gestione dei tentativi e del cooldown per-candidato lungo la catena di fallback PID (`2228C1` → `2228C0` → `220101` → `2101` → `21C3` → `2161`), riducendo i falsi negativi dovuti a singoli timeout isolati su adapter con risposta multi-frame instabile.
+- **Nuovo alert utente per probabile incompatibilità hardware dell'adapter**: Se l'intera fallback chain fallisce ripetutamente su più cicli di discovery consecutivi pur con bus CAN motore attivo e dati regolari, l'app mostra ora un avviso dedicato che invita l'utente a verificare la compatibilità del proprio dongle OBD-II con le risposte multi-frame ISO-TP, invece di ripetere indefinitamente tentativi silenziosi.
+- **Documentazione**: Aggiunta sezione dedicata in `README.md` per aiutare l'utente a distinguere un limite hardware dell'adapter da un malfunzionamento software dell'app.
+
 ## [2.9.13] - 2026-09-06
 ### 🔌 Aggancio CAN Vlinker verificato e fallback protocollo automatico
 - **Header broadcast `7DF` esplicito**: ogni handshake iniziale, risveglio da standby e auto-recovery imposta realmente l'header funzionale, senza affidarsi allo stato precedente del clone ELM327.

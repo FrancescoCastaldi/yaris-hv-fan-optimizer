@@ -472,6 +472,28 @@ class ObdControllerIntegrationTest {
         assertEquals("AT FC SM 0", Elm327Protocol.CMD_FLOW_CONTROL_MODE_DEFAULT)
     }
 
+    /**
+     * Verifica che il timeout ELM interno per il multi-frame UDS 2228C1 sia stato aumentato in
+     * modo conservativo (AT ST C8, ~819ms, il doppio del precedente AT ST 64/~410ms) e che resti
+     * ampiamente al di sotto sia del timeout BLE di discovery (3000ms) sia di quello steady-state
+     * (4000ms), cosi' da lasciare margine a retry e gestione errori lato app.
+     */
+    @Test
+    fun testBatteryEcuIsoTpTimeoutIsConservativeAndBoundedByBleTimeouts() {
+        assertEquals("AT ST C8", Elm327Protocol.CMD_TIMEOUT_BATTERY_ECU)
+
+        // 0xC8 = 200 decimale; formula ELM327 AT ST hh: hh x 4.096ms
+        val elmTimeoutMs = 0xC8 * 4.096
+        assertEquals(819.2, elmTimeoutMs, 0.1)
+
+        // Deve restare ben al di sotto del timeout BLE di discovery (3000ms) e steady-state (4000ms)
+        assertTrue(elmTimeoutMs < BatteryDiscoveryEngine.MAX_PROBE_TIMEOUT_MS)
+        assertTrue(elmTimeoutMs < 4000L)
+
+        // MAX_PROBE_TIMEOUT_MS invariato: resta ampiamente sufficiente per il nuovo timeout ELM
+        assertEquals(3000L, BatteryDiscoveryEngine.MAX_PROBE_TIMEOUT_MS)
+    }
+
     @Test
     fun testStandbyModeStateAndBadgeDisplay() {
         // Vehicle not READY (Standby low-power mode)

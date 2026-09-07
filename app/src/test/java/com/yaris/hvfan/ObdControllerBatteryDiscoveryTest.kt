@@ -303,5 +303,83 @@ class ObdControllerBatteryDiscoveryTest {
         // Verify header restoration was still executed
         assertEquals(ToyotaYarisCommands.HEADER_ENGINE_ECU, controller.currentCanHeader)
     }
+
+    /**
+     * Copre l'aumento del timeout ELM interno AT ST per il multi-frame UDS 2228C1: deve essere
+     * inviato ogni volta che l'header CAN passa a 7E2 (batteria), e deve restare ben al di sotto
+     * dei timeout BLE esterni (MAX_PROBE_TIMEOUT_MS discovery / BATTERY_PID_TIMEOUT_MS steady-state).
+     */
+    @Test
+    fun testBatteryEcuHeaderSwitchAppliesConservativeIsoTpTimeout() = runTest {
+        val fakeTransport = FakeObdTransport()
+        val controller = ObdController(
+            bleManager = fakeTransport,
+            scope = this,
+            stateMachine = ObdStateMachine(),
+            discoveryEngine = BatteryDiscoveryEngine()
+        )
+
+        controller.executeBatteryThermalCycle()
+
+        assertEquals("AT ST C8", Elm327Protocol.CMD_TIMEOUT_BATTERY_ECU)
+        assertTrue(
+            "Must apply the conservative AT ST C8 (~819ms) timeout before probing battery ECU 7E2",
+            fakeTransport.dispatchedCommands.contains(Elm327Protocol.CMD_TIMEOUT_BATTERY_ECU)
+        )
+    }
+
+    /**
+     * Copre il nuovo alert distinto "probabile limite hardware dell'adapter OBD": deve attivarsi
+     * solo dopo che l'intera fallback chain e' stata tentata senza successo per >= 2 giri completi
+     * consecutivi (tutti i candidati in cooldown), e NON prima.
+     */
+    @Test
+    fun testHardwareLimitationWarningActivatesAfterRepeatedFullFailureCycles() = runTest {
+        var currentTime = 100_000L
+        val fakeTransport = FakeObdTransport()
+        fakeTransport.commandResponder = { cmd, _ ->
+            when {
+                cmd.startsWith("AT") -> "OK"
+                cmd == ToyotaYarisCommands.CMD_TESTER_PRESENT -> "7EA 01 7E"
+                ToyotaYarisCommands.BATTERY_FALLBACK_PIDS.contains(cmd) -> "NO DATA"
+                else -> "OK"
+            }
+        }
+
+        val stateMachine = ObdStateMachine()
+        val engine = BatteryDiscoveryEngine(timeProvider = { currentTime })
+        val controller = ObdController(
+            bleManager = fakeTransport,
+            scope = this,
+            stateMachine = stateMachine,
+            discoveryEngine = engine
+        )
+
+        // Lap 1: all 6 fallback candidates fail once (each enters 30s cooldown)
+        repeat(ToyotaYarisCommands.BATTERY_FALLBACK_PIDS.size) {
+            controller.executeBatteryThermalCycle()
+            currentTime += 3500L
+        }
+        assertEquals(1, engine.completedFailureCycles)
+        assertNull(
+            "Warning must stay null before the failure-cycle threshold is reached",
+            controller.liveState.value.batteryAdapterLimitationWarning
+        )
+
+        // Advance exactly past the first candidate's cooldown expiry to unblock lap 2
+        currentTime = 130_000L
+
+        // Lap 2: all 6 candidates fail again -> completes the 2nd full failure cycle
+        repeat(ToyotaYarisCommands.BATTERY_FALLBACK_PIDS.size) {
+            controller.executeBatteryThermalCycle()
+            currentTime += 3500L
+        }
+        assertEquals(2, engine.completedFailureCycles)
+        assertTrue(engine.areAllCandidatesInCooldown())
+
+        val warning = controller.liveState.value.batteryAdapterLimitationWarning
+        assertNotNull("Warning must activate after repeated full failure cycles", warning)
+        assertTrue("Warning must point the user at STN11xx/STN21xx hardware", warning!!.contains("STN"))
+    }
 }
 

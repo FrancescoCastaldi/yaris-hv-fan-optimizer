@@ -124,4 +124,47 @@ class BatteryDiscoveryEngineTest {
         assertEquals(0, engine.probeOutcomes.size)
         assertEquals("2228C1", engine.getNextCandidate())
     }
+
+    /**
+     * Copre il nuovo tracking dei giri completi falliti (completedFailureCycles), usato dal
+     * chiamante per distinguere un singolo NODATA transitorio da un pattern persistente
+     * (probabile limite hardware dell'adapter OBD su cloni ELM327/Vlinker).
+     */
+    @Test
+    fun testCompletedFailureCyclesIncrementOnFullChainFailureAndResetOnSuccess() {
+        var currentTime = 100_000L
+        val engine = BatteryDiscoveryEngine(timeProvider = { currentTime })
+
+        fun failAllCandidatesOnce() {
+            repeat(engine.candidates.size) {
+                val candidate = engine.getNextCandidate()
+                assertNotNull(candidate)
+                engine.onCandidateFailed(candidate!!, ProbeStatus.NO_DATA, "NO DATA")
+            }
+        }
+
+        // No failure cycle completed yet
+        assertEquals(0, engine.completedFailureCycles)
+
+        // First full lap through the fallback chain: all 6 candidates fail
+        failAllCandidatesOnce()
+        assertEquals(1, engine.completedFailureCycles)
+        assertTrue(engine.areAllCandidatesInCooldown())
+
+        // Advance past cooldown and run a second full failed lap
+        currentTime += 31_000L
+        failAllCandidatesOnce()
+        assertEquals(2, engine.completedFailureCycles)
+
+        // A successful candidate resets the failure cycle counter
+        currentTime += 31_000L
+        val candidate = engine.getNextCandidate()
+        assertNotNull(candidate)
+        engine.onCandidateSuccess(candidate!!, "6228C1...")
+        assertEquals(0, engine.completedFailureCycles)
+
+        // reset() also clears the counter
+        engine.reset()
+        assertEquals(0, engine.completedFailureCycles)
+    }
 }

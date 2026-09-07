@@ -18,13 +18,13 @@ if %ERRORLEVEL% EQU 0 (
     echo [2/3] Sincronizzazione APK release unico - root e docs...
     del /Q "YarisHvFanControl*.apk" 2>nul
     del /Q "docs\YarisHvFanControl*.apk" 2>nul
-    copy /Y "app\build\outputs\apk\release\app-release.apk" "YarisHvFanControl-v2.9.13.apk"
-    copy /Y "app\build\outputs\apk\release\app-release.apk" "docs\YarisHvFanControl-v2.9.13.apk"
+    copy /Y "app\build\outputs\apk\release\app-release.apk" "YarisHvFanControl-v2.9.14.apk"
+    copy /Y "app\build\outputs\apk\release\app-release.apk" "docs\YarisHvFanControl-v2.9.14.apk"
     
     echo [3/3] Singolo file APK aggiornato pronto in root e docs!
     echo ========================================================
     echo   BUILD COMPLETATA CON SUCCESSO!
-    echo   Singolo APK v2.9.13 generato: YarisHvFanControl-v2.9.13.apk
+    echo   Singolo APK v2.9.14 generato: YarisHvFanControl-v2.9.14.apk
     echo ========================================================
 ) else (
     echo [ERRORE] Compilazione fallita!

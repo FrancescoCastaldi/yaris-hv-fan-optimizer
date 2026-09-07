@@ -23,7 +23,13 @@ object Elm327Protocol {
     // Timeout di ricezione AT ST hh (hh esadecimale x 4.096 ms). Il default di fabbrica ELM327 e'
     // 0x32 (~205 ms): sotto questa soglia la finestra si chiude prima che la ECU Toyota risponda.
     const val CMD_TIMEOUT_HANDSHAKE = "AT ST 96"    // ~614 ms per l'aggancio iniziale del bus
-    const val CMD_TIMEOUT_BATTERY_ECU = "AT ST 64"  // ~410 ms per il multi-frame UDS 2228C1
+    // ~819 ms (0xC8 x 4.096ms): i cloni ELM327/Vlinker con flow-control ISO-TP carente perdono
+    // spesso il completamento del multi-frame UDS 2228C1 quando la finestra ELM interna e' troppo
+    // stretta (~410ms con 0x64), producendo NODATA anche se il bus CAN e' sano. Il valore e' stato
+    // raddoppiato per dare margine ai frame consecutivi lenti, restando pero' ben al di sotto sia
+    // di MAX_PROBE_TIMEOUT_MS (3000ms, discovery) sia di BATTERY_PID_TIMEOUT_MS (4000ms, steady-state)
+    // cosi' da lasciare spazio a retry/gestione errori lato BLE.
+    const val CMD_TIMEOUT_BATTERY_ECU = "AT ST C8"  // ~819 ms per il multi-frame UDS 2228C1
     const val CMD_TIMEOUT_TELEMETRY = "AT ST 32"    // ~205 ms, default ELM327, per il loop rapido
 
     // Sequenza Dr. Prius universale ad alta compatibilita'

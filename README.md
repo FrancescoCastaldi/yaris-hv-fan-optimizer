@@ -104,6 +104,14 @@ gradle testReleaseUnitTest
 
 ---
 
+## ⚠️ Compatibilità Adapter OBD-II
+Se il log dell'app mostra ripetutamente errori `NODATA` sulla lettura della temperatura del pacco batteria (PID `2228C1` e relativa catena di fallback) mentre i dati di motore, velocità e RPM arrivano regolari, molto probabilmente **non si tratta di un bug dell'app**, ma di un limite hardware dell'adapter OBD-II in uso.
+- **Perché succede**: la query della centralina batteria ibrida Denso HV (header CAN `7E2`) è una richiesta UDS **multi-frame** (ISO-TP), che richiede all'adapter di gestire correttamente il flow-control tra più frame CAN consecutivi. Molti adapter economici **ELM327 "clone" o Vlinker generici** hanno un'implementazione carente o instabile di questo meccanismo. Le query verso le altre centraline (motore `7E0`, body `750`, quadro `7C0`, ADAS `7A0`) sono invece **single-frame** e per questo continuano a funzionare normalmente anche su hardware di fascia bassa.
+- **Come riconoscere il problema**: se per più cicli di discovery consecutivi nessun PID della catena di fallback batteria si aggancia mai, pur con bus CAN motore attivo e telemetria regolare, è quasi certamente un limite dell'adapter e non un malfunzionamento dell'app.
+- **Cosa fare**: per una lettura affidabile della centralina batteria ibrida, si raccomanda di preferire adapter con **chipset originali OBDLink (STN11xx / STN21xx)** rispetto ai cloni ELM327/Vlinker generici, che offrono un supporto molto più robusto delle risposte multi-frame ISO-TP.
+
+---
+
 ## 🏗️ Architettura & Flusso Dati
 
 ```mermaid

@@ -25,8 +25,14 @@ data class ProbeResult(
  *    and the discovery cursor advances to the next candidate on subsequent cycles.
  * 3. The first candidate returning a valid, parseable battery payload is latched as
  *    activeBatteryPid, transitioning discovery to Discovered and ceasing further candidate probing.
- * 4. Maximum probe timeout bound <= 3000ms.
+ * 4. Maximum probe timeout bound <= 3000ms. Questo bound resta invariato: e' il timeout BLE
+ *    esterno usato solo durante la fase di discovery (probing dei candidati), ben al di sopra
+ *    del timeout ELM interno AT ST C8 (~819ms, Elm327Protocol.CMD_TIMEOUT_BATTERY_ECU) usato per
+ *    la risposta multi-frame UDS 2228C1, quindi non necessita di incremento.
  * 5. Lifecycle teardown / resets clear cached latched PID, cooldowns, and cursor.
+ * 6. completedFailureCycles conta i giri completi della fallback chain terminati tutti in
+ *    fallimento (nessun candidato riuscito). Usato dal chiamante per distinguere un singolo
+ *    NODATA transitorio da un pattern persistente (probabile limite hardware dell'adapter OBD).
  */
 class BatteryDiscoveryEngine(
     val candidates: List<String> = ToyotaYarisCommands.BATTERY_FALLBACK_PIDS,
@@ -49,6 +55,14 @@ class BatteryDiscoveryEngine(
     private val cooldownMap = mutableMapOf<String, Long>()
     private val _probeOutcomes = mutableMapOf<String, ProbeResult>()
     val probeOutcomes: Map<String, ProbeResult> get() = _probeOutcomes.toMap()
+
+    private var completedCycleCount: Int = 0
+
+    /**
+     * Numero di giri completi della fallback chain in cui OGNI candidato e' fallito senza mai
+     * latchare una risposta valida. Si azzera su onCandidateSuccess() e reset().
+     */
+    val completedFailureCycles: Int get() = completedCycleCount
 
     /**
      * Returns the next candidate PID eligible for probing, or null if all candidates
@@ -77,6 +91,7 @@ class BatteryDiscoveryEngine(
      */
     fun onCandidateSuccess(pid: String, rawResponse: String? = null) {
         latchedPid = pid
+        completedCycleCount = 0
         _probeOutcomes[pid] = ProbeResult(
             pid = pid,
             status = ProbeStatus.SUCCESS,
@@ -88,6 +103,8 @@ class BatteryDiscoveryEngine(
     /**
      * Called when a candidate probe fails (timeout, NO DATA, error, negative response, or unparseable).
      * Places the candidate into cooldown (>= 30s) and advances the discovery cursor to the next candidate.
+     * Every time the cursor wraps back to the start of the candidate list, a full failed cycle of the
+     * fallback chain has completed (see completedFailureCycles).
      */
     fun onCandidateFailed(pid: String, status: ProbeStatus = ProbeStatus.NO_DATA, rawResponse: String? = null) {
         val now = timeProvider()
@@ -100,11 +117,15 @@ class BatteryDiscoveryEngine(
         )
         // Advance cursor to next candidate after this one
         val currentIndex = candidates.indexOf(pid)
-        if (currentIndex >= 0) {
-            cursorIndex = (currentIndex + 1) % candidates.size
+        val nextIndex = if (currentIndex >= 0) {
+            (currentIndex + 1) % candidates.size
         } else {
-            cursorIndex = (cursorIndex + 1) % candidates.size
+            (cursorIndex + 1) % candidates.size
         }
+        if (nextIndex == 0 && candidates.isNotEmpty()) {
+            completedCycleCount++
+        }
+        cursorIndex = nextIndex
     }
 
     /**
@@ -139,6 +160,7 @@ class BatteryDiscoveryEngine(
     fun reset() {
         latchedPid = null
         cursorIndex = 0
+        completedCycleCount = 0
         cooldownMap.clear()
         _probeOutcomes.clear()
     }

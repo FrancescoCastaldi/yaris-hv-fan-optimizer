@@ -15,6 +15,7 @@ data class ObdLiveState(
     val isStandbyMode: Boolean = false,       // True se in standby a basso consumo (auto spenta o non READY)
     val auxiliary12vVoltage: Float = 0f,      // Tensione reale 12V rilevata da AT RV
     val ecuAlertMessage: String? = null,      // Avviso visivo per l'utente quando la centralina non risponde
+    val batteryAdapterLimitationWarning: String? = null, // Avviso distinto: probabile limite hardware dell'adapter OBD (fallback chain batteria esaurita ripetutamente)
     val lastDataReceivedTimestamp: Long = 0L,
     val batteryStatus: HvBatteryStatus = HvBatteryStatus(),
     val warmupStatus: HybridWarmupStatus = HybridWarmupStatus(),
@@ -46,6 +47,18 @@ class ObdController(
         // Le risposte multi-frame UDS 2228C1 richiedono flow control ISO-TP completo: sotto i 4s
         // il timeout BLE scade prima che l'ultimo frame consecutivo arrivi.
         private const val BATTERY_PID_TIMEOUT_MS = 4000L
+
+        // Se l'intera fallback chain PID batteria fallisce per >= 2 giri completi consecutivi
+        // (tutti i candidati in cooldown, nessuno mai latchato), il problema e' quasi certamente
+        // hardware (clone ELM327/Vlinker con flow-control ISO-TP insufficiente per il multi-frame
+        // UDS) e non un bug applicativo: l'utente va indirizzato verso un adapter STN11xx/21xx.
+        private const val HARDWARE_LIMITATION_CYCLE_THRESHOLD = 2
+
+        private const val BATTERY_ADAPTER_LIMITATION_MESSAGE =
+            "Nessun PID batteria HV risponde dopo più giri completi della fallback chain: " +
+            "probabile limite hardware dell'adapter OBD (flow-control ISO-TP insufficiente per le " +
+            "risposte multi-frame), non un problema dell'app. Prova un adapter con chipset " +
+            "STN11xx/STN21xx (compatibile OBDLink) invece di cloni ELM327/Vlinker generici."
     }
 
     private data class CanProbeResult(
@@ -182,6 +195,22 @@ class ObdController(
         }
     }
 
+    /**
+     * Calcola l'avviso distinto "probabile limite hardware dell'adapter OBD": si attiva solo
+     * quando l'intera fallback chain PID batteria e' esaurita (tutti i candidati in cooldown)
+     * per almeno HARDWARE_LIMITATION_CYCLE_THRESHOLD giri completi consecutivi senza mai latchare
+     * un PID valido. Distinto da ecuAlertMessage, che copre standby/sincronizzazione transitori.
+     */
+    private fun computeBatteryAdapterLimitationWarning(): String? {
+        return if (discoveryEngine.areAllCandidatesInCooldown() &&
+            discoveryEngine.completedFailureCycles >= HARDWARE_LIMITATION_CYCLE_THRESHOLD
+        ) {
+            BATTERY_ADAPTER_LIMITATION_MESSAGE
+        } else {
+            null
+        }
+    }
+
     private fun addLog(message: String) {
         val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
         val logLine = "[$timestamp] $message"
@@ -283,7 +312,8 @@ class ObdController(
                         isStandbyMode = true,
                         capabilityState = stateMachine.currentCapabilityState,
                         auxiliary12vVoltage = real12v,
-                        ecuAlertMessage = "Auto in standby a basso consumo: accendi la vettura (spia verde READY) per avviare la telemetria."
+                        ecuAlertMessage = "Auto in standby a basso consumo: accendi la vettura (spia verde READY) per avviare la telemetria.",
+                        batteryAdapterLimitationWarning = null
                     )
                 } else {
                     if (isReady) {
@@ -352,7 +382,8 @@ class ObdController(
                                 }
                             }
                             else -> "Auto in standby a basso consumo: accendi la vettura (spia verde READY) per avviare la telemetria."
-                        }
+                        },
+                        batteryAdapterLimitationWarning = null
                     )
 
                     // 8. Test supporto Multi-PID per telemetria motore e Dragy se il veicolo è attivo
@@ -500,7 +531,8 @@ class ObdController(
                 hasEcuCommunication = false,
                 capabilityState = stateMachine.currentCapabilityState,
                 auxiliary12vVoltage = volt,
-                ecuAlertMessage = "Auto in standby a basso consumo (12V: ${volt}V): in attesa di spia verde READY..."
+                ecuAlertMessage = "Auto in standby a basso consumo (12V: ${volt}V): in attesa di spia verde READY...",
+                batteryAdapterLimitationWarning = null
             )
             return
         }
@@ -560,7 +592,8 @@ class ObdController(
         }
 
         _liveState.value = _liveState.value.copy(
-            capabilityState = stateMachine.currentCapabilityState
+            capabilityState = stateMachine.currentCapabilityState,
+            batteryAdapterLimitationWarning = null
         )
     }
 
@@ -672,7 +705,8 @@ class ObdController(
                         } else {
                             "Veicolo in READY, sincronizzazione con ECU Toyota in corso..."
                         }
-                    }
+                    },
+                    batteryAdapterLimitationWarning = null
                 )
             } else {
                 stateMachine.onVehicleStandby()
@@ -683,7 +717,8 @@ class ObdController(
                     hasEcuCommunication = false,
                     capabilityState = stateMachine.currentCapabilityState,
                     auxiliary12vVoltage = volt,
-                    ecuAlertMessage = "Auto in standby a basso consumo: accendi la vettura (spia verde READY) per avviare la telemetria."
+                    ecuAlertMessage = "Auto in standby a basso consumo: accendi la vettura (spia verde READY) per avviare la telemetria.",
+                    batteryAdapterLimitationWarning = null
                 )
             }
             return
@@ -712,7 +747,8 @@ class ObdController(
                         isEcuAckConfirmed = false,
                         estimatedFanRpm = 0
                     ),
-                    ecuAlertMessage = "Auto in standby a basso consumo (12V: ${volt}V): in attesa di spia verde READY..."
+                    ecuAlertMessage = "Auto in standby a basso consumo (12V: ${volt}V): in attesa di spia verde READY...",
+                    batteryAdapterLimitationWarning = null
                 )
                 return
             }
@@ -874,6 +910,7 @@ class ObdController(
             _liveState.value = _liveState.value.copy(
                 autoCoolingStatus = updatedAutoStatus,
                 capabilityState = stateMachine.currentCapabilityState,
+                batteryAdapterLimitationWarning = computeBatteryAdapterLimitationWarning(),
                 batteryStatus = updatedBattery.copy(
                     isFanForced = shouldForceFan,
                     fanSpeedLevel = if (shouldForceFan) activeTargetSpeed else updatedBattery.fanSpeedLevel
@@ -1147,6 +1184,7 @@ class ObdController(
         _liveState.value = _liveState.value.copy(
             isLoopRunning = false,
             capabilityState = stateMachine.currentCapabilityState,
+            batteryAdapterLimitationWarning = null,
             batteryStatus = _liveState.value.batteryStatus.copy(
                 isFanForced = false,
                 isEcuAckConfirmed = false,
