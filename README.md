@@ -1,7 +1,8 @@
 # Toyota Yaris MK4 Hybrid - HV Battery Cooling, GR Cockpit & ECU Coding Suite 🏎️⚡
 
 [![Website](https://img.shields.io/badge/Website-Live%20Portal-00E5FF.svg?style=for-the-badge&logo=googlechrome)](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/)
-[![Download APK](https://img.shields.io/badge/Download-APK%20Release%20(v2.9.17)-D71920.svg?style=for-the-badge&logo=android)](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisHvFanControl-v2.9.17.apk)
+[![Download APK](https://img.shields.io/badge/Download-APK%20Release%20(v2.9.18)-D71920.svg?style=for-the-badge&logo=android)](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisHvFanControl-v2.9.18.apk)
+[![OBD Bridge APK](https://img.shields.io/badge/Download-OBD%20Bridge%20(v1.0.0)-00E5FF.svg?style=for-the-badge&logo=android)](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisObdBridge-v1.0.0.apk)
 [![Platform](https://img.shields.io/badge/Platform-Android%208.0%2B%20(API%2026%2B)-3DDC84.svg?style=flat&logo=android)](https://www.android.com/)
 [![Kotlin](https://img.shields.io/badge/Kotlin-1.9.24-7F52FF.svg?style=flat&logo=kotlin)](https://kotlinlang.org/)
 [![Jetpack Compose](https://img.shields.io/badge/UI-Jetpack%20Compose%20M3-4285F4.svg?style=flat&logo=jetpackcompose)](https://developer.android.com/jetpack/compose)
@@ -24,14 +25,16 @@ Applicazione Android nativa ad altissime prestazioni per **Toyota Yaris MK4 Hybr
 5. **Smart Auto-Cooling Protection Suite**: Controllo termico predittivo con soglia regolabile (28°C–42°C), isteresi di spegnimento (1°C–5°C), selettore di velocità bersaglio (L1–L6), esecuzione continua in background 24/7 con segnale audio e vibrazione haptic all'innesco;
 6. **Telemetria MoTeC / Gazoo Racing & Cronometro Dragy 0-100 km/h** con interpolazione lineare ad alta precisione;
 7. **Gestione Termica Attiva & Forzatura Ventola Batteria HV Denso con Closed-Loop ECU ACK e Hall RPM**;
-8. **Suite Completa di Codifiche Centralina ECU UDS** (Toyota Touch 3, Bip retromarcia comfort, Chiusura porte, Alzacristalli da chiave, Frecce comfort e ADAS).
+8. **Suite Completa di Codifiche Centralina ECU UDS** (Toyota Touch 3, Bip retromarcia comfort, Chiusura porte, Alzacristalli da chiave, Frecce comfort e ADAS);
+9. **Modulo Standalone OBD Bridge & Sniffer (:sniffer)** per registrare il traffico OBD Man-In-The-Middle e analizzare Dr. Prius / Car Scanner su porta TCP locale 35000.
 
 ---
 
 ## 🌐 Sito Web Ufficiale & Download Diretto
 - **Portale Web Ufficiale**: 👉 **[https://francescocastaldi.github.io/yaris-hv-fan-optimizer/](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/)**
 - **Simulatore Interattivo Web**: 👉 **[https://francescocastaldi.github.io/yaris-hv-fan-optimizer/preview.html](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/preview.html)**
-- **Download Diretto Ultimo APK (v2.9.17)**: 👉 **[Scarica YarisHvFanControl-v2.9.17.apk](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisHvFanControl-v2.9.17.apk)**
+- **Download Diretto Yaris HV Fan Control (v2.9.18)**: 👉 **[Scarica YarisHvFanControl-v2.9.18.apk](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisHvFanControl-v2.9.18.apk)**
+- **Download Diretto Yaris OBD Bridge & Sniffer (v1.0.0)**: 👉 **[Scarica YarisObdBridge-v1.0.0.apk](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisObdBridge-v1.0.0.apk)**
 
 ---
 
@@ -130,12 +133,27 @@ graph TD
 
 ---
 
+## 🕵️ Yaris OBD Bridge & Sniffer (Modulo Standalone `:sniffer`)
+
+L'ecosistema include il modulo autonomo **Yaris OBD Bridge**, una utility per reverse engineering e diagnostica MITM (Man-In-The-Middle) scaricabile come APK indipendente:
+- **Download Diretto**: 👉 **[Scarica YarisObdBridge-v1.0.0.apk](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisObdBridge-v1.0.0.apk)**
+- **Funzionamento**:
+  1. Si connette all'adattatore Bluetooth OBD-II (Classic SPP o BLE);
+  2. Avvia un server TCP locale in ascolto su `127.0.0.1:35000` (o `0.0.0.0:35000`);
+  3. Le app terze come **Dr. Prius** o **Car Scanner** possono collegarsi configurando la connessione in modalità **Wi-Fi / TCP** su IP `127.0.0.1` e porta `35000`;
+  4. Ogni singolo comando inviato dall'app (`TX >>>`) e la risposta restituita dal dongle/ECU (`RX <<<`) vengono registrati con timestamp a precisione millisecondo;
+  5. Il file di log può essere esportato e condiviso istantaneamente tramite WhatsApp, Drive, Telegram o Email con il pulsante dedicato **"Ferma & Condividi Log"**.
+
+---
+
 ## 🛠️ Compilazione e Rilascio Locale
-Per compilare e firmare l'APK con certificato RSA:
+Per compilare ed eseguire i test unitari con firma RSA su entrambi i moduli:
 ```cmd
 D:\Sviluppo\yaris-hv-fan-android\build_apk.bat
 ```
-L'APK generato viene automaticamente verificato e salvato come singolo file nella root del repository: `YarisHvFanControl-v2.9.16.apk`.
+I binari APK generati vengono automaticamente verificati, firmati con certificato RSA e posizionati sia nella root che nella cartella `docs/`:
+- `YarisHvFanControl-v2.9.18.apk` (Applicazione principale)
+- `YarisObdBridge-v1.0.0.apk` (Modulo autonomo bridge & sniffer)
 
 ---
 

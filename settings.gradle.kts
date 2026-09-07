@@ -15,3 +15,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "YarisHvFanControl"
 include(":app")
+include(":sniffer")

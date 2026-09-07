@@ -269,3 +269,25 @@ h3 { font-size: 25px; line-height: 1.15; font-weight: 600; }
     html { scroll-behavior: auto; }
     *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* --- OBD Bridge & Sniffer Section --- */
+.sniffer-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 20px; }
+.sniffer-card { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--ice); padding: 32px; display: flex; flex-direction: column; justify-content: space-between; }
+.sniffer-card .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.sniffer-card h3 { font-size: 28px; margin-bottom: 12px; }
+.sniffer-card p { color: var(--muted); font-size: 15px; line-height: 1.6; }
+.sniffer-features { list-style: none; padding: 0; margin: 20px 0 25px; border-block: 1px solid var(--line); padding-block: 15px; }
+.sniffer-features li { padding-block: 6px; font-size: 14px; color: var(--alloy); }
+.sniffer-features code { font-family: var(--mono); color: var(--ice); background: #83d9e315; padding: 2px 6px; border-radius: 3px; font-size: 12px; }
+.sniffer-card .card-actions { margin-top: 10px; }
+.sniffer-card .card-actions .button { width: 100%; margin-bottom: 10px; }
+.sniffer-card .card-actions .micro { display: block; text-align: center; color: var(--muted); font-size: 10px; }
+.sniffer-guide-box { background: #13171b; border: 1px solid var(--line); padding: 32px; }
+.guide-header { margin-bottom: 24px; border-bottom: 1px solid var(--line); padding-bottom: 15px; }
+.sniffer-steps { margin: 0; gap: 25px; }
+.sniffer-steps h4 { margin: 0 0 8px 0; font-size: 18px; font-weight: 600; color: var(--alloy); }
+.sniffer-steps p { font-size: 14px; color: var(--muted); line-height: 1.5; }
+.sniffer-steps code { font-family: var(--mono); color: var(--ice); background: #83d9e315; padding: 2px 5px; border-radius: 3px; }
+@media (max-width: 900px) {
+    .sniffer-grid { grid-template-columns: 1fr; gap: 30px; }
+}

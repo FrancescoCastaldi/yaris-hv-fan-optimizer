@@ -6,6 +6,23 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)
 - **MINOR (`0.X.0`)**: Aggiunta di nuove funzionalità, sensori, codifiche o telemetrie.
 - **PATCH (`0.0.X`)**: Bugfix, ottimizzazioni di performance o aggiustamenti grafici minori.
 
+## [2.9.18] - 2026-09-07
+### 🚀 Rilascio Modulo Standalone OBD Bridge & Sniffer (:sniffer)
+- **Nuovo Modulo Autonomo `:sniffer`**:
+  - Creato modulo Gradle autonomo `:sniffer` con APK separato `YarisObdBridge-v1.0.0.apk`.
+  - Firma RSA ufficiale con keystore di rilascio (`yaris_release.keystore`).
+  - Interfaccia Jetpack Compose dark/carbon con animazione REC lampeggiante, contatore frame TX/RX, gestione permessi Android 12+ e live console monitor con font monospace.
+- **Server TCP Man-In-The-Middle su 127.0.0.1:35000**:
+  - Implementazione TCP bridge server con `ServerSocket` in ascolto su porta `35000` (loopback e LAN).
+  - Proxy trasparente tra client TCP (Dr. Prius, Car Scanner, terminale OBD) e l'adattatore Bluetooth collegato (Classic SPP + BLE GATT).
+  - Tracciamento rigoroso di tutti i pacchetti con formato millisecondi `[timestamp] TX >>> [cmd]` e `[timestamp] RX <<< [resp]`.
+- **Esportazione & Condivisione Log Integrata**:
+  - FileProvider Android configurato per condividere con un tocco la traccia completa `.txt` via WhatsApp, Google Drive, Telegram o Email tramite `Intent.ACTION_SEND`.
+- **Portale Web & GitHub Pages**:
+  - Aggiunta sezione dedicata `OBD BRIDGE & SNIFFER` su `docs/index.html` con card di download standalone, badge e guida interattiva in 3 passi per Dr. Prius e Car Scanner.
+  - Sincronizzati entrambi i binari APK in root e nella cartella `docs/`.
+  - Workflow GitHub Actions `deploy.yml` e script di build locale `build_apk.bat` estesi per compilare e distribuire entrambi gli APK ad ogni commit.
+
 ## [2.9.17] - 2026-09-07
 ### ⚡ Pulizia Buffer UDS Batteria, Hardening Concorrenza Coding & Resilienza Eccezioni
 - **Rimozione 3E00 Incondizionato da Query Batteria UDS**:

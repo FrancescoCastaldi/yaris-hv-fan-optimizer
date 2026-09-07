@@ -9,6 +9,8 @@
 .cxx
 local.properties
 app/build/
+sniffer/build/
+**/build/
 *.hprof
 .agents/
 *.zip

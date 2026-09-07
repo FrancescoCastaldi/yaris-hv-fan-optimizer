@@ -8,23 +8,30 @@ set GRADLE_OPTS=-Xmx3072m -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8
 cd /d D:\Sviluppo\yaris-hv-fan-android
 
 echo ========================================================
-echo   COMPILAZIONE APK CON ETICHETTA VERSIONE DINAMICA
+echo   COMPILAZIONE APK RELEASE (YARIS HV AND OBD BRIDGE)
 echo ========================================================
 
 echo [1/3] Compilazione APK Release con certificato RSA...
 call D:\Tools\gradle\gradle-8.7\bin\gradle.bat assembleRelease
 
 if %ERRORLEVEL% EQU 0 (
-    echo [2/3] Sincronizzazione APK release unico - root e docs...
+    echo [2/3] Sincronizzazione APK release - root e docs...
     del /Q "YarisHvFanControl*.apk" 2>nul
     del /Q "docs\YarisHvFanControl*.apk" 2>nul
-    copy /Y "app\build\outputs\apk\release\app-release.apk" "YarisHvFanControl-v2.9.17.apk"
-    copy /Y "app\build\outputs\apk\release\app-release.apk" "docs\YarisHvFanControl-v2.9.17.apk"
+    del /Q "YarisObdBridge*.apk" 2>nul
+    del /Q "docs\YarisObdBridge*.apk" 2>nul
+
+    copy /Y "app\build\outputs\apk\release\app-release.apk" "YarisHvFanControl-v2.9.18.apk"
+    copy /Y "app\build\outputs\apk\release\app-release.apk" "docs\YarisHvFanControl-v2.9.18.apk"
+
+    copy /Y "sniffer\build\outputs\apk\release\sniffer-release.apk" "YarisObdBridge-v1.0.0.apk"
+    copy /Y "sniffer\build\outputs\apk\release\sniffer-release.apk" "docs\YarisObdBridge-v1.0.0.apk"
     
-    echo [3/3] Singolo file APK aggiornato pronto in root e docs!
+    echo [3/3] File APK aggiornati pronti in root e docs!
     echo ========================================================
     echo   BUILD COMPLETATA CON SUCCESSO!
-    echo   Singolo APK v2.9.17 generato: YarisHvFanControl-v2.9.17.apk
+    echo   1. YarisHvFanControl-v2.9.18.apk
+    echo   2. YarisObdBridge-v1.0.0.apk
     echo ========================================================
 ) else (
     echo [ERRORE] Compilazione fallita!
