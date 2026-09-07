@@ -63,7 +63,8 @@ class ObdInitSequenceTest {
             listOf(
                 Elm327Protocol.CMD_TIMEOUT_HANDSHAKE,
                 Elm327Protocol.CMD_TIMEOUT_BATTERY_ECU,
-                Elm327Protocol.CMD_TIMEOUT_TELEMETRY
+                Elm327Protocol.CMD_TIMEOUT_TELEMETRY,
+                Elm327Protocol.CMD_TIMEOUT_ECU_CODING
             )
         assertTrue(timeoutCommands.isNotEmpty())
 
@@ -76,6 +77,7 @@ class ObdInitSequenceTest {
         }
 
         assertEquals(614.4, atStTimeoutMs(Elm327Protocol.CMD_TIMEOUT_HANDSHAKE), 0.1)
+        assertEquals(614.4, atStTimeoutMs(Elm327Protocol.CMD_TIMEOUT_ECU_CODING), 0.1)
         // v2.9.14: esteso da 0x64 (~409.6ms) a 0xC8 (~819.2ms) per dare margine ai cloni
         // ELM327/Vlinker sul multi-frame UDS 2228C1 (vedi CHANGELOG v2.9.14).
         assertEquals(819.2, atStTimeoutMs(Elm327Protocol.CMD_TIMEOUT_BATTERY_ECU), 0.1)

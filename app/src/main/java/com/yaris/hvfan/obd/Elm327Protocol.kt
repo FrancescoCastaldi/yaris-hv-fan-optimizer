@@ -31,6 +31,7 @@ object Elm327Protocol {
     // cosi' da lasciare spazio a retry/gestione errori lato BLE.
     const val CMD_TIMEOUT_BATTERY_ECU = "AT ST C8"  // ~819 ms per il multi-frame UDS 2228C1
     const val CMD_TIMEOUT_TELEMETRY = "AT ST 32"    // ~205 ms, default ELM327, per il loop rapido
+    const val CMD_TIMEOUT_ECU_CODING = "AT ST 96"   // ~614 ms per Body, Meter, Aircon e ADAS UDS Mode 21/22/3B
 
     // Sequenza Dr. Prius universale ad alta compatibilita'
     val INIT_COMMANDS = listOf(

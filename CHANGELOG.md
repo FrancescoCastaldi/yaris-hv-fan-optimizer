@@ -6,6 +6,20 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)
 - **MINOR (`0.X.0`)**: Aggiunta di nuove funzionalità, sensori, codifiche o telemetrie.
 - **PATCH (`0.0.X`)**: Bugfix, ottimizzazioni di performance o aggiustamenti grafici minori.
 
+## [2.9.16] - 2026-09-07
+### ⚡ Risoluzione Aggancio CAN Quadro Acceso, Timeout ECU UDS & Protezione Attuazione Ventola
+- **Aggancio CAN con Quadro Acceso (12V < 13.0V)**:
+  - Gestita la condizione in cui il quadro strumenti è acceso a vettura ferma o quadro inserito con convertitore DC-DC non attivo (tensione 11.6V–12.4V).
+  - L'app esegue un probe su CAN broadcast 7DF: se il bus risponde, la vettura viene riconosciuta come attiva uscendo istantaneamente dallo standby senza attendere 13.0V.
+- **Isolamento Concorrenza Scheduler Dual-Rate durante Codifiche ECU**:
+  - Lo scheduler dual-rate mette in pausa la telemetria continua durante le operazioni di lettura e scrittura delle centraline (`isEcuOperationInProgress`), prevenendo collisioni di pacchetti e `NODATA` su Body, Meter, Aircon e ADAS.
+- **Calibrazione Timeout UDS per Centraline Elettroniche di Bordo**:
+  - Introdotto `CMD_TIMEOUT_ECU_CODING` (`AT ST 96`, ~614ms) per gli header Body (`750`), Meter (`7C0`), Clima (`7C4`) e ADAS (`7A0`), garantendo alle centraline il tempo necessario per rispondere a frame Mode 21 e 22.
+- **Protezione Attuazione Ventola su Telemetria Termica Incompleta**:
+  - I comandi ventola e i relativi log non vengono più inviati se la centralina batteria non è ancora stata scoperta (`BatteryEcuDiscoveryState.Discovered`) o se la temperatura massima rilevata è 0.0°C, eliminando i comandi `Ventola HV L6 | Batt: 0.0°C` registrati in diagnostica.
+- **Ripristino Header CAN Corretto Post-Codifiche**:
+  - Nei blocchi `finally` di `readEcuCustomizations` e `applyEcuCustomization`, l'header CAN ripristinato è `7E0` (Engine ECU standard), riallineando lo stato di comunicazione con il loop veloce di telemetria.
+
 ## [2.9.15] - 2026-09-07
 ### 🛡️ Eliminazione Falsi Positivi Scrittura Centralina, Isteresi Standby & Stabilizzazione Bus CAN
 - **Eliminazione Falso Positivo Codifiche ECU (`applyEcuCustomization` & `readEcuCustomizations`)**:

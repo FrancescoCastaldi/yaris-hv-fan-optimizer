@@ -300,9 +300,21 @@ class ObdController(
                     addLog("⚠️ Tensione al limite (${real12v}V): verifica che il quadro sia in READY (spia verde) e che l'adattatore non sia mal calibrato.")
                 }
 
-                // 6. Gestione stato Standby a basso consumo se l'auto non è in READY (< 13.0V)
-                if (!isReady && real12v > 0f) {
-                    addLog("💤 Auto in Standby (12V: ${real12v}V < 13.0V, quadro spento). Standby a basso consumo attivo.")
+                // 6. Handshake CAN a tre stadi con aggancio rapido (R2)
+                // Permette l'aggancio CAN anche con quadro acceso e DC-DC spento (12V < 13.0V)
+                addLog("Stadio 0: aggancio bus CAN in broadcast (7DF)...")
+                stateMachine.onCanSearching()
+                val stage0Ok = probeBroadcastCanWithAutomaticFallback("Stadio 0")
+                if (stage0Ok) {
+                    addLog("✅ Stadio 0 completato: bus CAN 11-bit 500k agganciato in broadcast (7DF).")
+                    lastValidCanTimestamp = System.currentTimeMillis()
+                } else {
+                    addLog("⚠️ Stadio 0 fallito anche dopo auto-detect: nessun frame CAN valido in broadcast 7DF. Possibili cause: quadro spento, dongle non inserito a fondo nella presa OBD, o adattatore incompatibile. Proseguo comunque con gli stadi successivi...")
+                }
+
+                // Gestione stato Standby a basso consumo: attivo SOLO se tensione < 13.0V E il CAN 7DF non ha risposto
+                if (!isReady && !stage0Ok && real12v > 0f) {
+                    addLog("💤 Auto in Standby (12V: ${real12v}V < 13.0V, CAN silente). Standby a basso consumo attivo.")
                     isProtocolInitialized = true
                     stateMachine.onVehicleStandby()
                     discoveryEngine.reset()
@@ -314,24 +326,12 @@ class ObdController(
                         isStandbyMode = true,
                         capabilityState = stateMachine.currentCapabilityState,
                         auxiliary12vVoltage = real12v,
-                        ecuAlertMessage = "Auto in standby a basso consumo: accendi la vettura (spia verde READY) per avviare la telemetria.",
+                        ecuAlertMessage = "Auto in standby a basso consumo: accendi la vettura (spia verde READY o quadro) per avviare la telemetria.",
                         batteryAdapterLimitationWarning = null
                     )
                 } else {
-                    if (isReady) {
+                    if (isReady || stage0Ok) {
                         stateMachine.onVehicleReady()
-                    }
-                    // 7. Handshake CAN a tre stadi con aggancio rapido (R2)
-                    // Stadio 0: richiesta funzionale con header 7DF esplicito. Non ci si affida
-                    // all'header predefinito del clone, che puo' sopravvivere a warm start e standby.
-                    addLog("Stadio 0: aggancio bus CAN in broadcast (7DF)...")
-                    stateMachine.onCanSearching()
-                    val stage0Ok = probeBroadcastCanWithAutomaticFallback("Stadio 0")
-                    if (stage0Ok) {
-                        addLog("✅ Stadio 0 completato: bus CAN 11-bit 500k agganciato in broadcast (7DF).")
-                        lastValidCanTimestamp = System.currentTimeMillis()
-                    } else {
-                        addLog("⚠️ Stadio 0 fallito anche dopo auto-detect: nessun frame CAN valido in broadcast 7DF. Possibili cause: quadro non in READY (spia verde spenta), dongle non inserito a fondo nella presa OBD, o adattatore incompatibile. Proseguo comunque con gli stadi successivi...")
                     }
 
                     // Stadio 1: aggancio rapido centralina motore standard (7E0 / 7E8)
@@ -378,12 +378,12 @@ class ObdController(
                             canOk -> null
                             isActuallyReady -> {
                                 if (real12v > 0f) {
-                                    "Veicolo in stato READY (12V: ${String.format(java.util.Locale.US, "%.1f", real12v)}V). Sincronizzazione con ECU Toyota in corso..."
+                                    "Veicolo attivo (12V: ${String.format(java.util.Locale.US, "%.1f", real12v)}V). Sincronizzazione con ECU Toyota in corso..."
                                 } else {
-                                    "Veicolo in READY. Sincronizzazione con ECU Toyota in corso..."
+                                    "Veicolo attivo. Sincronizzazione con ECU Toyota in corso..."
                                 }
                             }
-                            else -> "Auto in standby a basso consumo: accendi la vettura (spia verde READY) per avviare la telemetria."
+                            else -> "Auto in standby a basso consumo: accendi la vettura (spia verde READY o quadro) per avviare la telemetria."
                         },
                         batteryAdapterLimitationWarning = null
                     )
@@ -491,22 +491,35 @@ class ObdController(
             currentCanHeader = ""
             bleManager.sendCommand("AT SH $header")
             delay(30)
-            if (header == ToyotaYarisCommands.HEADER_BATTERY_ECU) {
-                if (isCustomFcSupported) {
-                    bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SH_BATTERY)
-                    delay(30)
-                    bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SD_CTS)
-                    delay(30)
-                    bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SM_CUSTOM)
-                    delay(30)
+            when (header) {
+                ToyotaYarisCommands.HEADER_BATTERY_ECU -> {
+                    if (isCustomFcSupported) {
+                        bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SH_BATTERY)
+                        delay(30)
+                        bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SD_CTS)
+                        delay(30)
+                        bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SM_CUSTOM)
+                        delay(30)
+                    }
+                    bleManager.sendCommand(Elm327Protocol.CMD_TIMEOUT_BATTERY_ECU)
                 }
-                bleManager.sendCommand(Elm327Protocol.CMD_TIMEOUT_BATTERY_ECU)
-            } else {
-                if (isCustomFcSupported) {
-                    bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SM_DEFAULT)
-                    delay(30)
+                ToyotaYarisCommands.HEADER_BODY_ECU,
+                ToyotaYarisCommands.HEADER_METER_ECU,
+                ToyotaYarisCommands.HEADER_AIRCON_ECU,
+                ToyotaYarisCommands.HEADER_ADAS_ECU -> {
+                    if (isCustomFcSupported) {
+                        bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SM_DEFAULT)
+                        delay(30)
+                    }
+                    bleManager.sendCommand(Elm327Protocol.CMD_TIMEOUT_ECU_CODING)
                 }
-                bleManager.sendCommand(Elm327Protocol.CMD_TIMEOUT_TELEMETRY)
+                else -> {
+                    if (isCustomFcSupported) {
+                        bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SM_DEFAULT)
+                        delay(30)
+                    }
+                    bleManager.sendCommand(Elm327Protocol.CMD_TIMEOUT_TELEMETRY)
+                }
             }
             currentCanHeader = header
             // I cloni ELM327 perdono il primo frame se la richiesta arriva a ridosso del cambio header.
@@ -614,6 +627,10 @@ class ObdController(
     internal suspend fun runDualRateScheduler() {
         var isFirstSchedulerTick = true
         while (currentCoroutineContext().isActive) {
+            if (isEcuOperationInProgress) {
+                delay(140L)
+                continue
+            }
             if (isFirstSchedulerTick) {
                 // Primo tick eseguito inline per inizializzare i timestamp di riferimento.
                 executeDualRateCycle()
@@ -660,20 +677,29 @@ class ObdController(
             lastKnown12v = volt
 
             val isReadyByVoltage = Elm327Protocol.isVehicleReady(volt)
+            // Permetti l'aggancio CAN anche se 12V < 13.0V (quadro acceso 11.8V-12.4V a DC-DC spento)
+            val canProbe = if (!isReadyByVoltage) {
+                probeBroadcastCan(attempts = 1, timeoutMs = 1200L)
+            } else null
 
-            if (isReadyByVoltage) {
+            val isCarActive = isReadyByVoltage || (canProbe?.isValid == true)
+
+            if (isCarActive) {
                 consecutiveStandbyChecks = 0
                 stateMachine.onVehicleReady()
-                addLog("⚡ RILEVATO STATO READY AUTO (12V: ${volt}V >= 13.0V)! Verifica bus CAN e aggancio rapido...")
+                if (isReadyByVoltage) {
+                    addLog("⚡ RILEVATO STATO READY AUTO (12V: ${volt}V >= 13.0V)! Verifica bus CAN e aggancio rapido...")
+                } else {
+                    addLog("⚡ RILEVATO QUADRO ACCESO AUTO (12V: ${volt}V < 13.0V, CAN 7DF attivo)! Uscita dallo standby...")
+                }
                 currentCanHeader = ""
                 lastAutoRecoveryTimestamp = now
                 lastStandbyExitTimestamp = now
                 delay(250) // Stabilizzazione ricetrasmettitore CAN su adapter e bus
 
-                // La tensione conferma il DC-DC attivo, ma il protocollo viene convalidato
-                // separatamente con una risposta ECU reale in broadcast.
+                // La tensione conferma il DC-DC attivo o il quadro acceso; protocollo convalidato con risposta ECU reale in broadcast
                 stateMachine.onCanSearching()
-                val s0Ok = probeBroadcastCanWithAutomaticFallback("Risveglio da standby")
+                val s0Ok = canProbe?.isValid ?: probeBroadcastCanWithAutomaticFallback("Risveglio da standby")
 
                 // Handshake Stadio 1: aggancio rapido motore
                 ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU)
@@ -707,9 +733,9 @@ class ObdController(
                     auxiliary12vVoltage = volt,
                     ecuAlertMessage = if (canOk) null else {
                         if (volt > 0f) {
-                            "Veicolo in READY (12V: ${String.format(java.util.Locale.US, "%.1f", volt)}V), sincronizzazione con ECU Toyota in corso..."
+                            "Veicolo attivo (12V: ${String.format(java.util.Locale.US, "%.1f", volt)}V), sincronizzazione con ECU Toyota in corso..."
                         } else {
-                            "Veicolo in READY, sincronizzazione con ECU Toyota in corso..."
+                            "Veicolo attivo, sincronizzazione con ECU Toyota in corso..."
                         }
                     },
                     batteryAdapterLimitationWarning = null
@@ -724,7 +750,7 @@ class ObdController(
                     hasEcuCommunication = false,
                     capabilityState = stateMachine.currentCapabilityState,
                     auxiliary12vVoltage = volt,
-                    ecuAlertMessage = "Auto in standby a basso consumo: accendi la vettura (spia verde READY) per avviare la telemetria.",
+                    ecuAlertMessage = "Auto in standby a basso consumo: accendi la vettura (spia verde READY o quadro) per avviare la telemetria.",
                     batteryAdapterLimitationWarning = null
                 )
             }
@@ -893,10 +919,11 @@ class ObdController(
             }
 
             val isAutoCoolingActive = updatedAutoStatus.isEnabled && updatedAutoStatus.isActivelyCooling
-            val shouldForceFan = currentState.fanForcedMax || isAutoCoolingActive || (updatedBattery.maxTemp >= currentState.targetThreshold && updatedBattery.maxTemp > 0.0)
+            val isBatteryValid = stateMachine.currentCapabilityState.batteryEcuDiscoveryState == BatteryEcuDiscoveryState.Discovered && updatedBattery.maxTemp > 0.0
+            val shouldForceFan = isBatteryValid && (currentState.fanForcedMax || isAutoCoolingActive || updatedBattery.maxTemp >= currentState.targetThreshold)
             val activeTargetSpeed = if (currentState.fanForcedMax) 6 else if (isAutoCoolingActive) updatedAutoStatus.targetSpeed else 6
 
-            if (stateMachine.currentCapabilityState.batteryEcuDiscoveryState == BatteryEcuDiscoveryState.Discovered) {
+            if (isBatteryValid) {
                 if (shouldForceFan) {
                     val fanCmd = ToyotaYarisCommands.getFanSpeedCommand(activeTargetSpeed)
                     val fanCmdRes = bleManager.sendCommand(fanCmd)
@@ -908,11 +935,7 @@ class ObdController(
                         stateMachine.onFanControlConfirmed()
                         stateMachine.onFanActuationStateChanged(FanActuationState.CONFIRMED)
                     }
-                    if (updatedBattery.maxTemp > 0.0) {
-                        addLog("Ventola HV L$activeTargetSpeed | Batt: ${String.format(java.util.Locale.US, "%.1f", updatedBattery.maxTemp)}°C")
-                    } else {
-                        addLog("Ventola HV L$activeTargetSpeed | In attesa telemetria termica...")
-                    }
+                    addLog("Ventola HV L$activeTargetSpeed | Batt: ${String.format(java.util.Locale.US, "%.1f", updatedBattery.maxTemp)}°C")
                 } else {
                     if (currentState.batteryStatus.isFanForced) {
                         bleManager.sendCommand(ToyotaYarisCommands.CMD_FAN_STOP_OR_RESET)
@@ -1292,8 +1315,8 @@ class ObdController(
                     )
                 )
             } finally {
-                // Restore Battery CAN header for continuous fan control
-                ensureCanHeader(ToyotaYarisCommands.HEADER_BATTERY_ECU)
+                // Restore standard Engine CAN header for telemetry loop
+                ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU)
                 isEcuOperationInProgress = false
             }
         }
@@ -1460,8 +1483,8 @@ class ObdController(
                     )
                 )
             } finally {
-                // Restore Battery CAN header for continuous fan control
-                ensureCanHeader(ToyotaYarisCommands.HEADER_BATTERY_ECU)
+                // Restore standard Engine CAN header for telemetry loop
+                ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU)
                 isEcuOperationInProgress = false
             }
         }
