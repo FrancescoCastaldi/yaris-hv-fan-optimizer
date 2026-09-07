@@ -6,6 +6,16 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)
 - **MINOR (`0.X.0`)**: Aggiunta di nuove funzionalità, sensori, codifiche o telemetrie.
 - **PATCH (`0.0.X`)**: Bugfix, ottimizzazioni di performance o aggiustamenti grafici minori.
 
+## [Unreleased]
+### 🧪 Suite di Test di Integrazione Simulati per la Gestione Errori Adapter
+- **Nuovo file `AdapterErrorHandlingIntegrationTest.kt`**: 5 scenari end-to-end su `ObdController` con trasporto simulato, a copertura dei pattern di guasto adapter osservati sul campo:
+  - NODATA persistente su tutta la fallback chain batteria (`2228C1` → `2228C0` → `220101` → `2101` → `21C3` → `2161`) con verifica che la telemetria motore resti sempre viva e che l'alert `batteryAdapterLimitationWarning` si attivi correttamente.
+  - Payload malformati/non parsabili sul PID batteria, gestiti senza crash del parser.
+  - Eccezioni di trasporto (disconnessioni BLE simulate) durante la query batteria, isolate dallo scheduler (VAL-OBD-008) con ripristino automatico dell'header CAN.
+  - Risposte UDS negative (`0x7F`) su tutta la fallback chain, rigettate correttamente come fallimento del candidato.
+  - Adapter "flaky" che fallisce ripetutamente e poi recupera: l'alert hardware sparisce automaticamente alla prima scoperta riuscita.
+- Nessuna modifica al comportamento applicativo: solo copertura di test aggiuntiva a validazione del fix v2.9.14.
+
 ## [2.9.14] - 2026-09-07
 ### 🔧 Resilienza Query Multi-Frame Batteria Denso HV & Diagnosi Compatibilità Adapter
 - **Timeout ELM esteso per risposta multi-frame PID `2228C1`**: Il timeout interno `AT ST` dedicato alla query UDS multi-frame della centralina batteria Denso (header `7E2`) è stato allungato da `AT ST 64` (~410ms) a `AT ST C8` (~819ms) per dare più margine ai cloni ELM327/Vlinker con implementazione lenta o carente del flow-control ISO-TP, senza penalizzare la reattività delle query single-frame su motore, body, meter e ADAS.

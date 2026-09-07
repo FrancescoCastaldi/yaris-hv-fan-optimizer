@@ -13,12 +13,17 @@ The application follows Modern Android Development (MAD) architecture principles
 
 ### 1.2 ObdController
 - Background asynchronous orchestrator running on `Dispatchers.IO`.
-- Manages protocol initialization sequences (`AT Z`, `AT E0`, `AT SP 6`, `AT SH 7E2`, `AT CRA 7EA`).
-- Executes cyclic interleaved polling every 1.5 seconds:
-  1. HV Battery Pack Diagnostics (Mode 22 `22 28 C1` or legacy Mode 21 `21 61`).
-  2. Active Test IO Control (`30 08 06` / `2F 58 03 06` for Fan Level 6) or Tester Present keep-alive (`3E 00`).
-  3. Engine Coolant Temperature (Mode 01 `0105`), Intake/Ambient Temperature (Mode 01 `010F`), and Engine RPM (Mode 01 `010C`).
+- Manages protocol initialization sequences (`AT Z`, `AT E0`, `AT SP 6`, `AT SH 7E2`, `AT AR`) with automatic clone/STN hardware detection (`ATI`, `ST DI`) to decide whether custom `AT FC` flow-control commands are safe to send.
+- Runs a dual-rate adaptive scheduler (`runDualRateScheduler`) instead of a fixed cyclic interval:
+  1. Battery slice (every 3500ms, or on-demand): delegates PID selection to `BatteryDiscoveryEngine`, which probes exactly one candidate of the fallback chain (`2228C1` → `2228C0` → `220101` → `2101` → `21C3` → `2161`) per eligible slice, places failed candidates in a 30s cooldown, and latches the first valid responder.
+  2. Fast engine telemetry (every scheduler tick, ~140ms nominal): Vehicle Speed (`010D`), Engine RPM (`010C`), Throttle (`0111`), dispatched via a child coroutine so a slow/timed-out battery slice never starves it (VAL-OBD-007).
+  3. Coolant/IAT warm-up slice (every 4000ms): Engine Coolant Temperature (`0105`) and Intake/Ambient Temperature (`010F`), also immune to battery-slice timeouts (VAL-OBD-012).
+- Applies a conservative ELM-internal timeout (`AT ST C8`, ~819ms) specifically when the CAN header is switched to the battery ECU (`7E2`), to accommodate slow/partial ISO-TP flow-control implementations on ELM327 clone/Vlinker adapters without penalizing the fast engine telemetry loop (`AT ST 20`).
+- Surfaces a dedicated `batteryAdapterLimitationWarning` in `ObdLiveState` when the entire battery fallback chain fails for >= 2 consecutive full cycles, distinguishing a likely OBD adapter hardware limitation from a transient/software issue.
 - Emits real-time state updates through `MutableStateFlow<ObdLiveState>`.
+
+#### 1.2.1 Test Coverage & Resilience Validation
+`ObdController`, `BatteryDiscoveryEngine`, and `Elm327Protocol` are covered by ~90 simulated unit/integration tests against a fake `ObdTransport` (no Android context or real hardware required), including a dedicated `AdapterErrorHandlingIntegrationTest` suite exercising persistent NODATA, malformed payloads, transport exceptions, negative UDS responses, and flaky-adapter recovery scenarios end-to-end through the controller.
 
 ### 1.3 FanControlForegroundService
 - Android Foreground Service with type `FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE`.

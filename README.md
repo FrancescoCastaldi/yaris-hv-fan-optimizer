@@ -1,7 +1,7 @@
 # Toyota Yaris MK4 Hybrid - HV Battery Cooling, GR Cockpit & ECU Coding Suite 🏎️⚡
 
 [![Website](https://img.shields.io/badge/Website-Live%20Portal-00E5FF.svg?style=for-the-badge&logo=googlechrome)](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/)
-[![Download APK](https://img.shields.io/badge/Download-APK%20Release%20(v2.9.13)-D71920.svg?style=for-the-badge&logo=android)](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisHvFanControl-v2.9.13.apk)
+[![Download APK](https://img.shields.io/badge/Download-APK%20Release%20(v2.9.14)-D71920.svg?style=for-the-badge&logo=android)](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisHvFanControl-v2.9.14.apk)
 [![Platform](https://img.shields.io/badge/Platform-Android%208.0%2B%20(API%2026%2B)-3DDC84.svg?style=flat&logo=android)](https://www.android.com/)
 [![Kotlin](https://img.shields.io/badge/Kotlin-1.9.24-7F52FF.svg?style=flat&logo=kotlin)](https://kotlinlang.org/)
 [![Jetpack Compose](https://img.shields.io/badge/UI-Jetpack%20Compose%20M3-4285F4.svg?style=flat&logo=jetpackcompose)](https://developer.android.com/jetpack/compose)
@@ -16,7 +16,7 @@ Applicazione Android nativa ad altissime prestazioni per **Toyota Yaris MK4 Hybr
    - Rilevamento robusto dello stato READY auto tramite tensione reale batteria 12V (`AT RV >= 13.0V` convertitore DC-DC attivo) immune a banner di versione firmware, con sincronizzazione periodica via probe frame CAN;
    - Modalità Standby a basso consumo quando l'auto è spenta o non READY, azzerando le richieste CAN e prevenendo saturazione bus, errori `NO DATA` e scarica della batteria 12V;
 2. **Flow Control Hardware ISO-TP Denso Multi-Frame (PID 2228C1)**:
-   - Configurazione hardware dinamica del chip ELM/STN (`AT CRA 7EA`, `AT FC SH 7E2`, `AT FC SD 300000`, `AT FC SM 1`) con timeout calibrato a 400ms (`AT ST 64`) per streaming fulmineo e privo di perdite dei pacchetti multi-frame delle celle batteria HV e ventola;
+   - Configurazione hardware dinamica del chip ELM/STN (`AT CRA 7EA`, `AT FC SH 7E2`, `AT FC SD 300000`, `AT FC SM 1`) con timeout calibrato a ~819ms (`AT ST C8`, v2.9.14) per dare margine sufficiente ai cloni ELM327/Vlinker sulle risposte multi-frame delle celle batteria HV e ventola;
 3. **Watchdog di Riconnessione Silenziosa & Auto-Connect Istantaneo all'Avvio**:
    - Closed-loop watchdog con backoff esponenziale automatico e socket streaming thread-safe, senza dialog bloccanti o fastidiosi in caso di disconnessione o spegnimento vettura;
    - Connessione istantanea in background al dispositivo Vgate salvato o già associato in Android senza forzare la modale di scansione;
@@ -31,7 +31,7 @@ Applicazione Android nativa ad altissime prestazioni per **Toyota Yaris MK4 Hybr
 ## 🌐 Sito Web Ufficiale & Download Diretto
 - **Portale Web Ufficiale**: 👉 **[https://francescocastaldi.github.io/yaris-hv-fan-optimizer/](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/)**
 - **Simulatore Interattivo Web**: 👉 **[https://francescocastaldi.github.io/yaris-hv-fan-optimizer/preview.html](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/preview.html)**
-- **Download Diretto Ultimo APK (v2.9.13)**: 👉 **[Scarica YarisHvFanControl-v2.9.13.apk](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisHvFanControl-v2.9.13.apk)**
+- **Download Diretto Ultimo APK (v2.9.14)**: 👉 **[Scarica YarisHvFanControl-v2.9.14.apk](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisHvFanControl-v2.9.14.apk)**
 
 ---
 
@@ -82,15 +82,19 @@ Applicazione Android nativa ad altissime prestazioni per **Toyota Yaris MK4 Hybr
 ---
 
 ## 🧪 Test Automatizzati & Qualità del Codice (100% Passing)
-La pipeline di build integra test unitari e di integrazione continui:
-- `ToyotaCommandsTest.kt`: Test parsing frame UDS batteria e costanti diagnostiche;
-- `Elm327ParserTest.kt`: Test pulizia protocollo e filtraggio risposte;
-- `EcuCodingAndPipelineTest.kt`: Test formule telemetria, formule °BTDC, percentuali carico e default ECU;
-- `ObdControllerIntegrationTest.kt`: Test logica cronometro Dragy, macchina a stati warm-up e payload di scrittura UDS Mode 3B/2E.
+La pipeline di build integra oltre 90 test unitari e di integrazione simulata (`app/src/test/java/com/yaris/hvfan/`):
+- `ToyotaCommandsTest.kt` / `Elm327ParserTest.kt`: Parsing frame UDS batteria, costanti diagnostiche, pulizia protocollo e filtraggio risposte;
+- `EcuCodingAndPipelineTest.kt`: Formule telemetria, formule °BTDC, percentuali carico e default ECU;
+- `ObdControllerIntegrationTest.kt`: Logica cronometro Dragy, macchina a stati warm-up e payload di scrittura UDS Mode 3B/2E;
+- `ObdStateMachineTest.kt`: Transizioni della macchina a stati delle capacità (standby, CAN searching, discovery batteria, auto-recovery);
+- `ObdInitSequenceTest.kt`: Sequenza di init ELM327, ordine comandi AT SP/AT ST e assenza di filtri AT CRA distruttivi sui cloni;
+- `BatteryDiscoveryEngineTest.kt` / `ObdControllerBatteryDiscoveryTest.kt`: Probing a fasi della fallback chain batteria, cooldown per-candidato, aggancio (latch) al primo PID valido e contatore `completedFailureCycles`;
+- `EngineTelemetryResilienceTest.kt`: Invariante zero-starvation della telemetria motore anche sotto timeout ripetuti di 3000ms sulla discovery batteria (VAL-OBD-007/012);
+- `AdapterErrorHandlingIntegrationTest.kt` (v2.9.14): Suite dedicata alla gestione degli errori dell'adapter OBD-II — NODATA persistente su tutta la fallback chain, payload malformati/non parsabili, eccezioni di trasporto (disconnessioni simulate), risposte UDS negative (0x7F) e recupero automatico di un adapter "flaky", incluso il nuovo alert `batteryAdapterLimitationWarning` per probabile incompatibilità hardware.
 
 Esegui i test localmente con:
 ```bash
-gradle testReleaseUnitTest
+gradle testDebugUnitTest
 ```
 
 ---
@@ -131,7 +135,7 @@ Per compilare e firmare l'APK con certificato RSA:
 ```cmd
 D:\Sviluppo\yaris-hv-fan-android\build_apk.bat
 ```
-L'APK generato viene automaticamente verificato e salvato come singolo file nella root del repository: `YarisHvFanControl-v2.9.13.apk`.
+L'APK generato viene automaticamente verificato e salvato come singolo file nella root del repository: `YarisHvFanControl-v2.9.14.apk`.
 
 ---
 
