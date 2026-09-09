@@ -488,13 +488,140 @@ class ObdControllerBatteryDiscoveryTest {
 
         val dispatched = fakeTransport.dispatchedCommands
         assertTrue(
-            "Manual fan command 2F580305 (or fallback 300805) must be dispatched even if battery is undiscovered",
-            dispatched.contains("2F580305") || dispatched.contains("300805")
+            "Manual fan command 2F580305 must be dispatched as primary UDS command",
+            dispatched.contains("2F580305")
+        )
+        assertFalse(
+            "Fallback 300805 must NOT be dispatched when primary UDS command succeeds",
+            dispatched.contains("300805")
         )
         assertTrue(
             "Header must be switched to 7E2 for battery ECU",
             dispatched.contains("AT SH 7E2")
         )
+        assertTrue(
+            "Hardware receive filter AT CRA 7EA must be configured for battery ECU",
+            dispatched.contains("AT CRA 7EA")
+        )
+    }
+
+    @Test
+    fun testManualFanForcingFallsBackToMode30WhenUdsFails() = runTest {
+        val fakeTransport = FakeObdTransport()
+        fakeTransport.commandResponder = { cmd, _ ->
+            when {
+                cmd.startsWith("AT") -> "OK"
+                cmd == ToyotaYarisCommands.PID_READ_BATTERY_DATA_TNGA -> "NO DATA"
+                cmd.startsWith("2F58") -> "7F2F11" // Negative response (NRC)
+                cmd.startsWith("3008") -> "OK"
+                else -> "OK"
+            }
+        }
+
+        val stateMachine = ObdStateMachine()
+        val controller = ObdController(
+            bleManager = fakeTransport,
+            scope = this,
+            stateMachine = stateMachine,
+            discoveryEngine = BatteryDiscoveryEngine()
+        )
+
+        controller.setManualForcedFan(true, level = 4)
+        controller.executeBatteryThermalCycle()
+
+        val dispatched = fakeTransport.dispatchedCommands
+        assertTrue(
+            "Primary UDS command 2F580304 must be attempted first",
+            dispatched.contains("2F580304")
+        )
+        assertTrue(
+            "Fallback Mode 30 command 300804 must be dispatched upon UDS NRC",
+            dispatched.contains("300804")
+        )
+    }
+
+    @Test
+    fun testFanReleaseDispatchesReturnControlToEcuAndMode30Stop() = runTest {
+        val fakeTransport = FakeObdTransport()
+        fakeTransport.commandResponder = { cmd, _ ->
+            when {
+                cmd.startsWith("AT") -> "OK"
+                cmd == ToyotaYarisCommands.PID_READ_BATTERY_DATA_TNGA -> "NO DATA"
+                cmd.startsWith("2F58") || cmd.startsWith("3008") -> "OK"
+                else -> "OK"
+            }
+        }
+
+        val stateMachine = ObdStateMachine()
+        val controller = ObdController(
+            bleManager = fakeTransport,
+            scope = this,
+            stateMachine = stateMachine,
+            discoveryEngine = BatteryDiscoveryEngine()
+        )
+
+        // 1. Force fan
+        controller.setManualForcedFan(true, level = 3)
+        controller.executeBatteryThermalCycle()
+        assertTrue(controller.liveState.value.batteryStatus.isFanForced)
+
+        fakeTransport.dispatchedCommands.clear()
+
+        // 2. Release fan to OEM
+        controller.setManualForcedFan(false)
+        controller.executeBatteryThermalCycle()
+
+        val dispatched = fakeTransport.dispatchedCommands
+        assertTrue(
+            "Must dispatch UDS ReturnControlToECU (2F5800) upon fan release",
+            dispatched.contains(ToyotaYarisCommands.CMD_FAN_RETURN_CONTROL_TO_ECU)
+        )
+        assertTrue(
+            "Must dispatch Mode 30 Stop (300800) upon fan release",
+            dispatched.contains(ToyotaYarisCommands.CMD_FAN_STOP_OR_RESET)
+        )
+        assertFalse(
+            "liveState isFanForced must be reset to false",
+            controller.liveState.value.batteryStatus.isFanForced
+        )
+    }
+
+    @Test
+    fun testEnsureCanHeaderConfiguresHardwareFiltersCorrectly() = runTest {
+        val fakeTransport = FakeObdTransport()
+        val controller = ObdController(
+            bleManager = fakeTransport,
+            scope = this,
+            stateMachine = ObdStateMachine(),
+            discoveryEngine = BatteryDiscoveryEngine()
+        )
+
+        // 1. Switch to Engine ECU (7E0) -> AT SH 7E0 + AT CRA 7E8
+        controller.ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU)
+        var dispatched = fakeTransport.dispatchedCommands
+        assertTrue(dispatched.contains("AT SH 7E0"))
+        assertTrue(dispatched.contains("AT CRA 7E8"))
+
+        fakeTransport.dispatchedCommands.clear()
+
+        // 2. Idempotent call to same header -> no re-dispatch
+        controller.ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU)
+        assertEquals("Should not re-dispatch AT commands if header has not changed", 0, fakeTransport.dispatchedCommands.size)
+
+        // 3. Switch to Battery ECU (7E2) -> AT SH 7E2 + AT CRA 7EA
+        controller.ensureCanHeader(ToyotaYarisCommands.HEADER_BATTERY_ECU)
+        dispatched = fakeTransport.dispatchedCommands
+        assertTrue(dispatched.contains("AT SH 7E2"))
+        assertTrue(dispatched.contains("AT CRA 7EA"))
+
+        fakeTransport.dispatchedCommands.clear()
+
+        // 4. Switch to Broadcast (7DF) -> AT SH 7DF + AT AR (Elm327Protocol.CMD_AUTO_RECEIVE)
+        controller.ensureCanHeader(ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST)
+        dispatched = fakeTransport.dispatchedCommands
+        assertTrue(dispatched.contains("AT SH 7DF"))
+        assertTrue(dispatched.contains(Elm327Protocol.CMD_AUTO_RECEIVE))
+        assertFalse("Must NOT send invalid AT CRA without args", dispatched.contains("AT CRA"))
     }
 }
 

@@ -270,7 +270,7 @@ object ToyotaYarisCommands {
     const val CMD_SET_RECEIVE_FILTER     = "AT CRA 7EA"
 
     fun getFilterForHeader(header: String): String? {
-        return when (header.uppercase()) {
+        return when (header.trim().uppercase()) {
             HEADER_ENGINE_ECU -> CRA_ENGINE_ECU       // 7E8
             HEADER_BATTERY_ECU -> CRA_BATTERY_ECU     // 7EA
             HEADER_METER_ECU -> CRA_METER_ECU         // 7C8
@@ -320,6 +320,7 @@ object ToyotaYarisCommands {
     const val CMD_FAN_MAX_SPEED_UDS = "300806"           // Mode 30 IO Control (Fan Level 6)
     const val CMD_FAN_MAX_SPEED_UDS_ALT = "308106"       // Mode 30 IO Control Variant 81 06
     const val CMD_FAN_MAX_SPEED_ALT = "2F580306"         // Mode 2F IO Control Short Term Adjustment to 6
+    const val CMD_FAN_RETURN_CONTROL_TO_ECU = "2F5800"    // UDS Service 2F ReturnControlToECU
     const val CMD_FAN_STOP_OR_RESET = "300800"           // Mode 30 Release / Stop
     const val CMD_TESTER_PRESENT     = "3E00"            // Tester Present keep-alive
 

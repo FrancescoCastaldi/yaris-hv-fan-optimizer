@@ -479,12 +479,11 @@ class ObdController(
             val rxFilter = ToyotaYarisCommands.getFilterForHeader(header)
             if (rxFilter != null) {
                 bleManager.sendCommand("AT CRA $rxFilter")
-                delay(25)
-            } else if (header.equals(ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST, ignoreCase = true)) {
-                // In broadcast (7DF), reimposta ricezione aperta
-                bleManager.sendCommand("AT CRA")
-                delay(25)
+            } else {
+                // In broadcast (7DF) o header senza filtro fisso 1:1, ripristina ricezione automatica con AT AR
+                bleManager.sendCommand(Elm327Protocol.CMD_AUTO_RECEIVE)
             }
+            delay(25)
 
             when (header) {
                 ToyotaYarisCommands.HEADER_BATTERY_ECU -> {
@@ -930,7 +929,7 @@ class ObdController(
             } else if (currentState.batteryStatus.isFanForced) {
                 ensureCanHeader(ToyotaYarisCommands.HEADER_BATTERY_ECU)
                 // Rilascio ventola a gestione automatica ECU: UDS ReturnControlToECU (2F5800) e Mode 30 stop
-                bleManager.sendCommand("2F5800")
+                bleManager.sendCommand(ToyotaYarisCommands.CMD_FAN_RETURN_CONTROL_TO_ECU)
                 bleManager.sendCommand(ToyotaYarisCommands.CMD_FAN_STOP_OR_RESET)
                 stateMachine.onFanActuationStateChanged(FanActuationState.OEM_AUTOMATIC)
                 addLog("Ventola HV: ripristinato controllo automatico OEM.")

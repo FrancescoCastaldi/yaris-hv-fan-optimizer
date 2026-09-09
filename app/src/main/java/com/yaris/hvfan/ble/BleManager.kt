@@ -971,6 +971,18 @@ class BleManager(private val context: Context) : com.yaris.hvfan.obd.ObdTranspor
                             outStream.write("\r".toByteArray(Charsets.US_ASCII))
                             outStream.flush()
                         }
+                    } else if (isBleConnected) {
+                        val gatt = bluetoothGatt
+                        val writeCh = writeCharacteristic
+                        if (gatt != null && writeCh != null) {
+                            val writeType = if ((writeCh.properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0 &&
+                                (writeCh.properties and BluetoothGattCharacteristic.PROPERTY_WRITE) == 0) {
+                                BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+                            } else {
+                                BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                            }
+                            writeGattCharacteristic(gatt, writeCh, "\r".toByteArray(Charsets.US_ASCII), writeType)
+                        }
                     }
                 } catch (ignored: Throwable) {}
                 delay(50)

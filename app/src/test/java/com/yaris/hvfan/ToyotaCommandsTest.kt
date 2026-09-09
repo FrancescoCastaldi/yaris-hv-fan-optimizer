@@ -49,6 +49,9 @@ class ToyotaCommandsTest {
     @Test
     fun testActiveTestCommandConstants() {
         assertEquals("300806", ToyotaYarisCommands.CMD_FAN_MAX_SPEED_UDS)
+        assertEquals("2F580306", ToyotaYarisCommands.CMD_FAN_MAX_SPEED_ALT)
+        assertEquals("2F5800", ToyotaYarisCommands.CMD_FAN_RETURN_CONTROL_TO_ECU)
+        assertEquals("300800", ToyotaYarisCommands.CMD_FAN_STOP_OR_RESET)
         assertEquals("AT SH 7E2", ToyotaYarisCommands.CMD_SET_HEADER_BATTERY_ECU)
         assertEquals("AT CRA 7EA", ToyotaYarisCommands.CMD_SET_RECEIVE_FILTER)
     }
@@ -56,6 +59,8 @@ class ToyotaCommandsTest {
     @Test
     fun testGetFilterForHeader() {
         assertEquals("7E8", ToyotaYarisCommands.getFilterForHeader("7E0"))
+        assertEquals("7E8", ToyotaYarisCommands.getFilterForHeader("7e0"))
+        assertEquals("7E8", ToyotaYarisCommands.getFilterForHeader(" 7E0 "))
         assertEquals("7EA", ToyotaYarisCommands.getFilterForHeader("7E2"))
         assertEquals("7C8", ToyotaYarisCommands.getFilterForHeader("7C0"))
         assertEquals("758", ToyotaYarisCommands.getFilterForHeader("750"))

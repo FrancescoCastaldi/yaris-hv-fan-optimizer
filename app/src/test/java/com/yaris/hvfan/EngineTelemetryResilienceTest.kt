@@ -235,10 +235,11 @@ class EngineTelemetryResilienceTest {
             "Coolant cycle must dispatch at least twice over ~4.2s of simulation, got $coolantDispatches",
             coolantDispatches.size >= 2
         )
-        // The 4000ms coolant cadence is preserved as the scheduler intent. Because coolant
-        // runs in the same tick as the battery slice on a single ELM327 channel, a 3000ms
-        // battery timeout can push the next coolant dispatch to at most 7000ms. The
-        // invariant is that coolant is never permanently starved, regardless of probe outcome.
+        // The 4000ms coolant cadence is preserved as the scheduler intent. In single-flight
+        // sequential execution on a shared ELM327 serial channel, a 3000ms battery probe timeout
+        // triggered at BATTERY_POLL_INTERVAL (3500ms) plus scheduler loop delay/quantization
+        // bounds the maximum gap to <= 7500ms. The invariant is that coolant is never permanently
+        // starved, regardless of probe outcome.
         val coolantGapMs = coolantDispatches[1] - coolantDispatches[0]
         assertTrue(
             "Coolant dispatch gap must stay within the bounded 4000ms schedule plus max battery timeout (<= 7500ms), got $coolantGapMs",
