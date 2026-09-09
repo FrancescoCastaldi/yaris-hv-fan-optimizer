@@ -466,7 +466,7 @@ class ObdControllerBatteryDiscoveryTest {
             when {
                 cmd.startsWith("AT") -> "OK"
                 cmd == ToyotaYarisCommands.PID_READ_BATTERY_DATA_TNGA -> "NO DATA"
-                cmd.startsWith("3008") -> "OK"
+                cmd.startsWith("3008") || cmd.startsWith("2F58") -> "OK"
                 else -> "OK"
             }
         }
@@ -488,8 +488,8 @@ class ObdControllerBatteryDiscoveryTest {
 
         val dispatched = fakeTransport.dispatchedCommands
         assertTrue(
-            "Manual fan command 300805 must be dispatched even if battery is undiscovered",
-            dispatched.contains("300805")
+            "Manual fan command 2F580305 (or fallback 300805) must be dispatched even if battery is undiscovered",
+            dispatched.contains("2F580305") || dispatched.contains("300805")
         )
         assertTrue(
             "Header must be switched to 7E2 for battery ECU",

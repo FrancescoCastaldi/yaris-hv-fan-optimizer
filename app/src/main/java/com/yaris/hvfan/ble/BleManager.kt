@@ -902,6 +902,13 @@ class BleManager(private val context: Context) : com.yaris.hvfan.obd.ObdTranspor
         command: String,
         timeoutMs: Long
     ): String = commandMutex.withLock {
+        // Verifica fail-fast: se né SPP né BLE sono connessi, fallisci subito
+        val isSppConnected = bluetoothSocket?.isConnected == true && socketOutputStream != null
+        val isBleConnected = bluetoothGatt != null && writeCharacteristic != null
+        if (!isSppConnected && !isBleConnected) {
+            throw IllegalStateException("Nessun canale Bluetooth connesso")
+        }
+
         // Purge preventivo del buffer di risposta e registrazione deferred atomica
         val deferred = CompletableDeferred<String>()
         synchronized(responseBuffer) {
@@ -920,7 +927,7 @@ class BleManager(private val context: Context) : com.yaris.hvfan.obd.ObdTranspor
         try {
             // 1. Invia tramite Classic Bluetooth SPP Socket se connesso
             val outStream = socketOutputStream
-            if (bluetoothSocket?.isConnected == true && outStream != null) {
+            if (isSppConnected && outStream != null) {
                 withContext(Dispatchers.IO) {
                     outStream.write(cmdBytes)
                     outStream.flush()
@@ -943,15 +950,39 @@ class BleManager(private val context: Context) : com.yaris.hvfan.obd.ObdTranspor
                 }
             }
 
+            var isTimedOut = false
             val result = withTimeoutOrNull(timeoutMs) {
                 deferred.await()
             } ?: run {
+                isTimedOut = true
                 synchronized(responseBuffer) {
                     val partial = responseBuffer.toString()
                     responseBuffer.setLength(0)
                     if (partial.isNotBlank()) partial else "TIMEOUT"
                 }
             }
+
+            // Se è andato in timeout, l'adattatore potrebbe essere ancora occupato sul bus CAN.
+            // Invia un \r e attendi una piccola finestra di drain per svuotare il buffer UART
+            if (isTimedOut) {
+                try {
+                    if (isSppConnected && outStream != null) {
+                        withContext(Dispatchers.IO) {
+                            outStream.write("\r".toByteArray(Charsets.US_ASCII))
+                            outStream.flush()
+                        }
+                    }
+                } catch (ignored: Throwable) {}
+                delay(50)
+                synchronized(responseBuffer) {
+                    responseBuffer.setLength(0)
+                }
+            } else {
+                // Guard-time tra comandi seriali consecutivi (15ms) per consentire
+                // ai chip ELM327 cloni/lenti di processare il bus e non subire buffer overrun
+                delay(15)
+            }
+
             val elapsedMs = System.currentTimeMillis() - startMs
             try {
                 com.yaris.hvfan.data.ObdLogger.logRx(result, elapsedMs)

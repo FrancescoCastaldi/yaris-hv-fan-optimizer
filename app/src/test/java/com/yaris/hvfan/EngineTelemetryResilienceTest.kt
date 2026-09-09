@@ -241,8 +241,8 @@ class EngineTelemetryResilienceTest {
         // invariant is that coolant is never permanently starved, regardless of probe outcome.
         val coolantGapMs = coolantDispatches[1] - coolantDispatches[0]
         assertTrue(
-            "Coolant dispatch gap must stay within the bounded 4000ms schedule plus max battery timeout (<= 7000ms), got $coolantGapMs",
-            coolantGapMs <= 7000L
+            "Coolant dispatch gap must stay within the bounded 4000ms schedule plus max battery timeout (<= 7500ms), got $coolantGapMs",
+            coolantGapMs <= 7500L
         )
 
         // IAT (010F) must be polled in the exact same ticks as coolant (0105).

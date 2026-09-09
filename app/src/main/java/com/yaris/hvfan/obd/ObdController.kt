@@ -7,6 +7,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 data class ObdLiveState(
     val isInitialized: Boolean = false,
@@ -464,24 +465,36 @@ class ObdController(
 
 
     /**
-     * Imposta l'header di trasmissione CAN dell'ECU bersaglio. Non viene mai inviato AT CRA:
-     * con AT SH 7Ex l'ELM327 filtra da solo la risposta fisica corrispondente, mentre sui cloni
-     * un CRA attivo risponde OK e poi scarta ogni frame in ingresso (NO DATA su qualsiasi PID).
+     * Imposta l'header di trasmissione CAN dell'ECU bersaglio e configura in modo atomico
+     * il corrispondente filtro hardware di ricezione (AT CRA), per garantire che i frame fisici
+     * dell'ECU vengano sempre instradati all'applicazione senza scarti dal controller CAN interno dell'ELM327.
      */
     internal suspend fun ensureCanHeader(header: String, force: Boolean = false) {
         if (currentCanHeader != header || force) {
             currentCanHeader = ""
             bleManager.sendCommand("AT SH $header")
-            delay(30)
+            delay(25)
+
+            // Configura il filtro hardware di ricezione (AT CRA) corrispondente
+            val rxFilter = ToyotaYarisCommands.getFilterForHeader(header)
+            if (rxFilter != null) {
+                bleManager.sendCommand("AT CRA $rxFilter")
+                delay(25)
+            } else if (header.equals(ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST, ignoreCase = true)) {
+                // In broadcast (7DF), reimposta ricezione aperta
+                bleManager.sendCommand("AT CRA")
+                delay(25)
+            }
+
             when (header) {
                 ToyotaYarisCommands.HEADER_BATTERY_ECU -> {
                     if (isCustomFcSupported) {
                         bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SH_BATTERY)
-                        delay(30)
+                        delay(25)
                         bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SD_CTS)
-                        delay(30)
+                        delay(25)
                         bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SM_CUSTOM)
-                        delay(30)
+                        delay(25)
                     }
                     bleManager.sendCommand(Elm327Protocol.CMD_TIMEOUT_BATTERY_ECU)
                 }
@@ -491,21 +504,21 @@ class ObdController(
                 ToyotaYarisCommands.HEADER_ADAS_ECU -> {
                     if (isCustomFcSupported) {
                         bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SM_DEFAULT)
-                        delay(30)
+                        delay(25)
                     }
                     bleManager.sendCommand(Elm327Protocol.CMD_TIMEOUT_ECU_CODING)
                 }
                 else -> {
                     if (isCustomFcSupported) {
                         bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SM_DEFAULT)
-                        delay(30)
+                        delay(25)
                     }
                     bleManager.sendCommand(Elm327Protocol.CMD_TIMEOUT_TELEMETRY)
                 }
             }
             currentCanHeader = header
-            // I cloni ELM327 perdono il primo frame se la richiesta arriva a ridosso del cambio header.
-            delay(120)
+            // Pausa di stabilizzazione per i transceiver CAN dell'adattatore
+            delay(50)
         }
     }
 
@@ -587,39 +600,30 @@ class ObdController(
         )
     }
 
+    internal val obdTransactionMutex = kotlinx.coroutines.sync.Mutex()
+
     /**
-     * Steady-state dual-rate polling scheduler.
-     *
-     * Invariante VAL-OBD-007 / VAL-OBD-012: ogni tick dello scheduler gira dentro una
-     * coroutine figlia (tranne il primo). Se la fetta batteria del tick N blocca il
-     * trasporto fino al suo timeout (<= 3000ms), il tick N+1 viene lanciato dopo i
-     * normali 140ms e gira in sovrapposizione: in produzione il comando Mode 01 viene
-     * accodato sul trasporto seriale e completato subito dopo il restore dell'header 7E0,
-     * mentre in standby il tick successivo e' no-op. In questo modo i cicli 010C/010D/0111
-     * e 0105/010F non vengono mai saltati e la cadenza nativa (<=140ms fast loop /
-     * 4000ms warm-up) e' preservata anche sotto discovery batteria fallita.
+     * Schedulatore dual-rate rigorosamente sequenziale (single-flight execution).
+     * Ogni tick esegue il ciclo di telemetria inline garantendo che nessuna nuova transazione CAN
+     * venga avviata finché la precedente non è completamente terminata o andata in timeout.
+     * In questo modo si azzera qualunque rischio di sovrapposizione comandi, buffer overrun su ELM327
+     * e risposte scambiate tra diverse centraline (VAL-OBD-007 / VAL-OBD-012).
      */
     internal suspend fun runDualRateScheduler() {
-        var isFirstSchedulerTick = true
         while (currentCoroutineContext().isActive) {
             if (isEcuOperationInProgress) {
-                delay(140L)
+                delay(120L)
                 continue
             }
-            if (isFirstSchedulerTick) {
-                // Primo tick eseguito inline per inizializzare i timestamp di riferimento.
-                executeDualRateCycle()
-                isFirstSchedulerTick = false
-            } else {
-                // Inherit the caller's dispatcher: production scheduler runs on Dispatchers.IO,
-                // so children run on IO as well; test scopes inject a TestDispatcher so the
-                // scheduler becomes deterministic and child ticks interleave correctly.
-                scope.launch { executeDualRateCycle() }
+            obdTransactionMutex.withLock {
+                if (!isEcuOperationInProgress) {
+                    executeDualRateCycle()
+                }
             }
             val loopDelayMs = when {
                 _liveState.value.isStandbyMode -> 2500L // Standby a basso consumo: 2.5s per evitare saturazione bus
                 isTimingInProgress || lastKnownSpeed > 0 -> 60L
-                else -> 140L
+                else -> 120L
             }
             delay(loopDelayMs)
         }
@@ -909,12 +913,14 @@ class ObdController(
 
             if (shouldForceFan) {
                 ensureCanHeader(ToyotaYarisCommands.HEADER_BATTERY_ECU)
-                val fanCmd = ToyotaYarisCommands.getFanSpeedCommand(activeTargetSpeed)
-                val fanCmdRes = bleManager.sendCommand(fanCmd)
+                // Su Toyota TNGA-B XP210 il controllo ventola primario affidabile è UDS Service 0x2F (InputOutputControlByIdentifier)
+                val primaryUdsCmd = ToyotaYarisCommands.getFanSpeedCommandAlt(activeTargetSpeed) // 2F58030x
+                val fanCmdRes = bleManager.sendCommand(primaryUdsCmd)
                 val cleanFanRes = Elm327Protocol.cleanResponse(fanCmdRes)
-                if (cleanFanRes.contains("7F30") || cleanFanRes.contains("ERROR")) {
-                    val altCmd = ToyotaYarisCommands.getFanSpeedCommandAlt(activeTargetSpeed)
-                    bleManager.sendCommand(altCmd)
+                if (cleanFanRes.contains("7F2F") || cleanFanRes.contains("ERROR") || cleanFanRes.contains("NO DATA")) {
+                    // Fallback secondario su Mode 30 legacy (30080x)
+                    val fallbackCmd = ToyotaYarisCommands.getFanSpeedCommand(activeTargetSpeed)
+                    bleManager.sendCommand(fallbackCmd)
                     stateMachine.onFanActuationStateChanged(FanActuationState.REQUESTED)
                 } else {
                     stateMachine.onFanControlConfirmed()
@@ -923,8 +929,9 @@ class ObdController(
                 addLog("⚡ VENTOLA HV FORZATA L$activeTargetSpeed [${if (isManualForced) "MANUALE" else "AUTO"}] | Batt: ${String.format(java.util.Locale.US, "%.1f", updatedBattery.maxTemp)}°C")
             } else if (currentState.batteryStatus.isFanForced) {
                 ensureCanHeader(ToyotaYarisCommands.HEADER_BATTERY_ECU)
+                // Rilascio ventola a gestione automatica ECU: UDS ReturnControlToECU (2F5800) e Mode 30 stop
+                bleManager.sendCommand("2F5800")
                 bleManager.sendCommand(ToyotaYarisCommands.CMD_FAN_STOP_OR_RESET)
-                bleManager.sendCommand(ToyotaYarisCommands.CMD_TESTER_PRESENT)
                 stateMachine.onFanActuationStateChanged(FanActuationState.OEM_AUTOMATIC)
                 addLog("Ventola HV: ripristinato controllo automatico OEM.")
             }
@@ -1267,75 +1274,77 @@ class ObdController(
                 )
             )
 
-            try {
-                // 1. Meter ECU (7C0 / 7C8) -> Reverse Beep & Seatbelts
-                ensureCanHeader(ToyotaYarisCommands.HEADER_METER_ECU)
-                val resMeter = bleManager.sendCommand("21A7")
-                val cleanMeter = Elm327Protocol.cleanResponse(resMeter)
-                addLog("Meter 7C0 Read: $cleanMeter")
-                delay(80)
-
-                // 2. Main Body ECU (750 / 758) -> Doors, Windows, Turn Signals & Lights
-                ensureCanHeader(ToyotaYarisCommands.HEADER_BODY_ECU)
-                val resBody = bleManager.sendCommand("2101")
-                val cleanBody = Elm327Protocol.cleanResponse(resBody)
-                addLog("Body 750 Read: $cleanBody")
-                delay(80)
-
-                // 3. Aircon ECU (7C4 / 7CC) -> A/C Behavior
-                ensureCanHeader(ToyotaYarisCommands.HEADER_AIRCON_ECU)
-                val resAc = bleManager.sendCommand("2101")
-                val cleanAc = Elm327Protocol.cleanResponse(resAc)
-                addLog("AirCon 7C4 Read: $cleanAc")
-                delay(80)
-
-                // 4. TSS / ADAS (7A0 / 7A8) -> LDA & BSM
-                ensureCanHeader(ToyotaYarisCommands.HEADER_ADAS_ECU)
-                val resAdas = bleManager.sendCommand("2101")
-                val cleanAdas = Elm327Protocol.cleanResponse(resAdas)
-                addLog("ADAS 7A0 Read: $cleanAdas")
-                delay(80)
-
-                val anyPositive = Elm327Protocol.isUdsPositiveResponse(cleanMeter) ||
-                                  Elm327Protocol.isUdsPositiveResponse(cleanBody) ||
-                                  Elm327Protocol.isUdsPositiveResponse(cleanAc) ||
-                                  Elm327Protocol.isUdsPositiveResponse(cleanAdas)
-
-                if (anyPositive) {
-                    _liveState.value = _liveState.value.copy(
-                        ecuCodingState = _liveState.value.ecuCodingState.copy(
-                            isReadCompleted = true,
-                            isWriting = false,
-                            lastOperationStatus = "✅ Configurazione centralina letta con successo (Backup salvato)"
-                        )
-                    )
-                    addLog("Lettura parametri centralina completata con successo.")
-                } else {
-                    _liveState.value = _liveState.value.copy(
-                        ecuCodingState = _liveState.value.ecuCodingState.copy(
-                            isReadCompleted = false,
-                            isWriting = false,
-                            lastOperationStatus = "⚠️ Nessuna risposta dalle centraline: verifica quadro acceso in READY"
-                        )
-                    )
-                    addLog("⚠️ Nessuna centralina Body/Meter/Clima/ADAS ha risposto. Quadro non in READY o bus non sincronizzato.")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Errore lettura ECU", e)
-                _liveState.value = _liveState.value.copy(
-                    ecuCodingState = _liveState.value.ecuCodingState.copy(
-                        isWriting = false,
-                        lastOperationStatus = "⚠️ Lettura completata (Backup locale attivo)"
-                    )
-                )
-            } finally {
+            obdTransactionMutex.withLock {
                 try {
-                    // Restore standard Engine CAN header for telemetry loop
-                    ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU)
+                    // 1. Meter ECU (7C0 / 7C8) -> Reverse Beep & Seatbelts
+                    ensureCanHeader(ToyotaYarisCommands.HEADER_METER_ECU)
+                    val resMeter = bleManager.sendCommand("21A7")
+                    val cleanMeter = Elm327Protocol.cleanResponse(resMeter)
+                    addLog("Meter 7C0 Read: $cleanMeter")
+                    delay(80)
+
+                    // 2. Main Body ECU (750 / 758) -> Doors, Windows, Turn Signals & Lights
+                    ensureCanHeader(ToyotaYarisCommands.HEADER_BODY_ECU)
+                    val resBody = bleManager.sendCommand("2101")
+                    val cleanBody = Elm327Protocol.cleanResponse(resBody)
+                    addLog("Body 750 Read: $cleanBody")
+                    delay(80)
+
+                    // 3. Aircon ECU (7C4 / 7CC) -> A/C Behavior
+                    ensureCanHeader(ToyotaYarisCommands.HEADER_AIRCON_ECU)
+                    val resAc = bleManager.sendCommand("2101")
+                    val cleanAc = Elm327Protocol.cleanResponse(resAc)
+                    addLog("AirCon 7C4 Read: $cleanAc")
+                    delay(80)
+
+                    // 4. TSS / ADAS (7A0 / 7A8) -> LDA & BSM
+                    ensureCanHeader(ToyotaYarisCommands.HEADER_ADAS_ECU)
+                    val resAdas = bleManager.sendCommand("2101")
+                    val cleanAdas = Elm327Protocol.cleanResponse(resAdas)
+                    addLog("ADAS 7A0 Read: $cleanAdas")
+                    delay(80)
+
+                    val anyPositive = Elm327Protocol.isUdsPositiveResponse(cleanMeter) ||
+                                      Elm327Protocol.isUdsPositiveResponse(cleanBody) ||
+                                      Elm327Protocol.isUdsPositiveResponse(cleanAc) ||
+                                      Elm327Protocol.isUdsPositiveResponse(cleanAdas)
+
+                    if (anyPositive) {
+                        _liveState.value = _liveState.value.copy(
+                            ecuCodingState = _liveState.value.ecuCodingState.copy(
+                                isReadCompleted = true,
+                                isWriting = false,
+                                lastOperationStatus = "✅ Configurazione centralina letta con successo (Backup salvato)"
+                            )
+                        )
+                        addLog("Lettura parametri centralina completata con successo.")
+                    } else {
+                        _liveState.value = _liveState.value.copy(
+                            ecuCodingState = _liveState.value.ecuCodingState.copy(
+                                isReadCompleted = false,
+                                isWriting = false,
+                                lastOperationStatus = "⚠️ Nessuna risposta dalle centraline: verifica quadro acceso in READY"
+                            )
+                        )
+                        addLog("⚠️ Nessuna centralina Body/Meter/Clima/ADAS ha risposto. Quadro non in READY o bus non sincronizzato.")
+                    }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Errore ripristino header CAN 7E0 in finally", e)
+                    Log.e(TAG, "Errore lettura ECU", e)
+                    _liveState.value = _liveState.value.copy(
+                        ecuCodingState = _liveState.value.ecuCodingState.copy(
+                            isWriting = false,
+                            lastOperationStatus = "⚠️ Lettura completata (Backup locale attivo)"
+                        )
+                    )
                 } finally {
-                    isEcuOperationInProgress = false
+                    try {
+                        // Restore standard Engine CAN header for telemetry loop
+                        ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Errore ripristino header CAN 7E0 in finally", e)
+                    } finally {
+                        isEcuOperationInProgress = false
+                    }
                 }
             }
         }
@@ -1371,154 +1380,156 @@ class ObdController(
             )
             addLog("Avvio programmazione centraline Body, Meter, Clima e ADAS...")
 
-            try {
-                // 1. Meter ECU (7C0 / 7C8) -> Reverse Beep & Seatbelt Chimes
-                ensureCanHeader(ToyotaYarisCommands.HEADER_METER_ECU)
-                // Sblocco Sessione Diagnostica Estesa UDS
-                bleManager.sendCommand("1003")
-                delay(60)
-
-                // Reverse Beep: 3B0000 (Single) or 3B0001 (Continuous)
-                val cmdRev = "3B00" + updatedState.reverseBeep.code
-                bleManager.sendCommand(cmdRev)
-                delay(60)
-
-                // Seatbelt Chimes
-                bleManager.sendCommand("3B01" + if (updatedState.driverSeatbeltBeep) "01" else "00")
-                delay(40)
-                bleManager.sendCommand("3B02" + if (updatedState.passengerSeatbeltBeep) "01" else "00")
-                delay(40)
-                bleManager.sendCommand("3B03" + if (updatedState.rearSeatbeltBeep) "01" else "00")
-                delay(40)
-
-                // Read-After-Write Verification su Meter
-                val verifyMeter = bleManager.sendCommand("21A7")
-                val cleanVerifyMeter = Elm327Protocol.cleanResponse(verifyMeter)
-                addLog("Verifica Meter: $cleanVerifyMeter")
-
-                // 2. Main Body ECU (750 / 758) -> Smart Key, Doors, Windows, Turn Signals & Lights
-                ensureCanHeader(ToyotaYarisCommands.HEADER_BODY_ECU)
-                // Sblocco Sessione Diagnostica Estesa UDS
-                bleManager.sendCommand("1003")
-                delay(60)
-
-                // Auto Door Lock
-                bleManager.sendCommand("3B20" + updatedState.autoDoorLock.code)
-                delay(40)
-                // Auto Door Unlock on P
-                bleManager.sendCommand("3B21" + if (updatedState.autoDoorUnlock) "01" else "00")
-                delay(40)
-                // Windows with Key Fob
-                bleManager.sendCommand("3B22" + if (updatedState.windowsWithKeyFob) "01" else "00")
-                delay(40)
-                // Keyless Buzzer Volume
-                bleManager.sendCommand("3B23" + updatedState.keylessBuzzerVolume.code)
-                delay(40)
-                // Auto Relock Timer
-                bleManager.sendCommand("3B24" + updatedState.autoRelockTime.code)
-                delay(40)
-                // Door Unlock Mode
-                bleManager.sendCommand("3B25" + updatedState.doorUnlockMode.code)
-                delay(40)
-                // Turn Signal Flashes
-                bleManager.sendCommand("3B30" + updatedState.turnSignalFlashes.code)
-                delay(40)
-                // Light Sensitivity
-                bleManager.sendCommand("3B31" + updatedState.lightSensitivity.code)
-                delay(40)
-                // Follow Me Home
-                bleManager.sendCommand("3B32" + updatedState.followMeHome.code)
-                delay(40)
-                // Interior Light Dim Time
-                bleManager.sendCommand("3B33" + updatedState.interiorDimTime.code)
-                delay(40)
-                // Footwell Lighting in Drive
-                bleManager.sendCommand("3B34" + if (updatedState.footwellLightingInDrive) "01" else "00")
-                delay(40)
-                // Wipers (Rear wiper reverse link & Drip wipe)
-                bleManager.sendCommand("3B40" + if (updatedState.rearWiperReverseLink) "01" else "00")
-                delay(40)
-                bleManager.sendCommand("3B41" + if (updatedState.dripWipeExtraPass) "01" else "00")
-                delay(40)
-                bleManager.sendCommand("3B42" + if (updatedState.wiperSpeedLink) "01" else "00")
-                delay(40)
-
-                // Read-After-Write Verification su Body ECU
-                val verifyBody = bleManager.sendCommand("2101")
-                val cleanVerifyBody = Elm327Protocol.cleanResponse(verifyBody)
-                addLog("Verifica Body ECU: $cleanVerifyBody")
-
-                // 3. Aircon ECU (7C4 / 7CC) -> A/C with AUTO button & Eco Mode
-                ensureCanHeader(ToyotaYarisCommands.HEADER_AIRCON_ECU)
-                bleManager.sendCommand("1003")
-                delay(50)
-                bleManager.sendCommand("3B50" + if (updatedState.autoAcWithAutoButton) "01" else "00")
-                delay(40)
-                bleManager.sendCommand("3B51" + if (updatedState.ecoAirConEfficiencyMode) "01" else "00")
-                delay(40)
-                // Blower on Defroster
-                bleManager.sendCommand("3B52" + if (updatedState.blowerOnDefroster) "01" else "00")
-                delay(40)
-                // Temperature Calibration
-                bleManager.sendCommand("3B53" + updatedState.temperatureCalibration.code)
-                delay(40)
-
-                // 4. TSS 2.5 / ADAS ECU (7A0 / 7A8) -> LDA Volume & BSM Sensitivity
-                ensureCanHeader(ToyotaYarisCommands.HEADER_ADAS_ECU)
-                bleManager.sendCommand("1003")
-                delay(50)
-                bleManager.sendCommand("3B60" + updatedState.ldaWarningVolume.code)
-                delay(40)
-                bleManager.sendCommand("3B61" + updatedState.bsmSensitivity.code)
-                delay(40)
-                // RCTA, LTA & PCS
-                bleManager.sendCommand("3B62" + if (updatedState.rctaEnabled) "01" else "00")
-                delay(40)
-                bleManager.sendCommand("3B63" + if (updatedState.ltaEnabled) "01" else "00")
-                delay(40)
-                bleManager.sendCommand("3B64" + if (updatedState.pcsRememberLast) "01" else "00")
-                delay(40)
-
-                // Validazione rigorosa: se sia Meter che Body hanno risposto con NODATA, ERROR o UDS NRC (7F),
-                // la scrittura non è avvenuta e non dobbiamo dare falso positivo di successo.
-                val isMeterVerified = Elm327Protocol.isUdsPositiveResponse(cleanVerifyMeter)
-                val isBodyVerified = Elm327Protocol.isUdsPositiveResponse(cleanVerifyBody)
-
-                if (isMeterVerified || isBodyVerified) {
-                    _liveState.value = _liveState.value.copy(
-                        ecuCodingState = updatedState.copy(
-                            isWriting = false,
-                            isReadCompleted = true,
-                            lastOperationStatus = "✅ Scrittura completata e VERIFICATA in centralina!"
-                        )
-                    )
-                    addLog("✅ Scrittura centralina completata e verificata con successo!")
-                } else {
-                    _liveState.value = _liveState.value.copy(
-                        ecuCodingState = updatedState.copy(
-                            isWriting = false,
-                            isReadCompleted = false,
-                            lastOperationStatus = "❌ Scrittura non riuscita: centralina non ha risposto (NODATA). Verifica quadro in READY"
-                        )
-                    )
-                    addLog("❌ Scrittura centralina non verificata: centraline non hanno risposto (Meter: $cleanVerifyMeter, Body: $cleanVerifyBody).")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Errore scrittura centralina", e)
-                _liveState.value = _liveState.value.copy(
-                    ecuCodingState = updatedState.copy(
-                        isWriting = false,
-                        lastOperationStatus = "❌ Errore durante la scrittura in centralina"
-                    )
-                )
-            } finally {
+            obdTransactionMutex.withLock {
                 try {
-                    // Restore standard Engine CAN header for telemetry loop
-                    ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU)
+                    // 1. Meter ECU (7C0 / 7C8) -> Reverse Beep & Seatbelt Chimes
+                    ensureCanHeader(ToyotaYarisCommands.HEADER_METER_ECU)
+                    // Sblocco Sessione Diagnostica Estesa UDS
+                    bleManager.sendCommand("1003")
+                    delay(60)
+
+                    // Reverse Beep: 3B0000 (Single) or 3B0001 (Continuous)
+                    val cmdRev = "3B00" + updatedState.reverseBeep.code
+                    bleManager.sendCommand(cmdRev)
+                    delay(60)
+
+                    // Seatbelt Chimes
+                    bleManager.sendCommand("3B01" + if (updatedState.driverSeatbeltBeep) "01" else "00")
+                    delay(40)
+                    bleManager.sendCommand("3B02" + if (updatedState.passengerSeatbeltBeep) "01" else "00")
+                    delay(40)
+                    bleManager.sendCommand("3B03" + if (updatedState.rearSeatbeltBeep) "01" else "00")
+                    delay(40)
+
+                    // Read-After-Write Verification su Meter
+                    val verifyMeter = bleManager.sendCommand("21A7")
+                    val cleanVerifyMeter = Elm327Protocol.cleanResponse(verifyMeter)
+                    addLog("Verifica Meter: $cleanVerifyMeter")
+
+                    // 2. Main Body ECU (750 / 758) -> Smart Key, Doors, Windows, Turn Signals & Lights
+                    ensureCanHeader(ToyotaYarisCommands.HEADER_BODY_ECU)
+                    // Sblocco Sessione Diagnostica Estesa UDS
+                    bleManager.sendCommand("1003")
+                    delay(60)
+
+                    // Auto Door Lock
+                    bleManager.sendCommand("3B20" + updatedState.autoDoorLock.code)
+                    delay(40)
+                    // Auto Door Unlock on P
+                    bleManager.sendCommand("3B21" + if (updatedState.autoDoorUnlock) "01" else "00")
+                    delay(40)
+                    // Windows with Key Fob
+                    bleManager.sendCommand("3B22" + if (updatedState.windowsWithKeyFob) "01" else "00")
+                    delay(40)
+                    // Keyless Buzzer Volume
+                    bleManager.sendCommand("3B23" + updatedState.keylessBuzzerVolume.code)
+                    delay(40)
+                    // Auto Relock Timer
+                    bleManager.sendCommand("3B24" + updatedState.autoRelockTime.code)
+                    delay(40)
+                    // Door Unlock Mode
+                    bleManager.sendCommand("3B25" + updatedState.doorUnlockMode.code)
+                    delay(40)
+                    // Turn Signal Flashes
+                    bleManager.sendCommand("3B30" + updatedState.turnSignalFlashes.code)
+                    delay(40)
+                    // Light Sensitivity
+                    bleManager.sendCommand("3B31" + updatedState.lightSensitivity.code)
+                    delay(40)
+                    // Follow Me Home
+                    bleManager.sendCommand("3B32" + updatedState.followMeHome.code)
+                    delay(40)
+                    // Interior Light Dim Time
+                    bleManager.sendCommand("3B33" + updatedState.interiorDimTime.code)
+                    delay(40)
+                    // Footwell Lighting in Drive
+                    bleManager.sendCommand("3B34" + if (updatedState.footwellLightingInDrive) "01" else "00")
+                    delay(40)
+                    // Wipers (Rear wiper reverse link & Drip wipe)
+                    bleManager.sendCommand("3B40" + if (updatedState.rearWiperReverseLink) "01" else "00")
+                    delay(40)
+                    bleManager.sendCommand("3B41" + if (updatedState.dripWipeExtraPass) "01" else "00")
+                    delay(40)
+                    bleManager.sendCommand("3B42" + if (updatedState.wiperSpeedLink) "01" else "00")
+                    delay(40)
+
+                    // Read-After-Write Verification su Body ECU
+                    val verifyBody = bleManager.sendCommand("2101")
+                    val cleanVerifyBody = Elm327Protocol.cleanResponse(verifyBody)
+                    addLog("Verifica Body ECU: $cleanVerifyBody")
+
+                    // 3. Aircon ECU (7C4 / 7CC) -> A/C with AUTO button & Eco Mode
+                    ensureCanHeader(ToyotaYarisCommands.HEADER_AIRCON_ECU)
+                    bleManager.sendCommand("1003")
+                    delay(50)
+                    bleManager.sendCommand("3B50" + if (updatedState.autoAcWithAutoButton) "01" else "00")
+                    delay(40)
+                    bleManager.sendCommand("3B51" + if (updatedState.ecoAirConEfficiencyMode) "01" else "00")
+                    delay(40)
+                    // Blower on Defroster
+                    bleManager.sendCommand("3B52" + if (updatedState.blowerOnDefroster) "01" else "00")
+                    delay(40)
+                    // Temperature Calibration
+                    bleManager.sendCommand("3B53" + updatedState.temperatureCalibration.code)
+                    delay(40)
+
+                    // 4. TSS 2.5 / ADAS ECU (7A0 / 7A8) -> LDA Volume & BSM Sensitivity
+                    ensureCanHeader(ToyotaYarisCommands.HEADER_ADAS_ECU)
+                    bleManager.sendCommand("1003")
+                    delay(50)
+                    bleManager.sendCommand("3B60" + updatedState.ldaWarningVolume.code)
+                    delay(40)
+                    bleManager.sendCommand("3B61" + updatedState.bsmSensitivity.code)
+                    delay(40)
+                    // RCTA, LTA & PCS
+                    bleManager.sendCommand("3B62" + if (updatedState.rctaEnabled) "01" else "00")
+                    delay(40)
+                    bleManager.sendCommand("3B63" + if (updatedState.ltaEnabled) "01" else "00")
+                    delay(40)
+                    bleManager.sendCommand("3B64" + if (updatedState.pcsRememberLast) "01" else "00")
+                    delay(40)
+
+                    // Validazione rigorosa: se sia Meter che Body hanno risposto con NODATA, ERROR o UDS NRC (7F),
+                    // la scrittura non è avvenuta e non dobbiamo dare falso positivo di successo.
+                    val isMeterVerified = Elm327Protocol.isUdsPositiveResponse(cleanVerifyMeter)
+                    val isBodyVerified = Elm327Protocol.isUdsPositiveResponse(cleanVerifyBody)
+
+                    if (isMeterVerified || isBodyVerified) {
+                        _liveState.value = _liveState.value.copy(
+                            ecuCodingState = updatedState.copy(
+                                isWriting = false,
+                                isReadCompleted = true,
+                                lastOperationStatus = "✅ Scrittura completata e VERIFICATA in centralina!"
+                            )
+                        )
+                        addLog("✅ Scrittura centralina completata e verificata con successo!")
+                    } else {
+                        _liveState.value = _liveState.value.copy(
+                            ecuCodingState = updatedState.copy(
+                                isWriting = false,
+                                isReadCompleted = false,
+                                lastOperationStatus = "❌ Scrittura non riuscita: centralina non ha risposto (NODATA). Verifica quadro in READY"
+                            )
+                        )
+                        addLog("❌ Scrittura centralina non verificata: centraline non hanno risposto (Meter: $cleanVerifyMeter, Body: $cleanVerifyBody).")
+                    }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Errore ripristino header CAN 7E0 in finally", e)
+                    Log.e(TAG, "Errore scrittura centralina", e)
+                    _liveState.value = _liveState.value.copy(
+                        ecuCodingState = updatedState.copy(
+                            isWriting = false,
+                            lastOperationStatus = "❌ Errore durante la scrittura in centralina"
+                        )
+                    )
                 } finally {
-                    isEcuOperationInProgress = false
+                    try {
+                        // Restore standard Engine CAN header for telemetry loop
+                        ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Errore ripristino header CAN 7E0 in finally", e)
+                    } finally {
+                        isEcuOperationInProgress = false
+                    }
                 }
             }
         }

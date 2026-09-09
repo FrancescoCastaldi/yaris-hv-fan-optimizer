@@ -52,4 +52,16 @@ class ToyotaCommandsTest {
         assertEquals("AT SH 7E2", ToyotaYarisCommands.CMD_SET_HEADER_BATTERY_ECU)
         assertEquals("AT CRA 7EA", ToyotaYarisCommands.CMD_SET_RECEIVE_FILTER)
     }
+
+    @Test
+    fun testGetFilterForHeader() {
+        assertEquals("7E8", ToyotaYarisCommands.getFilterForHeader("7E0"))
+        assertEquals("7EA", ToyotaYarisCommands.getFilterForHeader("7E2"))
+        assertEquals("7C8", ToyotaYarisCommands.getFilterForHeader("7C0"))
+        assertEquals("758", ToyotaYarisCommands.getFilterForHeader("750"))
+        assertEquals("7CC", ToyotaYarisCommands.getFilterForHeader("7C4"))
+        assertEquals("7A8", ToyotaYarisCommands.getFilterForHeader("7A0"))
+        assertNull(ToyotaYarisCommands.getFilterForHeader("7DF"))
+        assertNull(ToyotaYarisCommands.getFilterForHeader("UNKNOWN"))
+    }
 }

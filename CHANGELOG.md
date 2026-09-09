@@ -4,6 +4,22 @@ Tutti i cambiamenti e miglioramenti significativi di questo progetto sono docume
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/) e aderisce al [Semantic Versioning](https://semver.org/lang/it/):
 - **MAJOR (`X.0.0`)**: Modifiche architetturali radicali, nuove sezioni o ridisegno totale della dashboard.
 - **MINOR (`0.X.0`)**: Aggiunta di nuove funzionalità, sensori, codifiche o telemetrie.
+
+## [3.0.4] - 2026-09-09
+### ⚡ Fix Atomico Filtri Hardware CAN (AT CRA), Sequenzialità Single-Flight & UDS Ventola 2F58
+- **Filtri Hardware CAN Atomici (`AT SH` + `AT CRA`)**:
+  - Implementato mapping hardware deterministico in `ToyotaYarisCommands.getFilterForHeader`: ad ogni trasmissione verso una centralina (`7E0`, `7E2`, `7C0`, `750`, `7C4`, `7A0`) viene associato e configurato atomicamente il rispettivo filtro di ricezione hardware (`7E8`, `7EA`, `7C8`, `758`, `7CC`, `7A8`).
+  - Prevenzione definitiva dello scarto dei frame fisici da parte dei controller CAN interni agli adattatori ELM327/OBDLink e ricezione aperta (`AT CRA`) su broadcast funzionale (`7DF`).
+- **Schedulatore Dual-Rate Rigidamente Sequenziale (Single-Flight)**:
+  - Eliminata la concorrenza asincrona tra cicli (`scope.launch { executeDualRateCycle() }`) che provocava sovrapposizioni e interleaving distruttivo sul canale seriale.
+  - Introdotto `obdTransactionMutex` per serializzare rigorosamente ogni ciclo di telemetria e proteggere in mutua esclusione sia le letture che le scritture delle codifiche centralina (`readEcuCustomizations`, `applyEcuCustomization`).
+- **Controllo Ventola HV Primario UDS Service 0x2F (`2F 58 03 0x`)**:
+  - Allineato il comando di forzatura primario su Toyota TNGA-B XP210 al servizio UDS standard `2F 58 03 0x` (InputOutputControlByIdentifier), con fallback secondario su Mode 30 legacy (`30 08 0x`).
+  - Implementato ripristino automatico OEM pulito tramite UDS ReturnControlToECU (`2F 58 00`) e `30 08 00`.
+- **Prevenzione Buffer Overrun & Drenaggio Seriale su ELM327**:
+  - Introdotta verifica fail-fast della connessione prima dell'invio dei comandi.
+  - Gestione del timeout con invio di byte `\r` di drain per liberare il buffer UART del controller ELM327 e guard-time di 15ms tra comandi seriali consecutivi.
+
 ## [3.0.3] - 2026-09-09
 ### 🔍 Sistema Integrato di Logging Diagnostico ECU & Condivisione File Traccia OBD
 - **Logger Diagnostico Persistente su Disco (`ObdLogger`)**:
