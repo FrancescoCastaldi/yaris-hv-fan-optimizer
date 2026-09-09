@@ -1,18 +1,32 @@
 @echo off
 setlocal enabledelayedexpansion
-set JAVA_HOME=D:\Tools\jdk-21\jdk-21
-set ANDROID_HOME=D:\Tools\android-sdk
-set PATH=%JAVA_HOME%\bin;%ANDROID_HOME%\cmdline-tools\latest\bin;%PATH%
+
+REM Environment Configuration with local fallback
+if not defined JAVA_HOME (
+    if exist "D:\Tools\jdk-21\jdk-21" set "JAVA_HOME=D:\Tools\jdk-21\jdk-21"
+)
+if not defined ANDROID_HOME (
+    if exist "D:\Tools\android-sdk" set "ANDROID_HOME=D:\Tools\android-sdk"
+)
+if defined JAVA_HOME set "PATH=%JAVA_HOME%\bin;%PATH%"
+if defined ANDROID_HOME set "PATH=%ANDROID_HOME%\cmdline-tools\latest\bin;%PATH%"
+
 set GRADLE_OPTS=-Xmx3072m -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8
 
-cd /d D:\Sviluppo\yaris-hv-fan-android
+cd /d "%~dp0"
 
 echo ========================================================
 echo   COMPILAZIONE APK RELEASE (YARIS HV AND OBD BRIDGE)
 echo ========================================================
 
+REM Find gradle executable
+set "GRADLE_CMD=gradle"
+if exist "D:\Tools\gradle\gradle-8.7\bin\gradle.bat" (
+    set "GRADLE_CMD=D:\Tools\gradle\gradle-8.7\bin\gradle.bat"
+)
+
 echo [1/3] Compilazione APK Release con certificato RSA...
-call D:\Tools\gradle\gradle-8.7\bin\gradle.bat assembleRelease
+call %GRADLE_CMD% assembleRelease
 
 if %ERRORLEVEL% EQU 0 (
     echo [2/3] Sincronizzazione APK release - root e docs...

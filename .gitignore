@@ -1,17 +1,102 @@
+# =============================================================================
+# 🔐 SECURITY, SECRETS & SIGNING
+# =============================================================================
+*.keystore
+*.jks
+*.pem
+*.key
+*.p12
+*.pfx
+*.pkcs12
+*.crt
+*.cer
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+keystore.properties
+
+# Environment & credentials
+.env
+.env.*
+!.env.example
+!.env.sample
+*.local
+secrets.json
+secrets.yaml
+credentials.json
+serviceAccountKey*.json
+service-account*.json
+client_secret*.json
+.netrc
+.pgpass
+.htpasswd
+
+# =============================================================================
+# 🤖 AI AGENT INSTRUCTIONS & INTERNAL DOCS
+# =============================================================================
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+PUSH_POLICY.md
+PLAN_*.md
+codemap.md
+PENDING_TASKS.md
+.cursorrules
+.windsurfrules
+.antigravity/
+.gemini/
+.cursor/
+.windsurf/
+.copilot/
+.agents/
+
+# =============================================================================
+# 📱 ANDROID / GRADLE BUILD
+# =============================================================================
 *.iml
-.gradle
+.gradle/
 /local.properties
-/.idea
-.DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
 local.properties
+/.idea
+.idea/
+/build
 app/build/
 sniffer/build/
 **/build/
+/captures
+.externalNativeBuild
+.cxx
+.navigation/
+output.json
 *.hprof
-.agents/
+
+# APK binaries (keep docs/ copies for GitHub Pages downloads)
+*.apk
+*.aab
+!docs/*.apk
+
+# =============================================================================
+# 💻 OS & IDE FILES
+# =============================================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+*.sublime-project
+*.sublime-workspace
+
+# =============================================================================
+# 📂 LOCAL DATA & LOGS
+# =============================================================================
+*.sqlite
+*.sqlite3
+*.db
+*.sql.gz
+*.dump
 Errori lettura/
 obd_bridge_*.txt

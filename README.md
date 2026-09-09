@@ -7,7 +7,7 @@
 [![Kotlin](https://img.shields.io/badge/Kotlin-1.9.24-7F52FF.svg?style=flat&logo=kotlin)](https://kotlinlang.org/)
 [![Jetpack Compose](https://img.shields.io/badge/UI-Jetpack%20Compose%20M3-4285F4.svg?style=flat&logo=jetpackcompose)](https://developer.android.com/jetpack/compose)
 [![Tests](https://img.shields.io/badge/Tests-100%25%20Passing-brightgreen.svg?style=flat&logo=githubactions)](https://github.com/FrancescoCastaldi/yaris-hv-fan-optimizer)
-[![RSA Signed](https://img.shields.io/badge/Signature-RSA%202048--bit%20(V1/V2/V3/V4)-00E676.svg?style=flat&logo=letsencrypt)](yaris_release.keystore)
+[![RSA Signed](https://img.shields.io/badge/Signature-RSA%202048--bit%20(V1/V2/V3/V4)-00E676.svg?style=flat&logo=letsencrypt)](#)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Native Android telemetry and diagnostic application for the **Toyota Yaris MK4 Hybrid (XP210 / TNGA-B Platform, MY2020–2025+)**. Connects via Bluetooth Low Energy (BLE) or Bluetooth Classic SPP to vehicle CAN infrastructure to deliver:
@@ -106,7 +106,7 @@ The project includes over 90 automated unit and integration tests under `app/src
 
 Execute the test suite locally:
 ```bash
-cmd /c "set JAVA_HOME=D:\Tools\jdk-21\jdk-21&& set ANDROID_HOME=D:\Tools\android-sdk&& set PATH=%JAVA_HOME%\bin;%PATH%&& D:\Tools\gradle\gradle-8.7\bin\gradle.bat testDebugUnitTest"
+gradle testDebugUnitTest
 ```
 
 ---

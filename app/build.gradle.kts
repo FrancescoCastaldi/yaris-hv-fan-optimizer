@@ -1,7 +1,14 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+}
+
+val keystoreProperties = Properties().apply {
+    val f = rootProject.file("keystore.properties")
+    if (f.exists()) load(f.inputStream())
 }
 
 android {
@@ -23,10 +30,11 @@ android {
 
     signingConfigs {
         create("release") {
-            storeFile = file("${rootDir}/yaris_release.keystore")
-            storePassword = "yaris_secure_key_2026"
-            keyAlias = "yariskey"
-            keyPassword = "yaris_secure_key_2026"
+            val ksPath = keystoreProperties.getProperty("storeFile", "yaris_release.keystore")
+            storeFile = rootProject.file(ksPath)
+            storePassword = keystoreProperties.getProperty("storePassword", "")
+            keyAlias = keystoreProperties.getProperty("keyAlias", "")
+            keyPassword = keystoreProperties.getProperty("keyPassword", "")
             enableV1Signing = true
             enableV2Signing = true
             enableV3Signing = true
