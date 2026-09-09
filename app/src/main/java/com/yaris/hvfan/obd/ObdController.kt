@@ -244,24 +244,29 @@ class ObdController(
                 )
 
                 // 1. Invio preventivo di sequenza di sveglia "\r\r" per svegliare Vgate/ELM327 da sleep/low-power
-                addLog("Invio sequenza di sveglia preventiva Dr. Prius (\\r\\r)...")
+                addLog("Invio sequenza di sveglia preventiva (\\r\\r)...")
                 bleManager.sendWakeSequence()
                 delay(150)
 
-                // 2. Invio Reset ELM327 (AT Z) con delay di stabilizzazione standard Dr. Prius (800ms)
-                addLog("Invio Reset ELM327 / Vgate / STN (AT Z)...")
-                val resZ = bleManager.sendCommand(Elm327Protocol.CMD_RESET, timeoutMs = 2000L)
-                addLog("Reset Response: ${Elm327Protocol.cleanResponse(resZ)}")
-                delay(800) // Delay di stabilizzazione firmware Dr. Prius
+                // 2. Warm Start invece di Hard Reset: doppio AT WS con svuotamento buffer (strategia vincente Hybrid Assistant)
+                addLog("Invio Warm Start ELM327 #1 (AT WS)...")
+                val resWs1 = bleManager.sendCommand(Elm327Protocol.CMD_WARM_START, timeoutMs = 2000L)
+                addLog("Warm Start #1 Response: ${Elm327Protocol.cleanResponse(resWs1)}")
+                delay(150)
 
-                // 3. Invio sequenza di configurazione parametri seriali e protocollo CAN Dr. Prius
+                addLog("Invio Warm Start ELM327 #2 (AT WS) per svuotamento buffer UART...")
+                val resWs2 = bleManager.sendCommand(Elm327Protocol.CMD_WARM_START, timeoutMs = 2000L)
+                addLog("Warm Start #2 Response: ${Elm327Protocol.cleanResponse(resWs2)}")
+                delay(200)
+
+                // 3. Invio sequenza di configurazione parametri seriali e protocollo CAN Hybrid Assistant
                 for (cmd in Elm327Protocol.INIT_COMMANDS) {
-                    if (cmd == "AT Z") continue
+                    if (cmd == Elm327Protocol.CMD_WARM_START || cmd == Elm327Protocol.CMD_RESET) continue
                     addLog("CMD: $cmd")
                     val res = bleManager.sendCommand(cmd)
                     val cleanRes = Elm327Protocol.cleanResponse(res)
                     addLog("RES: $cleanRes")
-                    if (cmd == "AT SP 6" && (cleanRes.contains("ERROR") || Elm327Protocol.isError(cleanRes))) {
+                    if (cmd == Elm327Protocol.CMD_PROTOCOL_CAN_11_500 && (cleanRes.contains("ERROR") || Elm327Protocol.isError(cleanRes))) {
                         addLog("Fallback protocollo su AT SP 0 (Auto)...")
                         bleManager.sendCommand(Elm327Protocol.PROTOCOL_FALLBACK)
                     }
@@ -274,9 +279,14 @@ class ObdController(
                 addLog("Protocollo ELM327 attivo (AT DPN): ${Elm327Protocol.cleanResponse(dpnRes)} (atteso 6 = ISO 15765-4 CAN 11-bit 500k)")
                 stateMachine.onElmReady()
 
-                // 4. Rilevamento non distruttivo chipset STN / OBDLink prima di applicare comandi AT FC (R1)
-                addLog("Rilevamento identità adapter OBD (ATI / ST DI)...")
+                // 4. Lettura versione/chipset (ATI / STI / AT@1 / ST DI) conforme a Hybrid Assistant
+                addLog("Rilevamento identità adapter OBD (ATI / STI / AT@1 / ST DI)...")
                 val atiRes = bleManager.sendCommand(Elm327Protocol.CMD_DEVICE_INFO, timeoutMs = 1500L)
+                addLog("Adapter ATI: ${Elm327Protocol.cleanResponse(atiRes)}")
+                val stiRes = bleManager.sendCommand(Elm327Protocol.CMD_DEVICE_INFO_STI, timeoutMs = 1500L)
+                addLog("Adapter STI: ${Elm327Protocol.cleanResponse(stiRes)}")
+                val at1Res = bleManager.sendCommand(Elm327Protocol.CMD_DEVICE_INFO_AT1, timeoutMs = 1500L)
+                addLog("Adapter AT@1: ${Elm327Protocol.cleanResponse(at1Res)}")
                 val stDiRes = bleManager.sendCommand(Elm327Protocol.CMD_DEVICE_ID_STN, timeoutMs = 1500L)
                 val devName = bleManager.getConnectedDeviceName() ?: ""
                 isCustomFcSupported = Elm327Protocol.isStnHardwareSupported(
@@ -290,7 +300,7 @@ class ObdController(
                     addLog("ℹ️ Adapter Vlinker / clone ELM327 rilevato: mantenimento rigoroso Flow Control nativo (AT CAF 1) senza comandi AT FC.")
                 }
 
-                // 5. Rilevamento stato READY auto tramite tensione reale batteria 12V (AT RV > 13.0V)
+                // 5. Verifica voltaggio 12V reale (AT RV)
                 val voltRes = bleManager.sendCommand(Elm327Protocol.CMD_VOLTAGE)
                 val real12v = Elm327Protocol.parseBatteryVoltage(voltRes) ?: 0f
                 lastKnown12v = real12v
@@ -300,14 +310,26 @@ class ObdController(
                     addLog("⚠️ Tensione al limite (${real12v}V): verifica che il quadro sia in READY (spia verde) e che l'adattatore non sia mal calibrato.")
                 }
 
+                // 5b. Probe di attivazione del bus CAN Toyota con Mode 03 (Request Trouble Codes) stile Hybrid Assistant
+                addLog("Probe attivazione CAN bus Toyota con Mode 03 (Request Trouble Codes)...")
+                ensureCanHeader(ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST)
+                val probe03Res = bleManager.sendCommand(Elm327Protocol.CMD_PROBE_DTC, timeoutMs = 3000L)
+                val clean03 = Elm327Protocol.cleanResponse(probe03Res)
+                addLog("Probe Mode 03 Response: $clean03")
+                val isMode03Active = Elm327Protocol.isMode03Response(probe03Res)
+                if (isMode03Active) {
+                    addLog("✅ Bus CAN attivato con successo via Mode 03.")
+                    lastValidCanTimestamp = timeProvider()
+                }
+
                 // 6. Handshake CAN a tre stadi con aggancio rapido (R2)
                 // Permette l'aggancio CAN anche con quadro acceso e DC-DC spento (12V < 13.0V)
                 addLog("Stadio 0: aggancio bus CAN in broadcast (7DF)...")
                 stateMachine.onCanSearching()
-                val stage0Ok = probeBroadcastCanWithAutomaticFallback("Stadio 0")
+                val stage0Ok = isMode03Active || probeBroadcastCanWithAutomaticFallback("Stadio 0")
                 if (stage0Ok) {
                     addLog("✅ Stadio 0 completato: bus CAN 11-bit 500k agganciato in broadcast (7DF).")
-                    lastValidCanTimestamp = System.currentTimeMillis()
+                    lastValidCanTimestamp = timeProvider()
                 } else {
                     addLog("⚠️ Stadio 0 fallito anche dopo auto-detect: nessun frame CAN valido in broadcast 7DF. Possibili cause: quadro spento, dongle non inserito a fondo nella presa OBD, o adattatore incompatibile. Proseguo comunque con gli stadi successivi...")
                 }
@@ -351,7 +373,7 @@ class ObdController(
                         (cleanStage1.contains("4100") || cleanStage1.contains("410C"))
                     if (stage1Ok) {
                         addLog("✅ Handshake CAN Stadio 1 completato: bus CAN 11-bit 500k agganciato!")
-                        lastValidCanTimestamp = System.currentTimeMillis()
+                        lastValidCanTimestamp = timeProvider()
                         stateMachine.onEngineTelemetrySuccess()
                     } else {
                         addLog("ℹ️ Handshake CAN Stadio 1: risposta non standard ($cleanStage1), procedo a Stadio 2...")
@@ -558,24 +580,29 @@ class ObdController(
 
         // Reset rapido dello stack seriale ELM327 senza perdita connessione BLE
         bleManager.sendWakeSequence()
-        bleManager.sendCommand(Elm327Protocol.CMD_WARM_START) // Warm Start
-        delay(200)
-        bleManager.sendCommand("AT E0")
-        bleManager.sendCommand("AT L0")
-        bleManager.sendCommand("AT S0")
-        bleManager.sendCommand("AT H0")
-        bleManager.sendCommand("AT AT 1")
-        val spRes = bleManager.sendCommand("AT SP 6")
-        val cleanSp = Elm327Protocol.cleanResponse(spRes)
-        if (cleanSp.contains("ERROR") || Elm327Protocol.isError(cleanSp)) {
-            bleManager.sendCommand(Elm327Protocol.PROTOCOL_FALLBACK)
-        }
-        bleManager.sendCommand("AT CAF 1")
+        bleManager.sendCommand(Elm327Protocol.CMD_WARM_START) // Warm Start #1
+        delay(150)
+        bleManager.sendCommand(Elm327Protocol.CMD_WARM_START) // Warm Start #2 (svuotamento buffer)
+        delay(150)
+        bleManager.sendCommand(Elm327Protocol.CMD_ECHO_OFF)
+        bleManager.sendCommand(Elm327Protocol.CMD_PROTOCOL_CAN_11_500)
+        bleManager.sendCommand(Elm327Protocol.CMD_ADAPTIVE_TIMING_1)
+        bleManager.sendCommand(Elm327Protocol.CMD_HEADERS_ON)
+        bleManager.sendCommand(Elm327Protocol.CMD_LINEFEEDS_OFF)
+        bleManager.sendCommand(Elm327Protocol.CMD_SPACES_OFF)
+        bleManager.sendCommand(Elm327Protocol.CMD_CAN_AUTO_FORMAT_ON)
+        bleManager.sendCommand(Elm327Protocol.CMD_AUTO_RECEIVE)
+        bleManager.sendCommand(Elm327Protocol.CMD_TIMEOUT_HANDSHAKE)
         currentCanHeader = "" // Forza riapplicazione degli header
+        ensureCanHeader(ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST)
         stateMachine.onElmReady()
 
+        // Probe attivazione bus CAN via Mode 03 prima di procedere
+        val probe03Res = bleManager.sendCommand(Elm327Protocol.CMD_PROBE_DTC, timeoutMs = 2000L)
+        val isMode03Active = Elm327Protocol.isMode03Response(probe03Res)
+
         // Stadio 0: riaggancio 7DF, con fallback basato sulla risposta CAN reale.
-        val s0Ok = probeBroadcastCanWithAutomaticFallback("Auto-recovery Stadio 0")
+        val s0Ok = isMode03Active || probeBroadcastCanWithAutomaticFallback("Auto-recovery Stadio 0")
         if (!s0Ok) {
             addLog("Auto-recovery Stadio 0: nessuna risposta in broadcast 7DF.")
         }
@@ -600,7 +627,7 @@ class ObdController(
         ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU)
 
         if (s0Ok || s1Ok) {
-            lastValidCanTimestamp = System.currentTimeMillis()
+            lastValidCanTimestamp = timeProvider()
             addLog("✅ Procedura auto-recovery completata: bus CAN motore riagganciato.")
         } else {
             addLog("⚠️ Procedura auto-recovery completata: in attesa di risposta CAN centralina.")

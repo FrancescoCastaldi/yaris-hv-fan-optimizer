@@ -96,6 +96,7 @@ fun SnifferScreen(
     val recentLogs by logger.recentLogs.collectAsState()
 
     var showDeviceList by remember { mutableStateOf(false) }
+    var showOfflineWarningDialog by remember { mutableStateOf(false) }
 
     val listState = rememberLazyListState()
 
@@ -346,6 +347,34 @@ fun SnifferScreen(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
+                if (!btManager.isConnected) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(WarningOrange.copy(alpha = 0.15f))
+                            .border(1.dp, WarningOrange.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
+                            .padding(8.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Bluetooth,
+                                contentDescription = null,
+                                tint = WarningOrange,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "ATTENZIONE: Nessun adattatore Bluetooth connesso! Per il pass-through reale verso la centralina Toyota, connetti prima l'adattatore OBD. L'avvio senza Bluetooth opererà in emulazione offline mock.",
+                                fontSize = 11.sp,
+                                color = WarningOrange,
+                                lineHeight = 14.sp
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
                 // Action Buttons for Bridge Server
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
@@ -354,9 +383,13 @@ fun SnifferScreen(
                                 server.stop()
                                 com.yaris.sniffer.service.BridgeForegroundService.stop(context)
                             } else {
-                                onRequestPermissions()
-                                com.yaris.sniffer.service.BridgeForegroundService.start(context)
-                                server.start(35000)
+                                if (!btManager.isConnected) {
+                                    showOfflineWarningDialog = true
+                                } else {
+                                    onRequestPermissions()
+                                    com.yaris.sniffer.service.BridgeForegroundService.start(context)
+                                    server.start(35000)
+                                }
                             }
                         },
                         modifier = Modifier.weight(1f),
@@ -513,5 +546,54 @@ fun SnifferScreen(
                 }
             }
         }
+    }
+
+    if (showOfflineWarningDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showOfflineWarningDialog = false },
+            title = {
+                Text(
+                    text = "Adattatore Bluetooth Non Connesso",
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
+                )
+            },
+            text = {
+                Text(
+                    text = "Nessun adattatore Bluetooth OBD è attualmente collegato.\n\n" +
+                        "Se avvii il Bridge ora, Hybrid Assistant comunicherà solo con il simulatore interno offline (nessun dato reale dalla vettura).\n\n" +
+                        "Vuoi prima connettere l'adattatore Bluetooth o procedere comunque in emulazione offline?",
+                    color = TextSecondary,
+                    fontSize = 13.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showOfflineWarningDialog = false
+                        onRequestPermissions()
+                        btManager.startScan()
+                        showDeviceList = true
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentCyan, contentColor = DarkBackground)
+                ) {
+                    Text("Connetti Bluetooth", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = {
+                        showOfflineWarningDialog = false
+                        onRequestPermissions()
+                        com.yaris.sniffer.service.BridgeForegroundService.start(context)
+                        server.start(35000)
+                    },
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = WarningOrange)
+                ) {
+                    Text("Avvia Solo Emulatore Offline")
+                }
+            },
+            containerColor = CardBackground
+        )
     }
 }

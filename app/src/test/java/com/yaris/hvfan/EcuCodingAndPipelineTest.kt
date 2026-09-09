@@ -101,11 +101,23 @@ class EcuCodingAndPipelineTest {
         assertTrue(Elm327Protocol.isUdsPositiveResponse("7C8 03 61 A7 00 >"))
         assertTrue(Elm327Protocol.isUdsPositiveResponse("758 05 61 01 02 03 04 >"))
         assertTrue(Elm327Protocol.isUdsPositiveResponse("5003")) // Mode 10 03 positive response
+        // Positive response whose data payload contains 0x7F (must NOT be treated as NRC)
+        assertTrue(Elm327Protocol.isUdsPositiveResponse("7C8 04 61 A7 00 7F >"))
+        assertTrue(Elm327Protocol.isUdsPositiveResponse("62 28 C1 44 7F 44 43 41 03 >", "22"))
+        // Multi-frame ISO-TP First Frame with ATH1 and spaces ([CAN_ID] [1x] [len] [SID] ...)
+        assertTrue(Elm327Protocol.isUdsPositiveResponse("7EA 10 14 62 28 C1 44 45\r7EA 21 44 43 41 03 00 00 >", "22"))
+        assertTrue(Elm327Protocol.isUdsPositiveResponse("7EA 10 14 62 28 C1 44 45 >"))
+        // Safe handling of malformed expectedService without NumberFormatException
+        assertTrue(Elm327Protocol.isUdsPositiveResponse("6101", "ZZ"))
+        // Multi-line response: primary ECU responds positive, secondary responds NRC
+        assertTrue(Elm327Protocol.isUdsPositiveResponse("7C8 03 61 A7 00\r758 03 7F 21 11\r>"))
 
         // Negative Response Code (NRC 7F)
         assertFalse(Elm327Protocol.isUdsPositiveResponse("7F 21 11"))
         assertFalse(Elm327Protocol.isUdsPositiveResponse("7F 3B 22"))
         assertFalse(Elm327Protocol.isUdsPositiveResponse("7F 10 12"))
+        assertFalse(Elm327Protocol.isUdsPositiveResponse("7C8 03 7F 21 11 >"))
+        assertFalse(Elm327Protocol.isUdsPositiveResponse("758 03 7F 21 12 >"))
 
         // Errors and NO DATA
         assertFalse(Elm327Protocol.isUdsPositiveResponse("NO DATA"))

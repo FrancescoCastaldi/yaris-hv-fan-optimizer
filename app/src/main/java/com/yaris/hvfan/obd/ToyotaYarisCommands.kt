@@ -279,6 +279,7 @@ object ToyotaYarisCommands {
 
     // Standard OBD-II PIDs (Mode 01 for Engine & Atmosphere)
     const val PID_SUPPORTED_PIDS   = "0100" // Mode 01 PID 00 (Supported PIDs) - rapid bus lock
+    const val CMD_PROBE_DTC        = "03"   // Mode 03 Request Trouble Codes (Hybrid Assistant probe)
     const val PID_VEHICLE_SPEED    = "010D" // Formula: A (km/h)
     const val PID_COOLANT_TEMP     = "0105" // Formula: A - 40 (°C)
     const val PID_INTAKE_AIR_TEMP  = "010F" // Formula: A - 40 (°C)
@@ -335,8 +336,12 @@ object ToyotaYarisCommands {
         var rpm: Int? = null
         var throttle: Float? = null
 
-        val p41 = clean.indexOf("41")
-        val payload = clean.substring(p41 + 2)
+        val p41 = if (clean.contains("410D")) clean.indexOf("410D") else clean.indexOf("41")
+        var payload = clean.substring(p41 + 2)
+
+        // Rimuove i prefissi dei frame consecutivi ISO-TP (es. 7E8 21, 7EA 21)
+        // presenti nelle risposte multi-frame quando gli header CAN sono attivi (ATH1).
+        payload = payload.replace(Regex("""(?:7[0-9A-F]{2}2[0-9A-F])"""), "")
 
         // Case 1: Standard ordered packed payload: 0D [2 hex] 0C [4 hex] 11 [2 hex]
         if (payload.startsWith("0D") && payload.length >= 14) {
@@ -400,10 +405,11 @@ object ToyotaYarisCommands {
 
     fun parseVehicleSpeed(raw: String): Int? {
         val clean = Elm327Protocol.cleanResponse(raw).uppercase()
+        if (Elm327Protocol.isError(clean)) return null
         if (clean.contains("410D")) {
             val idx = clean.indexOf("410D") + 4
             if (clean.length >= idx + 2) {
-                return clean.substring(idx, idx + 2).toInt(16)
+                return clean.substring(idx, idx + 2).toIntOrNull(16)
             }
         }
         return null
@@ -411,10 +417,12 @@ object ToyotaYarisCommands {
 
     fun parseCoolantTemp(raw: String): Float? {
         val clean = Elm327Protocol.cleanResponse(raw).uppercase()
+        if (Elm327Protocol.isError(clean)) return null
         if (clean.contains("4105")) {
             val idx = clean.indexOf("4105") + 4
             if (clean.length >= idx + 2) {
-                return (clean.substring(idx, idx + 2).toInt(16) - 40).toFloat()
+                val hex = clean.substring(idx, idx + 2).toIntOrNull(16) ?: return null
+                return (hex - 40).toFloat()
             }
         }
         return null
@@ -422,10 +430,12 @@ object ToyotaYarisCommands {
 
     fun parseIntakeAirTemp(raw: String): Float? {
         val clean = Elm327Protocol.cleanResponse(raw).uppercase()
+        if (Elm327Protocol.isError(clean)) return null
         if (clean.contains("410F")) {
             val idx = clean.indexOf("410F") + 4
             if (clean.length >= idx + 2) {
-                return (clean.substring(idx, idx + 2).toInt(16) - 40).toFloat()
+                val hex = clean.substring(idx, idx + 2).toIntOrNull(16) ?: return null
+                return (hex - 40).toFloat()
             }
         }
         return null
@@ -433,11 +443,12 @@ object ToyotaYarisCommands {
 
     fun parseEngineRpm(raw: String): Int? {
         val clean = Elm327Protocol.cleanResponse(raw).uppercase()
+        if (Elm327Protocol.isError(clean)) return null
         if (clean.contains("410C")) {
             val idx = clean.indexOf("410C") + 4
             if (clean.length >= idx + 4) {
-                val a = clean.substring(idx, idx + 2).toInt(16)
-                val b = clean.substring(idx + 2, idx + 4).toInt(16)
+                val a = clean.substring(idx, idx + 2).toIntOrNull(16) ?: return null
+                val b = clean.substring(idx + 2, idx + 4).toIntOrNull(16) ?: return null
                 return ((a * 256) + b) / 4
             }
         }
@@ -446,10 +457,11 @@ object ToyotaYarisCommands {
 
     fun parseTimingAdvance(raw: String): Float? {
         val clean = Elm327Protocol.cleanResponse(raw).uppercase()
+        if (Elm327Protocol.isError(clean)) return null
         if (clean.contains("410E")) {
             val idx = clean.indexOf("410E") + 4
             if (clean.length >= idx + 2) {
-                val a = clean.substring(idx, idx + 2).toInt(16)
+                val a = clean.substring(idx, idx + 2).toIntOrNull(16) ?: return null
                 return ((a / 2.0f) - 64.0f)
             }
         }
@@ -458,10 +470,11 @@ object ToyotaYarisCommands {
 
     fun parseEngineLoad(raw: String): Float? {
         val clean = Elm327Protocol.cleanResponse(raw).uppercase()
+        if (Elm327Protocol.isError(clean)) return null
         if (clean.contains("4104")) {
             val idx = clean.indexOf("4104") + 4
             if (clean.length >= idx + 2) {
-                val a = clean.substring(idx, idx + 2).toInt(16)
+                val a = clean.substring(idx, idx + 2).toIntOrNull(16) ?: return null
                 return (a * 100.0f) / 255.0f
             }
         }
@@ -470,10 +483,11 @@ object ToyotaYarisCommands {
 
     fun parseThrottlePos(raw: String): Float? {
         val clean = Elm327Protocol.cleanResponse(raw).uppercase()
+        if (Elm327Protocol.isError(clean)) return null
         if (clean.contains("4111")) {
             val idx = clean.indexOf("4111") + 4
             if (clean.length >= idx + 2) {
-                val a = clean.substring(idx, idx + 2).toInt(16)
+                val a = clean.substring(idx, idx + 2).toIntOrNull(16) ?: return null
                 return (a * 100.0f) / 255.0f
             }
         }
@@ -564,18 +578,23 @@ object ToyotaYarisCommands {
                 else -> return null
             }
 
+            // Rimuove i prefissi dei frame consecutivi ISO-TP (es. 7EA 21, 7EA 22, 7E8 21)
+            // presenti nelle risposte multi-frame quando gli header CAN sono attivi (ATH1).
+            hexPayload = hexPayload.replace(Regex("""(?:7[0-9A-F]{2}2[0-9A-F])"""), "")
+
             if (hexPayload.length < 8) {
                 return null
             }
 
-            val t1 = (hexPayload.substring(0, 2).toInt(16) - 40).toDouble()
-            val t2 = if (hexPayload.length >= 4) (hexPayload.substring(2, 4).toInt(16) - 40).toDouble() else t1
-            val t3 = if (hexPayload.length >= 6) (hexPayload.substring(4, 6).toInt(16) - 40).toDouble() else t1
-            val t4 = if (hexPayload.length >= 8) (hexPayload.substring(6, 8).toInt(16) - 40).toDouble() else t1
+            val t1Hex = hexPayload.substring(0, 2).toIntOrNull(16) ?: return null
+            val t1 = (t1Hex - 40).toDouble()
+            val t2 = if (hexPayload.length >= 4) (hexPayload.substring(2, 4).toIntOrNull(16)?.let { (it - 40).toDouble() } ?: return null) else t1
+            val t3 = if (hexPayload.length >= 6) (hexPayload.substring(4, 6).toIntOrNull(16)?.let { (it - 40).toDouble() } ?: return null) else t1
+            val t4 = if (hexPayload.length >= 8) (hexPayload.substring(6, 8).toIntOrNull(16)?.let { (it - 40).toDouble() } ?: return null) else t1
             
-            val intake = if (hexPayload.length >= 10) (hexPayload.substring(8, 10).toInt(16) - 40).toDouble() else t1
+            val intake = if (hexPayload.length >= 10) (hexPayload.substring(8, 10).toIntOrNull(16)?.let { (it - 40).toDouble() } ?: return null) else t1
             val fanLevel = if (hexPayload.length >= 12) {
-                val rawFan = hexPayload.substring(10, 12).toInt(16)
+                val rawFan = hexPayload.substring(10, 12).toIntOrNull(16) ?: return null
                 rawFan.coerceIn(0, 6)
             } else {
                 if (isForced) 6 else 0

@@ -270,7 +270,7 @@ class BridgeBluetoothManager(private val context: Context) {
                     val read = stream.read(buf)
                     if (read == -1) break
                     if (read > 0) {
-                        val chunk = String(buf, 0, read, Charsets.US_ASCII)
+                        val chunk = String(buf, 0, read, Charsets.ISO_8859_1)
                         handleIncomingChunk(chunk)
                     }
                 }
@@ -335,11 +335,11 @@ class BridgeBluetoothManager(private val context: Context) {
 
             override fun onCharacteristicChanged(g: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?) {
                 val bytes = characteristic?.value ?: return
-                handleIncomingChunk(String(bytes, Charsets.US_ASCII))
+                handleIncomingChunk(String(bytes, Charsets.ISO_8859_1))
             }
 
             override fun onCharacteristicChanged(g: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray) {
-                handleIncomingChunk(String(value, Charsets.US_ASCII))
+                handleIncomingChunk(String(value, Charsets.ISO_8859_1))
             }
         }
 
@@ -353,7 +353,7 @@ class BridgeBluetoothManager(private val context: Context) {
     private fun handleIncomingChunk(chunk: String) {
         synchronized(responseBuffer) {
             responseBuffer.append(chunk)
-            if (responseBuffer.contains(">") || responseBuffer.contains("\r\n\r\n")) {
+            if (responseBuffer.contains(">")) {
                 val complete = responseBuffer.toString()
                 activeDeferred?.complete(complete)
             }

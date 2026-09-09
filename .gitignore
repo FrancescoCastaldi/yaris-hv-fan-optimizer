@@ -13,5 +13,5 @@ sniffer/build/
 **/build/
 *.hprof
 .agents/
-*.zip
 Errori lettura/
+obd_bridge_*.txt

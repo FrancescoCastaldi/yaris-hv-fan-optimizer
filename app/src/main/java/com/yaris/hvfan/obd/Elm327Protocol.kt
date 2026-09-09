@@ -7,7 +7,19 @@ object Elm327Protocol {
     const val CMD_RESET = "AT Z"
     const val CMD_VOLTAGE = "AT RV"
     const val CMD_DEVICE_INFO = "ATI"
+    const val CMD_DEVICE_INFO_STI = "STI"
+    const val CMD_DEVICE_INFO_AT1 = "AT@1"
     const val CMD_DEVICE_ID_STN = "ST DI"
+
+    const val CMD_ECHO_OFF = "AT E0"
+    const val CMD_LINEFEEDS_OFF = "AT L0"
+    const val CMD_SPACES_OFF = "AT S0"
+    const val CMD_HEADERS_ON = "AT H1"
+    const val CMD_HEADERS_OFF = "AT H0"
+    const val CMD_ADAPTIVE_TIMING_1 = "AT AT 1"
+    const val CMD_PROTOCOL_CAN_11_500 = "AT SP 6"
+    const val CMD_CAN_AUTO_FORMAT_ON = "AT CAF 1"
+    const val CMD_PROBE_DTC = "03"
 
     // Hardware Flow Control ISO-TP Constants for Denso Battery ECU (7E2 / 7EA)
     const val CMD_FLOW_CONTROL_BATTERY_HEADER = "AT FC SH 7E2"
@@ -33,29 +45,30 @@ object Elm327Protocol {
     const val CMD_TIMEOUT_TELEMETRY = "AT ST 32"    // ~205 ms, default ELM327, per il loop rapido
     const val CMD_TIMEOUT_ECU_CODING = "AT ST 96"   // ~614 ms per Body, Meter, Aircon e ADAS UDS Mode 21/22/3B
 
-    // Sequenza Dr. Prius universale ad alta compatibilita'
+    // Sequenza di handshake standard Hybrid Assistant ad alta affidabilità per Toyota Yaris
     val INIT_COMMANDS = listOf(
-        "AT Z",       // Reset ELM327 / Vgate / STN (gestito con delay speciale)
-        "AT E0",      // Echo Off
-        "AT L0",      // Linefeeds Off
-        "AT S0",      // Spaces Off
-        "AT H0",      // Headers Off
-        "AT AT 1",    // Standard Adaptive Timing (stabile su multi-frame CAN)
-        "AT SP 6",    // ISO 15765-4 CAN 11-bit 500kbaud: il protocollo va scelto prima del timing
-        "AT CAF 1",   // CAN Auto-Formatting On
-        CMD_AUTO_RECEIVE,      // Azzera eventuali filtri AT CRA residui
-        CMD_TIMEOUT_HANDSHAKE  // Finestra ampia per l'handshake sul bus
+        CMD_WARM_START,          // Warm Start invece di Hard Reset (evita freeze su cloni ELM327)
+        CMD_ECHO_OFF,            // Echo Off
+        CMD_PROTOCOL_CAN_11_500, // ISO 15765-4 CAN 11-bit 500kbaud: protocollo prima del timing
+        CMD_ADAPTIVE_TIMING_1,   // Standard Adaptive Timing (stabile su multi-frame CAN)
+        CMD_HEADERS_ON,          // Headers On (per tracciamento ECU 7EA / 7E8 / 7B0)
+        CMD_LINEFEEDS_OFF,       // Linefeeds Off
+        CMD_SPACES_OFF,          // Spaces Off
+        CMD_CAN_AUTO_FORMAT_ON,  // CAN Auto-Formatting On
+        CMD_AUTO_RECEIVE,        // Azzera eventuali filtri AT CRA residui
+        CMD_TIMEOUT_HANDSHAKE    // Finestra ampia per l'handshake sul bus
     )
 
     const val PROTOCOL_FALLBACK = "AT SP 0" // Auto-detect protocol if SP 6 fails
 
     fun cleanResponse(raw: String): String {
-        val withoutLinePrefixes = raw.replace(Regex("""(?:^|[\r\n\s])[0-9A-Fa-f]{1,2}:\s*"""), " ")
+        val withoutLinePrefixes = raw.replace(Regex("""(?:^|[\r\n\s])[0-9A-Fa-f]{1,2}\s*:\s*"""), " ")
         return withoutLinePrefixes.replace(">", "")
             .replace("\r", "")
             .replace("\n", "")
             .replace(" ", "")
             .replace("SEARCHING...", "")
+            .replace("SEARCHING", "")
             .replace("BUSINIT:OK", "")
             .replace("BUSINIT:...", "")
             .replace("STOPPED", "")
@@ -106,7 +119,7 @@ object Elm327Protocol {
 
     /**
      * Estrae la tensione reale della batteria 12V da risposte AT RV (es. "14.2V", "13.8V", "12.4V", "14V").
-     * Immune al 100% da banner di versione o firmware del dongle (es. "ELM327 v1.5", "STN1110 v2.2", "v2.2").
+     * Immune al 100% da banner di versione o firmware del dongle (es. "ELM327 v1.5", "STN1110 v2.2", "v1.5", "v2.2").
      */
     fun parseBatteryVoltage(raw: String): Float? {
         // 1. Rimuove prefissi o banner firmware contenenti versioni (es. "ELM327 v1.5", "STN1110 v2.2", "v1.5", "v2.2")
@@ -154,17 +167,109 @@ object Elm327Protocol {
     }
 
     /**
-     * Verifica se una risposta UDS (ISO 14229) è positiva (non NRC 7F né NODATA/ERROR).
+     * Verifica se la risposta al probe Mode 03 (Request Trouble Codes) è positiva (servizio 43).
+     * Gestisce sia risposte con header (ATH1, es. "7E8 06 43 00 00 00 00 00" o First Frame ISO-TP "7E8 10 09 43 04 ...")
+     * sia senza header (ATH0, es. "43 00 00..."),
+     * e risposte multi-ECU dove una centralina secondaria ritorna NRC (es. 743 03 7F 03 12) mentre il powertrain risponde positivamente.
+     */
+    fun isMode03Response(response: String): Boolean {
+        val cleanAll = cleanResponse(response).uppercase()
+        if (isError(cleanAll)) return false
+
+        val lines = response.split('\r', '\n')
+            .map { cleanResponse(it).uppercase() }
+            .filter { it.isNotEmpty() && !isError(it) }
+
+        val framesToCheck = if (lines.isNotEmpty()) lines else listOf(cleanAll)
+
+        for (frame in framesToCheck) {
+            // Un frame è NRC per Mode 03 se il service byte è 7F seguito dal SID 03
+            val isNrc = if (frame.startsWith("7") && frame.length >= 3) {
+                frame.matches(Regex("""^7[0-9A-F]{2}(?:1[0-9A-F]{3}|[0-9A-F]{1,2})?7F03.*"""))
+            } else {
+                frame.startsWith("7F03")
+            }
+            if (isNrc) {
+                continue
+            }
+
+            // Un frame è positivo per Mode 03 se il service byte è 43
+            // ATH1: CAN ID (7xx) + PCI (SF o FF) + 43
+            // ATH0: inizia con 43 (senza CAN ID)
+            val isPositive = if (frame.startsWith("7") && frame.length >= 3) {
+                frame.matches(Regex("""^7[0-9A-F]{2}(?:1[0-9A-F]{3}|[0-9A-F]{1,2})?43.*"""))
+            } else {
+                frame.startsWith("43")
+            }
+
+            if (isPositive) {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    /**
+     * Verifica se una risposta UDS (ISO 14229) è positiva.
+     * Isola il byte di servizio della risposta per verificare che non sia un NRC (0x7F all'inizio del payload)
+     * e permette la presenza legittima del valore 0x7F nei dati della centralina (temperature, impostazioni di coding, ecc.).
      */
     fun isUdsPositiveResponse(response: String, expectedService: String? = null): Boolean {
         val clean = cleanResponse(response).uppercase()
         if (isError(clean)) return false
-        if (clean.contains("7F")) return false // Negative Response Code (NRC)
-        if (expectedService != null) {
-            val positiveSid = String.format(java.util.Locale.US, "%02X", expectedService.toInt(16) + 0x40)
-            return clean.contains(positiveSid)
+
+        val targetPositiveSid = expectedService?.toIntOrNull(16)?.let {
+            String.format(java.util.Locale.US, "%02X", it + 0x40)
         }
-        return true
+
+        val lines = response.split('\r', '\n')
+            .map { it.replace(">", "").trim() }
+            .filter { it.isNotEmpty() && !isError(it) }
+
+        val linesToCheck = if (lines.isNotEmpty()) lines else listOf(clean)
+
+        for (line in linesToCheck) {
+            val tokens = line.split(Regex("""\s+""")).filter { it.isNotEmpty() }
+            val sid = when {
+                tokens.size >= 4 && tokens[0].length == 3 && tokens[0].all { it in "0123456789ABCDEFabcdef" } &&
+                    tokens[1].matches(Regex("""(?i)^1[0-9A-F]$""")) -> {
+                    // Formato con header ATH1 con spazi, First Frame ISO-TP: [CAN_ID] [1x] [len] [SID] ...
+                    tokens[3].uppercase()
+                }
+                tokens.size >= 3 && tokens[0].length == 3 && tokens[0].all { it in "0123456789ABCDEFabcdef" } -> {
+                    // Formato con header ATH1 con spazi, Single Frame: [CAN_ID] [DLC/PCI] [SID] ...
+                    tokens[2].uppercase()
+                }
+                tokens.isNotEmpty() && tokens[0].matches(Regex("""(?i)^7[0-9A-F]{2}(?:1[0-9A-F]{3}|[0-9A-F]{1,2})([0-9A-F]{2}).*""")) -> {
+                    // Formato compatto con header CAN 7xx (Single Frame o First Frame)
+                    val match = Regex("""(?i)^7[0-9A-F]{2}(?:1[0-9A-F]{3}|[0-9A-F]{1,2})([0-9A-F]{2}).*""").find(tokens[0])
+                    match?.groupValues?.get(1)?.uppercase() ?: ""
+                }
+                tokens.isNotEmpty() -> {
+                    // Formato senza header (ATH0): i primi 2 caratteri sono il SID
+                    tokens[0].take(2).uppercase()
+                }
+                else -> ""
+            }
+
+            if (sid.isEmpty() || sid == "7F") {
+                continue
+            }
+
+            if (targetPositiveSid != null) {
+                if (sid == targetPositiveSid) {
+                    return true
+                }
+            } else {
+                val sidInt = sid.toIntOrNull(16)
+                if (sidInt != null && sidInt in 0x40..0x7E) {
+                    return true
+                }
+            }
+        }
+
+        return false
     }
 
     fun isError(response: String): Boolean {
@@ -184,6 +289,8 @@ object Elm327Protocol {
                clean.contains("STOPPED") ||
                clean.contains("BUSBUSY") ||
                clean.contains("BUSERROR") ||
+               clean.contains("ALERT") ||
+               clean.contains("LVRESET") ||
                clean == "SEARCHING..." ||
                clean == "SEARCHING" ||
                clean.contains("?")

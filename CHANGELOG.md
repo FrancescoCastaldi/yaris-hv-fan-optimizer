@@ -4,7 +4,18 @@ Tutti i cambiamenti e miglioramenti significativi di questo progetto sono docume
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/) e aderisce al [Semantic Versioning](https://semver.org/lang/it/):
 - **MAJOR (`X.0.0`)**: Modifiche architetturali radicali, nuove sezioni o ridisegno totale della dashboard.
 - **MINOR (`0.X.0`)**: Aggiunta di nuove funzionalità, sensori, codifiche o telemetrie.
-- **PATCH (`0.0.X`)**: Bugfix, ottimizzazioni di performance o aggiustamenti grafici minori.
+## [2.9.21] - 2026-09-09
+### ⚡ Allineamento Handshake ELM327 / OBD a Standard Hybrid Assistant & Header Agnostic
+- **Handshake Robusto Ibrido Toyota (`Elm327Protocol` & `ObdController`)**:
+  - Sostituito l'hard reset distruttivo `AT Z` con doppio Warm Start `AT WS` (delay 150ms buffer flush) per prevenire il freeze e la perdita di baud rate sui cloni ELM327 e BLE.
+  - Sequenza configurazione allineata ad Hybrid Assistant: `AT E0`, `ATI`, `STI`, `AT@1`, `AT SP 6` (ISO 15765-4 CAN 11-bit 500k), `AT AT 1`, `AT H1` (Headers ON), `AT L0`, `AT S0`, `AT CAF 1`.
+  - Verifica voltaggio 12V reale (`AT RV`) e invio probe universale Mode 03 (`03`) su broadcast `7DF` per svegliare la linea CAN Toyota prima di interrogazioni UDS proprietarie.
+- **Parser Agnostico Headers CAN (`ATH1` / `ATH0`)**:
+  - `cleanResponse` e tutti i parser PID UDS (batteria HV `2228C1`/`2101`, coding) resi agnostici rispetto alla presenza di prefissi ECU (`7EA`, `7E8`) e frame consecutivi ISO-TP.
+  - Protezione anti-collisione su byte `0x7F` nei dati e decodifica sicura con fallback `toIntOrNull(16)`.
+- **Hardening Modulo Sniffer (`:sniffer`)**:
+  - Emulatore offline aggiornato per gestire tutti i comandi di interrogazione e il probe `03` (`43 00 00 00 00 00 00`).
+  - Avviso e modale di conferma nell'interfaccia se si tenta di avviare il bridge TCP senza adattatore Bluetooth connesso.
 
 ## [2.9.20] - 2026-09-07
 ### 🏎️ Cockpit Motorsport Ultra-Premium — Glassmorphism, Glow Neon & GPU Animations 60fps

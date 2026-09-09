@@ -121,7 +121,14 @@ class ObdInitSequenceTest {
         val cleanWithHeaders = Elm327Protocol.cleanResponse(rawWithHeaders)
         assertEquals("7EA10146228C1444546" + "7EA21434103000000", cleanWithHeaders)
         assertFalse(cleanWithHeaders.contains(" "))
-        assertTrue(cleanWithHeaders.contains("6228C1"))
+        val parsedWithHeaders = ToyotaYarisCommands.parseBatteryResponse(rawWithHeaders, false)
+        assertNotNull(parsedWithHeaders)
+        assertEquals(28.0, parsedWithHeaders!!.temp1, 0.1)
+        assertEquals(29.0, parsedWithHeaders.temp2, 0.1)
+        assertEquals(30.0, parsedWithHeaders.temp3, 0.1)
+        assertEquals(27.0, parsedWithHeaders.temp4, 0.1)
+        assertEquals(25.0, parsedWithHeaders.intakeTemp, 0.1)
+        assertEquals(3, parsedWithHeaders.fanSpeedLevel)
     }
 
     @Test
@@ -133,5 +140,152 @@ class ObdInitSequenceTest {
         assertNull(ToyotaYarisCommands.parseBatteryResponse("7F2212", false))
         assertNull(ToyotaYarisCommands.parseBatteryResponse("7F 22 12\r>", false))
         assertNull(ToyotaYarisCommands.parseBatteryResponse("7EA 03 7F 22 12\r>", false))
+    }
+
+    @Test
+    fun testHybridAssistantHandshakeSequence() {
+        assertEquals("AT WS", Elm327Protocol.CMD_WARM_START)
+        assertEquals("AT H1", Elm327Protocol.CMD_HEADERS_ON)
+        assertEquals("AT RV", Elm327Protocol.CMD_VOLTAGE)
+        assertEquals("03", Elm327Protocol.CMD_PROBE_DTC)
+        assertEquals("03", ToyotaYarisCommands.CMD_PROBE_DTC)
+
+        // Verifiche composizione INIT_COMMANDS Hybrid Assistant
+        assertEquals("AT WS", Elm327Protocol.INIT_COMMANDS.first())
+        assertEquals("AT ST 96", Elm327Protocol.INIT_COMMANDS.last())
+        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT E0"))
+        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT SP 6"))
+        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT AT 1"))
+        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT H1"))
+        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT L0"))
+        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT S0"))
+        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT CAF 1"))
+        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT AR"))
+
+        // Probe Mode 03 validation
+        assertTrue(Elm327Protocol.isMode03Response("7E8 06 43 00 00 00 00 00 00 >"))
+        assertTrue(Elm327Protocol.isMode03Response("43 00 00 00 00 00 00 >"))
+        // Multi-ECU response: primary powertrain 7E8 responds positive, secondary 743 responds NRC
+        assertTrue(Elm327Protocol.isMode03Response("7E8 06 43 00 00 00 00 00\r743 03 7F 03 12\r>"))
+        // Multi-frame ISO-TP Mode 03 response (First Frame + Consecutive Frame with multiple DTCs)
+        assertTrue(Elm327Protocol.isMode03Response("7E8 10 09 43 04 01 23 45 67\r7E8 21 89 00 00 00 00 00\r>"))
+        // Lowercase hexadecimal support
+        assertTrue(Elm327Protocol.isMode03Response("7e8 06 43 00 00 00 00 00 >"))
+        // Positive response with DTC containing byte 7F (e.g. DTC P017F)
+        assertTrue(Elm327Protocol.isMode03Response("43 01 01 7F >"))
+        assertFalse(Elm327Protocol.isMode03Response("NO DATA"))
+        assertFalse(Elm327Protocol.isMode03Response("CAN ERROR"))
+        assertFalse(Elm327Protocol.isMode03Response("7E8 03 7F 03 12 >")) // NRC 12 (SubFunctionNotSupported)
+        assertFalse(Elm327Protocol.isMode03Response("743 03 7F 03 12 >")) // NRC containing '43' in CAN ID
+        assertFalse(Elm327Protocol.isMode03Response("743 02 01 02 >")) // Non-mode-03 containing 43 in CAN ID
+    }
+
+    @Test
+    fun testPidParsersWithAndWithoutHeaders() {
+        // Mode 01 PID con e senza header ATH1 (7E8)
+        assertEquals(100, ToyotaYarisCommands.parseVehicleSpeed("7E8 03 41 0D 64 >"))
+        assertEquals(100, ToyotaYarisCommands.parseVehicleSpeed("41 0D 64 >"))
+
+        assertEquals(80f, ToyotaYarisCommands.parseCoolantTemp("7E8 03 41 05 78 >") ?: 0f, 0.1f)
+        assertEquals(80f, ToyotaYarisCommands.parseCoolantTemp("41 05 78 >") ?: 0f, 0.1f)
+
+        assertEquals(25f, ToyotaYarisCommands.parseIntakeAirTemp("7E8 03 41 0F 41 >") ?: 0f, 0.1f)
+        assertEquals(25f, ToyotaYarisCommands.parseIntakeAirTemp("41 0F 41 >") ?: 0f, 0.1f)
+
+        assertEquals(2000, ToyotaYarisCommands.parseEngineRpm("7E8 04 41 0C 1F 40 >"))
+        assertEquals(2000, ToyotaYarisCommands.parseEngineRpm("41 0C 1F 40 >"))
+
+        assertEquals(16.0f, ToyotaYarisCommands.parseTimingAdvance("7E8 03 41 0E A0 >") ?: 0f, 0.1f)
+        assertEquals(16.0f, ToyotaYarisCommands.parseTimingAdvance("41 0E A0 >") ?: 0f, 0.1f)
+
+        assertEquals(50.19f, ToyotaYarisCommands.parseEngineLoad("7E8 03 41 04 80 >") ?: 0f, 0.5f)
+        assertEquals(50.19f, ToyotaYarisCommands.parseEngineLoad("41 04 80 >") ?: 0f, 0.5f)
+
+        assertEquals(40.0f, ToyotaYarisCommands.parseThrottlePos("7E8 03 41 11 66 >") ?: 0f, 0.5f)
+        assertEquals(40.0f, ToyotaYarisCommands.parseThrottlePos("41 11 66 >") ?: 0f, 0.5f)
+
+        val multiWithHeader = ToyotaYarisCommands.parseMultiPidEngineResponse("7E8 08 41 0D 44 0C 1F 40 11 66 >")
+        assertNotNull(multiWithHeader)
+        assertEquals(68, multiWithHeader!!.speedKmh)
+        assertEquals(2000, multiWithHeader.engineRpm)
+        assertEquals(40.0f, multiWithHeader.throttlePercent!!, 0.5f)
+
+        // Multi-frame ISO-TP Multi-PID con header CAN ATH1 (CF 7E8 21 tra byte RPM e throttle)
+        val multiIsoTpWithHeaders = "7E8 10 08 41 0D 44 0C 1F\r7E8 21 40 11 66 00 00 00\r>"
+        val parsedIsoTp = ToyotaYarisCommands.parseMultiPidEngineResponse(multiIsoTpWithHeaders)
+        assertNotNull(parsedIsoTp)
+        assertEquals(68, parsedIsoTp!!.speedKmh)
+        assertEquals(2000, parsedIsoTp.engineRpm)
+        assertEquals(40.0f, parsedIsoTp.throttlePercent!!, 0.5f)
+
+        val multiWithoutHeader = ToyotaYarisCommands.parseMultiPidEngineResponse("41 0D 44 0C 1F 40 11 66 >")
+        assertNotNull(multiWithoutHeader)
+        assertEquals(68, multiWithoutHeader!!.speedKmh)
+        assertEquals(2000, multiWithoutHeader.engineRpm)
+        assertEquals(40.0f, multiWithoutHeader.throttlePercent!!, 0.5f)
+    }
+
+    @Test
+    fun testBatteryResponseStandardTngaFrame() {
+        val rawBattery = "62 28 C1 44 45 44 43 41 03"
+        val parsed = ToyotaYarisCommands.parseBatteryResponse(rawBattery, false)
+        assertNotNull("La risposta per 2228C1 standard TNGA deve essere valida per parseBatteryResponse", parsed)
+        assertEquals(28.0, parsed!!.temp1, 0.1)
+        assertEquals(29.0, parsed.temp2, 0.1)
+        assertEquals(3, parsed.fanSpeedLevel)
+    }
+
+    @Test
+    fun testBatteryResponseWithCorruptedDataHandledSafely() {
+        // Frame con caratteri non esadecimali o frammenti corrotti
+        val corrupt = "62 28 C1 44 ZZ 44 43 41 03"
+        val parsed = ToyotaYarisCommands.parseBatteryResponse(corrupt, false)
+        assertNull("Frame batteria con caratteri corrotti deve ritornare null in modo sicuro senza crash", parsed)
+    }
+
+    @Test
+    fun testCleanResponseWithSearchingWithoutDots() {
+        val raw = "SEARCHING\r7E8 06 41 00 BE 3F B8 11 >"
+        assertEquals("7E8064100BE3FB811", Elm327Protocol.cleanResponse(raw))
+    }
+
+    @Test
+    fun testCleanResponseWithSpacedLinePrefixes() {
+        // Spazi prima del colon nei frame numerati
+        val raw = "0 : 6228C1444546\r1 : 4341030000 00\r>"
+        val clean = Elm327Protocol.cleanResponse(raw)
+        assertEquals("6228C1444546434103000000", clean)
+        val parsed = ToyotaYarisCommands.parseBatteryResponse(raw, false)
+        assertNotNull(parsed)
+        assertEquals(28.0, parsed!!.temp1, 0.1)
+    }
+
+    @Test
+    fun testCanErrorMessagesAndAdapterAlerts() {
+        // Test che tutti i messaggi di errore e alert hardware vengano identificati come isError
+        val errors = listOf(
+            "CAN ERROR",
+            "BUS BUSY",
+            "BUFFER FULL",
+            "DATA ERROR",
+            "<DATA ERROR",
+            "ERR94",
+            "FB ERROR",
+            "BUS INIT: ERROR",
+            "UNABLE TO CONNECT",
+            "LP ALERT",
+            "ACT ALERT",
+            "LV RESET"
+        )
+        for (err in errors) {
+            assertTrue("Dovrebbe essere identificato come errore: $err", Elm327Protocol.isError(err))
+            assertNull("PID Speed non deve parsare stringhe di errore: $err", ToyotaYarisCommands.parseVehicleSpeed(err))
+            assertNull("PID Coolant non deve parsare stringhe di errore: $err", ToyotaYarisCommands.parseCoolantTemp(err))
+            assertNull("PID RPM non deve parsare stringhe di errore: $err", ToyotaYarisCommands.parseEngineRpm(err))
+        }
+
+        // Test che un errore accodato a un PID finto non produca valori validi
+        assertNull(ToyotaYarisCommands.parseCoolantTemp("4105 ERROR"))
+        assertNull(ToyotaYarisCommands.parseVehicleSpeed("410D CAN ERROR"))
     }
 }

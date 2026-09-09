@@ -87,7 +87,7 @@ class ObdControllerIntegrationTest {
 
     @Test
     fun testElm327ProtocolInitAndErrorHandling() {
-        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT Z"))
+        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT WS"))
         assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT AT 1"))
         assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT ST 96"))
         assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT SP 6"))
@@ -616,35 +616,40 @@ class ObdControllerIntegrationTest {
     }
 
     @Test
-    fun testDrPriusUniversalBaseStackCommands() {
+    fun testHybridAssistantBaseStackCommands() {
         assertEquals("\r\r", Elm327Protocol.CMD_WAKE_UP)
+        assertEquals("AT WS", Elm327Protocol.CMD_WARM_START)
         assertEquals("AT Z", Elm327Protocol.CMD_RESET)
         assertEquals("ATI", Elm327Protocol.CMD_DEVICE_INFO)
+        assertEquals("STI", Elm327Protocol.CMD_DEVICE_INFO_STI)
+        assertEquals("AT@1", Elm327Protocol.CMD_DEVICE_INFO_AT1)
         assertEquals("ST DI", Elm327Protocol.CMD_DEVICE_ID_STN)
+        assertEquals("03", Elm327Protocol.CMD_PROBE_DTC)
 
-        // Must start with AT Z and conclude with the wide handshake timeout
-        assertEquals("AT Z", Elm327Protocol.INIT_COMMANDS.first())
+        // Must start with AT WS (Warm Start) and conclude with the wide handshake timeout
+        assertEquals("AT WS", Elm327Protocol.INIT_COMMANDS.first())
         assertEquals("AT ST 96", Elm327Protocol.INIT_COMMANDS.last())
 
         // Must not contain AT D (which would reset parameters)
         assertFalse(Elm327Protocol.INIT_COMMANDS.contains("AT D"))
 
-        // Must contain all core Dr. Prius commands
+        // Must contain all core Hybrid Assistant commands
+        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT WS"))
         assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT E0"))
+        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT SP 6"))
+        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT AT 1"))
+        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT H1"))
         assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT L0"))
         assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT S0"))
-        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT H0"))
-        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT AT 1"))
-        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT SP 6"))
         assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT CAF 1"))
         assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT AR"))
         assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT ST 96"))
 
-        // Exact Dr. Prius base stack order: protocollo prima del timing, filtro ricezione azzerato
+        // Exact Hybrid Assistant base stack order: protocollo prima del timing, filtro ricezione azzerato
         assertEquals(
             listOf(
-                "AT Z", "AT E0", "AT L0", "AT S0", "AT H0", "AT AT 1",
-                "AT SP 6", "AT CAF 1", "AT AR", "AT ST 96"
+                "AT WS", "AT E0", "AT SP 6", "AT AT 1", "AT H1", "AT L0", "AT S0",
+                "AT CAF 1", "AT AR", "AT ST 96"
             ),
             Elm327Protocol.INIT_COMMANDS
         )

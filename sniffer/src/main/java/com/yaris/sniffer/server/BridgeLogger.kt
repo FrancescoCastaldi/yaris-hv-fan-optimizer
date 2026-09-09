@@ -8,7 +8,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
-import java.io.FileWriter
+import java.io.FileOutputStream
+import java.io.OutputStreamWriter
 import java.io.PrintWriter
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -73,7 +74,7 @@ class BridgeLogger(
             logDirectory.mkdirs()
             val file = File(logDirectory, "obd_bridge_${timeStamp}.txt")
             currentLogFile = file
-            fileWriter = PrintWriter(FileWriter(file, true))
+            fileWriter = PrintWriter(OutputStreamWriter(FileOutputStream(file, true), Charsets.UTF_8))
 
             val header = buildString {
                 appendLine("================================================================")
@@ -180,7 +181,7 @@ class BridgeLogger(
                 file = File(logDirectory, "obd_bridge_${timeStamp}.txt")
                 currentLogFile = file
                 fileWriter?.close()
-                fileWriter = PrintWriter(FileWriter(file, true))
+                fileWriter = PrintWriter(OutputStreamWriter(FileOutputStream(file, true), Charsets.UTF_8))
 
                 val header = buildString {
                     appendLine("================================================================")

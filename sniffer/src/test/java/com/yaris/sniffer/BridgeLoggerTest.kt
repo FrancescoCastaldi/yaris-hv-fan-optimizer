@@ -144,4 +144,19 @@ class BridgeLoggerTest {
         assertEquals(0L, logger.rxCount.value)
         assertTrue(logger.recentLogs.value.isEmpty())
     }
+
+    @Test
+    fun testUtf8EncodingIntegrity() {
+        logger.startRecording("TestDongle_🔗_OBD")
+        val unicodeMessage = "🔗 Connessione Bluetooth attiva: Vgate iCar Pro ⚠️ Attenzione ❌ Errore ⚡ READY"
+        logger.logSystem(unicodeMessage)
+
+        val file = logger.getLogFile()
+        assertNotNull(file)
+        logger.pauseRecording()
+
+        val content = file!!.readText(Charsets.UTF_8)
+        assertTrue("Il log deve contenere i caratteri Unicode intatti senza corruzione: $content", content.contains(unicodeMessage))
+        assertFalse("Il log non deve contenere caratteri di sostituzione '?' per simboli Unicode", content.contains("???"))
+    }
 }
