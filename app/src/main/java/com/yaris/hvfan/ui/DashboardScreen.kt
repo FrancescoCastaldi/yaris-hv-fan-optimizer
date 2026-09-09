@@ -33,6 +33,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.content.Intent
 import android.content.res.Configuration
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -397,6 +398,146 @@ fun DashboardScreen(
                                 onApply = onApplyEcuCoding,
                                 onRestoreFactory = onRestoreFactoryEcuCoding
                             )
+                        }
+                    }
+                }
+            }
+
+            // Landscape Diagnostic Log Modal Dialog
+            if (showLogs) {
+                androidx.compose.ui.window.Dialog(
+                    onDismissRequest = { showLogs = false },
+                    properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+                ) {
+                    val listState = rememberLazyListState()
+                    val context = androidx.compose.ui.platform.LocalContext.current
+                    LaunchedEffect(liveState.logs.size) {
+                        if (liveState.logs.isNotEmpty()) {
+                            listState.animateScrollToItem(liveState.logs.size - 1)
+                        }
+                    }
+
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth(0.92f)
+                            .fillMaxHeight(0.88f),
+                        shape = RoundedCornerShape(8.dp),
+                        color = SurfaceDark,
+                        border = BorderStroke(1.dp, CardBorder)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(14.dp)
+                        ) {
+                            // Top Bar
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Terminal,
+                                        contentDescription = null,
+                                        tint = AccentCyan,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "TERMINALE DIAGNOSTICO CAN / OBD (${liveState.logs.size} EVENTI)",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TextPrimary,
+                                        letterSpacing = 0.5.sp
+                                    )
+                                }
+
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            val shareIntent = com.yaris.hvfan.data.ObdLogger.createShareIntent()
+                                            if (shareIntent != null) {
+                                                context.startActivity(Intent.createChooser(shareIntent, "Esporta Log Diagnostico ECU Yaris"))
+                                            }
+                                        },
+                                        shape = RoundedCornerShape(4.dp),
+                                        border = BorderStroke(1.dp, AccentCyan),
+                                        colors = ButtonDefaults.outlinedButtonColors(
+                                            containerColor = DarkBackground,
+                                            contentColor = AccentCyan
+                                        ),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                        modifier = Modifier.height(30.dp)
+                                    ) {
+                                        Icon(Icons.Default.Share, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(14.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("CONDIVIDI LOG", fontSize = 10.sp, fontWeight = FontWeight.Black)
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = { com.yaris.hvfan.data.ObdLogger.clearLogs() },
+                                        shape = RoundedCornerShape(4.dp),
+                                        border = BorderStroke(1.dp, CardBorder),
+                                        colors = ButtonDefaults.outlinedButtonColors(
+                                            containerColor = DarkBackground,
+                                            contentColor = TextMuted
+                                        ),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                        modifier = Modifier.height(30.dp)
+                                    ) {
+                                        Icon(Icons.Default.Delete, contentDescription = null, tint = TextMuted, modifier = Modifier.size(14.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("RESET", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+
+                                    IconButton(
+                                        onClick = { showLogs = false },
+                                        modifier = Modifier.size(30.dp)
+                                    ) {
+                                        Icon(Icons.Default.Close, contentDescription = "Chiudi", tint = TextMuted)
+                                    }
+                                }
+                            }
+
+                            // Console Output Area
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth()
+                                    .background(Color(0xFF07090C), RoundedCornerShape(4.dp))
+                                    .padding(8.dp)
+                            ) {
+                                if (liveState.logs.isEmpty()) {
+                                    Text(
+                                        text = "Nessun evento registrato finora. Connettiti all'adattatore OBD per avviare il tracciamento.",
+                                        color = TextMuted,
+                                        fontSize = 11.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        modifier = Modifier.align(Alignment.Center)
+                                    )
+                                } else {
+                                    LazyColumn(state = listState) {
+                                        items(liveState.logs) { logLine ->
+                                            val color = when {
+                                                logLine.contains("ERR") || logLine.contains("fallit") || logLine.contains("TIMEOUT") || logLine.contains("EXCEPTION") -> DangerRed
+                                                logLine.contains("TX >>>") -> Color(0xFF64B5F6)
+                                                logLine.contains("RX <<<") -> Color(0xFF81C784)
+                                                logLine.contains("✅") || logLine.contains("SUCCESS") -> SuccessGreen
+                                                logLine.contains("⚠️") -> WarningOrange
+                                                else -> AccentCyan
+                                            }
+                                            Text(
+                                                text = logLine,
+                                                color = color,
+                                                fontSize = 11.sp,
+                                                fontFamily = FontFamily.Monospace,
+                                                lineHeight = 15.sp
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -797,30 +938,112 @@ fun DashboardScreen(
 
         AnimatedVisibility(visible = showLogs) {
             val listState = rememberLazyListState()
+            val context = androidx.compose.ui.platform.LocalContext.current
             LaunchedEffect(liveState.logs.size) {
                 if (liveState.logs.isNotEmpty()) {
                     listState.animateScrollToItem(liveState.logs.size - 1)
                 }
             }
 
-            Box(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(180.dp)
                     .padding(top = 6.dp)
                     .background(DarkBackground, RoundedCornerShape(4.dp))
                     .border(1.dp, CardBorder, RoundedCornerShape(4.dp))
                     .padding(10.dp)
             ) {
-                LazyColumn(state = listState) {
-                    items(liveState.logs) { logLine ->
+                // Header Bar con azioni Condividi / Pulisci
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "FRAME TX/RX & EVENTI LIVE (${liveState.logs.size})",
+                        fontSize = 9.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = TextSecondary,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        OutlinedButton(
+                            onClick = {
+                                val shareIntent = com.yaris.hvfan.data.ObdLogger.createShareIntent()
+                                if (shareIntent != null) {
+                                    context.startActivity(Intent.createChooser(shareIntent, "Esporta Log Diagnostico ECU Yaris"))
+                                }
+                            },
+                            shape = RoundedCornerShape(4.dp),
+                            border = BorderStroke(1.dp, AccentCyan),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = SurfaceDark,
+                                contentColor = AccentCyan
+                            ),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                            modifier = Modifier.height(26.dp)
+                        ) {
+                            Icon(Icons.Default.Share, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(12.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("CONDIVIDI LOG", fontSize = 9.sp, fontWeight = FontWeight.Black)
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                com.yaris.hvfan.data.ObdLogger.clearLogs()
+                            },
+                            shape = RoundedCornerShape(4.dp),
+                            border = BorderStroke(1.dp, CardBorder),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = SurfaceDark,
+                                contentColor = TextMuted
+                            ),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                            modifier = Modifier.height(26.dp)
+                        ) {
+                            Icon(Icons.Default.Delete, contentDescription = null, tint = TextMuted, modifier = Modifier.size(12.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("RESET", fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(220.dp)
+                        .background(Color(0xFF07090C), RoundedCornerShape(4.dp))
+                        .padding(8.dp)
+                ) {
+                    if (liveState.logs.isEmpty()) {
                         Text(
-                            text = logLine,
-                            color = AccentCyan,
+                            text = "Nessun evento registrato finora. Connettiti all'adattatore OBD per avviare il tracciamento.",
+                            color = TextMuted,
                             fontSize = 10.sp,
                             fontFamily = FontFamily.Monospace,
-                            lineHeight = 14.sp
+                            modifier = Modifier.align(Alignment.Center)
                         )
+                    } else {
+                        LazyColumn(state = listState) {
+                            items(liveState.logs) { logLine ->
+                                val color = when {
+                                    logLine.contains("ERR") || logLine.contains("fallit") || logLine.contains("TIMEOUT") || logLine.contains("EXCEPTION") -> DangerRed
+                                    logLine.contains("TX >>>") -> Color(0xFF64B5F6) // Light Blue
+                                    logLine.contains("RX <<<") -> Color(0xFF81C784) // Light Green
+                                    logLine.contains("✅") || logLine.contains("SUCCESS") -> SuccessGreen
+                                    logLine.contains("⚠️") -> WarningOrange
+                                    else -> AccentCyan
+                                }
+                                Text(
+                                    text = logLine,
+                                    color = color,
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    lineHeight = 14.sp
+                                )
+                            }
+                        }
                     }
                 }
             }

@@ -223,7 +223,10 @@ class ObdController(
         val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
         val logLine = "[$timestamp] $message"
         Log.i(TAG, logLine)
-        val currentLogs = _liveState.value.logs.takeLast(50).toMutableList()
+        try {
+            com.yaris.hvfan.data.ObdLogger.log(message)
+        } catch (ignored: Throwable) {}
+        val currentLogs = _liveState.value.logs.takeLast(100).toMutableList()
         currentLogs.add(logLine)
         _liveState.value = _liveState.value.copy(
             lastLogMessage = message,

@@ -4,6 +4,20 @@ Tutti i cambiamenti e miglioramenti significativi di questo progetto sono docume
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/) e aderisce al [Semantic Versioning](https://semver.org/lang/it/):
 - **MAJOR (`X.0.0`)**: Modifiche architetturali radicali, nuove sezioni o ridisegno totale della dashboard.
 - **MINOR (`0.X.0`)**: Aggiunta di nuove funzionalità, sensori, codifiche o telemetrie.
+## [3.0.3] - 2026-09-09
+### 🔍 Sistema Integrato di Logging Diagnostico ECU & Condivisione File Traccia OBD
+- **Logger Diagnostico Persistente su Disco (`ObdLogger`)**:
+  - Implementato modulo dedicato con persistenza su storage cache locale (`cacheDir/ecu_logs/obd_trace_YYYYMMDD_HHmmss.txt`) che registra ogni singolo byte inviato e ricevuto sul bus dati del veicolo.
+  - Timestamp micro-precisi (`HH:mm:ss.SSS`), tracciamento di comandi TX, risposte grezze RX con latenza in millisecondi (`[elapsed ms]`), timeout ed eccezioni.
+  - Rotazione automatica delle sessioni di log (mantenimento delle ultime 10 sessioni) per prevenire l'occupazione di spazio su disco.
+- **Esportazione & Condivisione Immediata (Android `FileProvider`)**:
+  - Configurato `androidx.core.content.FileProvider` (`com.yaris.hvfan.fileprovider`) con percorsi protetti e sicuri.
+  - Tasto **"CONDIVIDI LOG"** integrato sia nella schermata Dashboard (Portrait) sia nel nuovo Dialog Modale (Landscape) che genera istantaneamente un `Intent.ACTION_SEND` per inviare il file di traccia via WhatsApp, Telegram, Google Drive, Email o Bluetooth.
+- **Terminale Diagnostico Potenziato (Portrait & Landscape)**:
+  - Color-coding intuitivo per la riga di comando: comandi inviati in ciano/azzurro (`TX >>>`), risposte in verde (`RX <<<`), errori/timeout evidenziati in rosso fuoco (`ERR/TIMEOUT`), conferme in verde brillante.
+  - Tasto **"RESET"** per svuotare all'istante la schermata e i log correnti.
+  - Supporto completo Landscape tramite Dialog a tutto schermo quando si seleziona l'icona del terminale nella barra laterale sinistra.
+
 ## [3.0.2] - 2026-09-09
 ### 🏎️ Ottimizzazione Caricamento e Fluidità Mobile 60 FPS per Smartphone Android Legacy
 - **Mobile Scroll Zero-Lag**:

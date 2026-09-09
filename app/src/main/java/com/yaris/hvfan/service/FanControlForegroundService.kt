@@ -69,6 +69,7 @@ class FanControlForegroundService : Service() {
     override fun onCreate() {
         super.onCreate()
         appPreferences = AppPreferences(this)
+        com.yaris.hvfan.data.ObdLogger.init(this)
         bleManager = BleManager(this)
         obdController = ObdController(bleManager, serviceScope, appPreferences)
         obdController.setTargetThreshold(appPreferences.targetTempThreshold)

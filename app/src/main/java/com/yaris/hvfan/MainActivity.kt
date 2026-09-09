@@ -77,6 +77,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         appPreferences = AppPreferences(this)
+        com.yaris.hvfan.data.ObdLogger.init(this)
 
         startAndBindService()
         checkPermissionsAndStart()

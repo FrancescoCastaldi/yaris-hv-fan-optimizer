@@ -912,6 +912,11 @@ class BleManager(private val context: Context) : com.yaris.hvfan.obd.ObdTranspor
         val cmdString = command.trim() + "\r"
         val cmdBytes = cmdString.toByteArray(Charsets.US_ASCII)
 
+        val startMs = System.currentTimeMillis()
+        try {
+            com.yaris.hvfan.data.ObdLogger.logTx(command)
+        } catch (ignored: Throwable) {}
+
         try {
             // 1. Invia tramite Classic Bluetooth SPP Socket se connesso
             val outStream = socketOutputStream
@@ -938,7 +943,7 @@ class BleManager(private val context: Context) : com.yaris.hvfan.obd.ObdTranspor
                 }
             }
 
-            return withTimeoutOrNull(timeoutMs) {
+            val result = withTimeoutOrNull(timeoutMs) {
                 deferred.await()
             } ?: run {
                 synchronized(responseBuffer) {
@@ -947,7 +952,16 @@ class BleManager(private val context: Context) : com.yaris.hvfan.obd.ObdTranspor
                     if (partial.isNotBlank()) partial else "TIMEOUT"
                 }
             }
+            val elapsedMs = System.currentTimeMillis() - startMs
+            try {
+                com.yaris.hvfan.data.ObdLogger.logRx(result, elapsedMs)
+            } catch (ignored: Throwable) {}
+            return result
         } catch (e: Exception) {
+            val elapsedMs = System.currentTimeMillis() - startMs
+            try {
+                com.yaris.hvfan.data.ObdLogger.logRx("EXCEPTION: ${e.localizedMessage}", elapsedMs)
+            } catch (ignored: Throwable) {}
             Log.w(TAG, "Errore invio comando OBD ($command): ${e.localizedMessage}")
             throw e
         } finally {
