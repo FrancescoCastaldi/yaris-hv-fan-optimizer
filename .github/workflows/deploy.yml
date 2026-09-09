@@ -44,7 +44,7 @@ jobs:
       - name: Copy Built APKs to Distribution & Docs
         run: |
           mkdir -p docs
-          cp app/build/outputs/apk/release/app-release.apk docs/YarisHvFanControl-v3.0.1.apk
+          cp app/build/outputs/apk/release/app-release.apk docs/YarisHvFanControl-v3.0.2.apk
           cp sniffer/build/outputs/apk/release/sniffer-release.apk docs/YarisObdBridge-v1.0.0.apk
 
       - name: Upload YarisHvFanControl APK Artifact

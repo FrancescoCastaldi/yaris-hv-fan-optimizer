@@ -2003,6 +2003,70 @@ h3 { font-size: 25px; line-height: 1.18; font-weight: 600; }
     .preview-page .section { padding-block: 35px; }
 }
 
+/* ==========================================================================
+   Mobile Performance & Legacy Android Optimization (60 FPS / No Jank)
+   ========================================================================== */
+@media (max-width: 768px) {
+    /* 1. Prevent expensive full-screen background re-rasterization on every scroll tick */
+    body {
+        background-attachment: scroll, scroll, scroll, scroll, scroll, scroll !important;
+        background-image:
+            radial-gradient(ellipse 900px 500px at 50% -80px, rgba(238, 51, 66, 0.12), transparent 70%),
+            radial-gradient(ellipse at 50% 50%, rgba(14, 18, 23, 0.5) 0%, rgba(4, 6, 8, 0.98) 100%),
+            url("carbon-pattern-3k.svg") !important;
+        background-size: 100% auto, 100% 100%, 48px 48px !important;
+        background-repeat: no-repeat, no-repeat, repeat !important;
+    }
+
+    /* 2. Remove fixed full-screen pseudo overlays that cause GPU compositing layers */
+    body::before {
+        display: none !important;
+    }
+
+    /* 3. Disable heavy backdrop-filter blur on low-end mobile GPUs, use crisp solid colors */
+    .site-header {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+        background: #0d1117 !important;
+    }
+
+    .mobile-download {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+        background: #0d1117 !important;
+    }
+
+    .feature-list article,
+    .sim-panel,
+    .release-card,
+    .main-apk-card,
+    .sniffer-card,
+    .sniffer-guide-box,
+    .error-card,
+    .setup-steps li {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+        background: #131820 !important;
+    }
+
+    /* 4. Use content-visibility to skip rendering off-screen DOM on lower-memory phones */
+    .section,
+    .spec-strip,
+    .engineering,
+    .setup-section,
+    .sniffer-section,
+    .release-section,
+    .download-section {
+        content-visibility: auto;
+        contain-intrinsic-size: 600px;
+    }
+
+    /* 5. Smooth scrolling optimization */
+    * {
+        text-rendering: optimizeSpeed;
+    }
+}
+
 @media (prefers-reduced-motion: reduce) {
     html { scroll-behavior: auto; }
     *, *::before, *::after {

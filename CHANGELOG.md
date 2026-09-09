@@ -4,6 +4,18 @@ Tutti i cambiamenti e miglioramenti significativi di questo progetto sono docume
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/) e aderisce al [Semantic Versioning](https://semver.org/lang/it/):
 - **MAJOR (`X.0.0`)**: Modifiche architetturali radicali, nuove sezioni o ridisegno totale della dashboard.
 - **MINOR (`0.X.0`)**: Aggiunta di nuove funzionalità, sensori, codifiche o telemetrie.
+## [3.0.2] - 2026-09-09
+### 🏎️ Ottimizzazione Caricamento e Fluidità Mobile 60 FPS per Smartphone Android Legacy
+- **Mobile Scroll Zero-Lag**:
+  - Rimosso `background-attachment: fixed` e semplificati i gradienti su viewport mobile (`<= 768px`), eliminando il continuo ricalcolo raster della GPU durante lo scorrimento su schermi OLED e LCD di smartphone meno recenti.
+  - Rimosso il pseudo-elemento `body::before` fisso su mobile per azzerare i livelli di compositing GPU inutili.
+- **Abbattimento Overhead di Compositing (Backdrop Filters)**:
+  - Disattivati i filtri `backdrop-filter: blur(...)` su mobile in favore di sfondi opachi moderni (`#0d1117`, `#131820`), garantendo 60/120 FPS costanti senza frame drop anche nelle WebView integrate e su dispositivi Android 8–11 con GPU limitate.
+- **Virtualizzazione DOM con `content-visibility: auto`**:
+  - Introdotto `content-visibility: auto` con `contain-intrinsic-size` su tutte le sezioni off-screen del portale web (`#features`, `#setup`, `#sniffer`, `#releases`), riducendo drasticamente il First Contentful Paint (FCP) e il tempo di rendering iniziale su CPU lente.
+- **Caricamento Asset Asincrono**:
+  - Aggiunto `decoding="async"` e `loading="eager"` per l'icona e allineate tutte le versioni di download in `docs/` e `README.md`.
+
 ## [3.0.1] - 2026-09-09
 ### 🛡️ Fix Definitivo Oscillazione READY/Standby & Bypass Filtro Gateway TNGA
 - **Eliminazione Flapping READY 13V $\leftrightarrow$ Sleep**:

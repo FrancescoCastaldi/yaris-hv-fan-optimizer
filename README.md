@@ -1,7 +1,7 @@
 # Toyota Yaris MK4 Hybrid - HV Battery Cooling, GR Cockpit & ECU Coding Suite 🏎️⚡
 
 [![Website](https://img.shields.io/badge/Website-Live%20Portal-00E5FF.svg?style=for-the-badge&logo=googlechrome)](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/)
-[![Download APK](https://img.shields.io/badge/Download-APK%20Release%20(v3.0.1)-D71920.svg?style=for-the-badge&logo=android)](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisHvFanControl-v3.0.1.apk)
+[![Download APK](https://img.shields.io/badge/Download-APK%20Release%20(v3.0.2)-D71920.svg?style=for-the-badge&logo=android)](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisHvFanControl-v3.0.2.apk)
 [![OBD Bridge APK](https://img.shields.io/badge/Download-OBD%20Bridge%20(v1.0.0)-00E5FF.svg?style=for-the-badge&logo=android)](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisObdBridge-v1.0.0.apk)
 [![Platform](https://img.shields.io/badge/Platform-Android%208.0%2B%20(API%2026%2B)-3DDC84.svg?style=flat&logo=android)](https://www.android.com/)
 [![Kotlin](https://img.shields.io/badge/Kotlin-1.9.24-7F52FF.svg?style=flat&logo=kotlin)](https://kotlinlang.org/)
@@ -33,7 +33,7 @@ Applicazione Android nativa ad altissime prestazioni per **Toyota Yaris MK4 Hybr
 ## 🌐 Sito Web Ufficiale & Download Diretto
 - **Portale Web Ufficiale**: 👉 **[https://francescocastaldi.github.io/yaris-hv-fan-optimizer/](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/)**
 - **Simulatore Interattivo Web**: 👉 **[https://francescocastaldi.github.io/yaris-hv-fan-optimizer/preview.html](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/preview.html)**
-- **Download Diretto Yaris HV Fan Control (v3.0.1)**: 👉 **[Scarica YarisHvFanControl-v3.0.1.apk](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisHvFanControl-v3.0.1.apk)**
+- **Download Diretto Yaris HV Fan Control (v3.0.2)**: 👉 **[Scarica YarisHvFanControl-v3.0.2.apk](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisHvFanControl-v3.0.2.apk)**
 - **Download Diretto Yaris OBD Bridge & Sniffer (v1.0.0)**: 👉 **[Scarica YarisObdBridge-v1.0.0.apk](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisObdBridge-v1.0.0.apk)**
 
 ---
