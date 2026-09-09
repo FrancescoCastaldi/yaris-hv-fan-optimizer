@@ -471,7 +471,7 @@ class ObdController(
                 stateMachine.onBatteryDiscoveryProbing()
 
                 var stage2Ok = false
-                val fallbackChain = ToyotaYarisCommands.BATTERY_FALLBACK_PIDS // 2228C1 -> 2228C0 -> 2101 -> 21C3 -> 2161
+                val fallbackChain = ToyotaYarisCommands.BATTERY_FALLBACK_PIDS // 2101 -> 21C3 -> 21C4 -> 2161 -> 2228C1 -> 2228C0 -> 220101
 
                 for (candidatePid in fallbackChain) {
                     addLog("Probe PID batteria: $candidatePid...")

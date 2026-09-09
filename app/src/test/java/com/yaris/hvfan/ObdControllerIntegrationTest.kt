@@ -481,11 +481,11 @@ class ObdControllerIntegrationTest {
      */
     @Test
     fun testBatteryEcuIsoTpTimeoutIsConservativeAndBoundedByBleTimeouts() {
-        assertEquals("AT ST C8", Elm327Protocol.CMD_TIMEOUT_BATTERY_ECU)
+        assertEquals("AT ST FF", Elm327Protocol.CMD_TIMEOUT_BATTERY_ECU)
 
-        // 0xC8 = 200 decimale; formula ELM327 AT ST hh: hh x 4.096ms
-        val elmTimeoutMs = 0xC8 * 4.096
-        assertEquals(819.2, elmTimeoutMs, 0.1)
+        // 0xFF = 255 decimale; formula ELM327 AT ST hh: hh x 4.096ms
+        val elmTimeoutMs = 0xFF * 4.096
+        assertEquals(1044.48, elmTimeoutMs, 0.1)
 
         // Deve restare ben al di sotto del timeout BLE di discovery (3000ms) e steady-state (4000ms)
         assertTrue(elmTimeoutMs < BatteryDiscoveryEngine.MAX_PROBE_TIMEOUT_MS)
@@ -562,12 +562,14 @@ class ObdControllerIntegrationTest {
         // Stage 2: Battery ECU and fallback chain
         assertEquals("7E2", ToyotaYarisCommands.HEADER_BATTERY_ECU)
         assertEquals("7EA", ToyotaYarisCommands.FILTER_BATTERY_ECU)
-        assertEquals(5, ToyotaYarisCommands.BATTERY_FALLBACK_PIDS.size)
-        assertEquals("2228C1", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[0]) // Primary TNGA Mode 22
-        assertEquals("2228C0", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[1]) // Alternative Mode 22
-        assertEquals("2101", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[2])   // Mode 21 Local ID 01
-        assertEquals("21C3", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[3])   // Lithium Mode 21
-        assertEquals("2161", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[4])   // Legacy KWP Mode 21
+        assertEquals(7, ToyotaYarisCommands.BATTERY_FALLBACK_PIDS.size)
+        assertEquals("2101", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[0])   // Primary universal Mode 21 Local ID 01
+        assertEquals("21C3", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[1])   // Lithium Mode 21 (1)
+        assertEquals("21C4", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[2])   // Lithium Mode 21 (2)
+        assertEquals("2161", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[3])   // Legacy KWP Mode 21
+        assertEquals("2228C1", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[4]) // TNGA Mode 22 UDS fallback
+        assertEquals("2228C0", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[5]) // Alternative Mode 22 UDS fallback
+        assertEquals("220101", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[6]) // Alternative Mode 22 UDS fallback 3
 
         // Verify parsing for each fallback response variant
         // 1. Primary 2228C1 -> 6228C1
@@ -1061,9 +1063,9 @@ class ObdControllerIntegrationTest {
                     "0100" -> "41 00 BE 7F A8 11\r\n>"
                     "010C" -> "41 0C 1F 40\r\n>"
                     // Stage 2 battery fallback responses:
-                    "2228C1" -> "NO DATA\r\n>"
-                    "2228C0" -> "7F 22 31\r\n>" // Negative response
-                    "2101" -> "61 01 44 45 44 43 41 03\r\n>" // Success on 2101
+                    // 2101 fails (NO DATA), 21C3 succeeds:
+                    "2101" -> "NO DATA\r\n>"
+                    "21C3" -> "61 C3 44 45 44 43 41 03\r\n>" // Success on 21C3
                     else -> "OK\r\n>"
                 }
             }
@@ -1075,12 +1077,11 @@ class ObdControllerIntegrationTest {
 
         val canOk = controller.performHandshake()
 
-        assertTrue("performHandshake deve ritornare true su 2101", canOk)
-        assertEquals("2101", controller.discoveryEngine.latchedPid)
-        assertTrue(dispatched.contains("2228C1"))
-        assertTrue(dispatched.contains("2228C0"))
+        assertTrue("performHandshake deve ritornare true su 21C3", canOk)
+        assertEquals("21C3", controller.discoveryEngine.latchedPid)
         assertTrue(dispatched.contains("2101"))
-        assertNotNull("I dati batteria devono essere stati parsati da 2101", controller.liveState.value.batteryStatus)
+        assertTrue(dispatched.contains("21C3"))
+        assertNotNull("I dati batteria devono essere stati parsati da 21C3", controller.liveState.value.batteryStatus)
         assertEquals(28.0, controller.liveState.value.batteryStatus!!.temp1, 0.1)
     }
 

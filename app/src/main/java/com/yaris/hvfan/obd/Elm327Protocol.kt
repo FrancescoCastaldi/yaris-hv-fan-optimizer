@@ -41,7 +41,7 @@ object Elm327Protocol {
     // raddoppiato per dare margine ai frame consecutivi lenti, restando pero' ben al di sotto sia
     // di MAX_PROBE_TIMEOUT_MS (3000ms, discovery) sia di BATTERY_PID_TIMEOUT_MS (4000ms, steady-state)
     // cosi' da lasciare spazio a retry/gestione errori lato BLE.
-    const val CMD_TIMEOUT_BATTERY_ECU = "AT ST C8"  // ~819 ms per il multi-frame UDS 2228C1
+    const val CMD_TIMEOUT_BATTERY_ECU = "AT ST FF"  // ~1044 ms (0xFF * 4.096ms) per ricezione affidabile multi-frame pacco celle Denso ISO-TP
     const val CMD_TIMEOUT_TELEMETRY = "AT ST 32"    // ~205 ms, default ELM327, per il loop rapido
     const val CMD_TIMEOUT_ECU_CODING = "AT ST 96"   // ~614 ms per Body, Meter, Aircon e ADAS UDS Mode 21/22/3B
 

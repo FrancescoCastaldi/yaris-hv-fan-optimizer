@@ -78,9 +78,8 @@ class ObdInitSequenceTest {
 
         assertEquals(614.4, atStTimeoutMs(Elm327Protocol.CMD_TIMEOUT_HANDSHAKE), 0.1)
         assertEquals(614.4, atStTimeoutMs(Elm327Protocol.CMD_TIMEOUT_ECU_CODING), 0.1)
-        // v2.9.14: esteso da 0x64 (~409.6ms) a 0xC8 (~819.2ms) per dare margine ai cloni
-        // ELM327/Vlinker sul multi-frame UDS 2228C1 (vedi CHANGELOG v2.9.14).
-        assertEquals(819.2, atStTimeoutMs(Elm327Protocol.CMD_TIMEOUT_BATTERY_ECU), 0.1)
+        // v3.0.7: esteso a 0xFF (~1044.5ms) per ricezione affidabile multi-frame pacco celle Denso ISO-TP
+        assertEquals(1044.5, atStTimeoutMs(Elm327Protocol.CMD_TIMEOUT_BATTERY_ECU), 0.1)
         assertEquals(204.8, atStTimeoutMs(Elm327Protocol.CMD_TIMEOUT_TELEMETRY), 0.1)
     }
 
@@ -354,12 +353,14 @@ class ObdInitSequenceTest {
 
     @Test
     fun testStage2BatteryFallbackChainPidsParsing() {
-        assertEquals(5, ToyotaYarisCommands.BATTERY_FALLBACK_PIDS.size)
-        assertEquals("2228C1", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[0])
-        assertEquals("2228C0", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[1])
-        assertEquals("2101", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[2])
-        assertEquals("21C3", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[3])
-        assertEquals("2161", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[4])
+        assertEquals(7, ToyotaYarisCommands.BATTERY_FALLBACK_PIDS.size)
+        assertEquals("2101", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[0])
+        assertEquals("21C3", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[1])
+        assertEquals("21C4", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[2])
+        assertEquals("2161", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[3])
+        assertEquals("2228C1", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[4])
+        assertEquals("2228C0", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[5])
+        assertEquals("220101", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[6])
 
         // Candidate 1: 2228C1
         val res28C1 = "62 28 C1 44 45 44 43 41 03"

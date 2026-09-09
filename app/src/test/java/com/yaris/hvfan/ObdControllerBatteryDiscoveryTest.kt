@@ -139,8 +139,8 @@ class ObdControllerBatteryDiscoveryTest {
      */
     @Test
     fun testValObd005_discoveryCacheLockOnFirstParseableResponse() = runTest {
-        val validPid = ToyotaYarisCommands.PID_READ_BATTERY_DATA_TNGA // "2228C1"
-        val sampleBatteryResponse = "7EA 21 00 62 28 C1 1B 00 9C 00 00 00 00 00 00 00 1E 20 22 21 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+        val validPid = ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[0] // "2101"
+        val sampleBatteryResponse = "7EA 21 00 61 01 1B 00 9C 00 00 00 00 00 00 00 1E 20 22 21 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
 
         val fakeTransport = FakeObdTransport()
         fakeTransport.commandResponder = { cmd, _ ->
@@ -321,9 +321,9 @@ class ObdControllerBatteryDiscoveryTest {
 
         controller.executeBatteryThermalCycle()
 
-        assertEquals("AT ST C8", Elm327Protocol.CMD_TIMEOUT_BATTERY_ECU)
+        assertEquals("AT ST FF", Elm327Protocol.CMD_TIMEOUT_BATTERY_ECU)
         assertTrue(
-            "Must apply the conservative AT ST C8 (~819ms) timeout before probing battery ECU 7E2",
+            "Must apply the conservative AT ST FF (~1044ms) timeout before probing battery ECU 7E2",
             fakeTransport.dispatchedCommands.contains(Elm327Protocol.CMD_TIMEOUT_BATTERY_ECU)
         )
     }
@@ -392,7 +392,7 @@ class ObdControllerBatteryDiscoveryTest {
         fakeTransport.commandResponder = { cmd, _ ->
             when {
                 cmd.startsWith("AT") -> "OK"
-                cmd == ToyotaYarisCommands.PID_READ_BATTERY_DATA_TNGA -> "7EA 10 23 62 28 C1 01 1C 1D >"
+                cmd == ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[0] -> "7EA 10 23 61 01 01 1C 1D >"
                 else -> "OK"
             }
         }
@@ -414,7 +414,7 @@ class ObdControllerBatteryDiscoveryTest {
         )
         assertTrue(
             "Candidate PID must be queried directly on 7E2",
-            dispatched.contains(ToyotaYarisCommands.PID_READ_BATTERY_DATA_TNGA)
+            dispatched.contains(ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[0])
         )
     }
 

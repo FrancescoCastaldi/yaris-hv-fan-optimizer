@@ -5,6 +5,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 - **MAJOR (`X.0.0`)**: Fundamental architectural overhauls, major subsystems, or comprehensive UI redesigns.
 - **MINOR (`0.X.0`)**: New features, additional sensors, ECU coding options, or telemetry pipelines.
 
+## [3.0.7] - 2026-09-10
+### 🔋 Universal Mode 21 Battery Telemetry Prioritization & Secondary ECU Decoupling
+- **Mode 21 Universal Battery PID Prioritization**:
+  - Reordered `BATTERY_FALLBACK_PIDS` to place universal Mode 21 PIDs first (`2101`, `21C3`, `21C4`, `2161`), relegating Mode 22 UDS PIDs (`2228C1`, `2228C0`, `220101`) to fallback-only positions.
+  - Resolves `NO DATA` / rejection on XP210 TNGA-B Denso HV Battery ECUs that reject Mode 22 3-byte identifiers without an active extended diagnostic session (`10 03`).
+- **ELM327 Battery Multi-Frame ISO-TP Timeout Expansion**:
+  - Increased `Elm327Protocol.CMD_TIMEOUT_BATTERY_ECU` from `AT ST C8` (~819ms) to `AT ST FF` (~1044ms), giving maximum margin for multi-frame consecutive frame reception across BLE/SPP interfaces.
+- **Secondary ECU Decoupling**:
+  - Guaranteed secondary ECUs (Meter `7C0`, ADAS `7A0`, Body `750`, Aircon `7C4`) remain strictly on-demand in ECU customization and cannot pollute or disrupt steady-state battery and engine telemetry.
+- **Monotonic Version Increment & Web Portal Synchronization**:
+  - Bumped `versionCode` to 45 and `versionName` to `3.0.7`.
+  - Updated web portal links, simulator, and release automation scripts.
+
 ## [3.0.6] - 2026-09-10
 ### 🚗 Vgate iCar Pro Handshake Calibration & Resilient Staged TNGA-B CAN Lock
 - **Calibrated Vgate iCar Pro Initial AT Handshake (R1)**:

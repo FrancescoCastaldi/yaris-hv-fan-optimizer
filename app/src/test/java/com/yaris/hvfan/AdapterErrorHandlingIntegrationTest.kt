@@ -252,9 +252,9 @@ class AdapterErrorHandlingIntegrationTest {
     @Test
     fun testAdp005_flakyAdapterRecoversAfterRepeatedFailures_warningClearsOnSuccess() = runTest {
         var currentTime = 100_000L
-        val validPid = ToyotaYarisCommands.PID_READ_BATTERY_DATA_TNGA
+        val validPid = ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[0]
         val sampleBatteryResponse =
-            "7EA 21 00 62 28 C1 1B 00 9C 00 00 00 00 00 00 00 1E 20 22 21 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+            "7EA 21 00 61 01 1B 00 9C 00 00 00 00 00 00 00 1E 20 22 21 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
 
         var recovered = false
         val fakeTransport = FakeObdTransport()

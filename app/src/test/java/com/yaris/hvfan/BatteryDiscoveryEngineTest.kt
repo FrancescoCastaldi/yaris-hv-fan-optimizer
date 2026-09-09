@@ -20,7 +20,7 @@ class BatteryDiscoveryEngineTest {
         assertNull(engine.latchedPid)
         assertFalse(engine.isDiscovered)
         assertEquals(ToyotaYarisCommands.BATTERY_FALLBACK_PIDS, engine.candidates)
-        assertEquals(ToyotaYarisCommands.PID_READ_BATTERY_DATA_TNGA, engine.getNextCandidate())
+        assertEquals("2101", engine.getNextCandidate())
     }
 
     @Test
@@ -28,52 +28,62 @@ class BatteryDiscoveryEngineTest {
         var currentTime = 100_000L
         val engine = BatteryDiscoveryEngine(timeProvider = { currentTime })
 
-        // Cycle 1: First candidate is 2228C1
+        // Cycle 1: First candidate is 2101
         val c1 = engine.getNextCandidate()
-        assertEquals("2228C1", c1)
+        assertEquals("2101", c1)
         // Candidate 1 fails (NO DATA)
-        engine.onCandidateFailed("2228C1", ProbeStatus.NO_DATA, "NO DATA")
-        assertTrue(engine.isCandidateInCooldown("2228C1"))
-        assertEquals(30_000L, engine.getRemainingCooldownMs("2228C1"))
-
-        // Cycle 2: Candidate advances to 2228C0
-        val c2 = engine.getNextCandidate()
-        assertEquals("2228C0", c2)
-        // Candidate 2 fails (TIMEOUT)
-        engine.onCandidateFailed("2228C0", ProbeStatus.TIMEOUT, null)
-        assertTrue(engine.isCandidateInCooldown("2228C0"))
-
-        // Cycle 3: Candidate advances to 2101
-        val c3 = engine.getNextCandidate()
-        assertEquals("2101", c3)
-        // Candidate 3 fails (7F NRC)
-        engine.onCandidateFailed("2101", ProbeStatus.REJECTED, "7F2111")
+        engine.onCandidateFailed("2101", ProbeStatus.NO_DATA, "NO DATA")
         assertTrue(engine.isCandidateInCooldown("2101"))
+        assertEquals(30_000L, engine.getRemainingCooldownMs("2101"))
 
-        // Cycle 4: Candidate advances to 21C3
+        // Cycle 2: Candidate advances to 21C3
+        val c2 = engine.getNextCandidate()
+        assertEquals("21C3", c2)
+        // Candidate 2 fails (TIMEOUT)
+        engine.onCandidateFailed("21C3", ProbeStatus.TIMEOUT, null)
+        assertTrue(engine.isCandidateInCooldown("21C3"))
+
+        // Cycle 3: Candidate advances to 21C4
+        val c3 = engine.getNextCandidate()
+        assertEquals("21C4", c3)
+        // Candidate 3 fails (7F NRC)
+        engine.onCandidateFailed("21C4", ProbeStatus.REJECTED, "7F2111")
+        assertTrue(engine.isCandidateInCooldown("21C4"))
+
+        // Cycle 4: Candidate advances to 2161
         val c4 = engine.getNextCandidate()
-        assertEquals("21C3", c4)
-        engine.onCandidateFailed("21C3", ProbeStatus.INVALID, "GARBAGE")
+        assertEquals("2161", c4)
+        engine.onCandidateFailed("2161", ProbeStatus.INVALID, "GARBAGE")
 
-        // Cycle 5: Candidate advances to 2161
+        // Cycle 5: Candidate advances to 2228C1
         val c5 = engine.getNextCandidate()
-        assertEquals("2161", c5)
-        engine.onCandidateFailed("2161", ProbeStatus.NO_DATA, "NO DATA")
+        assertEquals("2228C1", c5)
+        engine.onCandidateFailed("2228C1", ProbeStatus.NO_DATA, "NO DATA")
 
-        // Now all 5 candidates have failed and are in cooldown!
+        // Cycle 6: Candidate advances to 2228C0
+        val c6 = engine.getNextCandidate()
+        assertEquals("2228C0", c6)
+        engine.onCandidateFailed("2228C0", ProbeStatus.NO_DATA, "NO DATA")
+
+        // Cycle 7: Candidate advances to 220101
+        val c7 = engine.getNextCandidate()
+        assertEquals("220101", c7)
+        engine.onCandidateFailed("220101", ProbeStatus.NO_DATA, "NO DATA")
+
+        // Now all 7 candidates have failed and are in cooldown!
         assertTrue(engine.areAllCandidatesInCooldown())
         assertNull(engine.getNextCandidate())
 
-        // Advance time by 15s (still within 30s cooldown for 2228C1)
+        // Advance time by 15s (still within 30s cooldown for 2101)
         currentTime += 15_000L
-        assertTrue(engine.isCandidateInCooldown("2228C1"))
+        assertTrue(engine.isCandidateInCooldown("2101"))
         assertNull(engine.getNextCandidate())
 
-        // Advance time past 30s from initial failure of 2228C1
+        // Advance time past 30s from initial failure of 2101
         currentTime += 16_000L // 31s elapsed
-        assertFalse(engine.isCandidateInCooldown("2228C1"))
-        // 2228C1 is eligible again!
-        assertEquals("2228C1", engine.getNextCandidate())
+        assertFalse(engine.isCandidateInCooldown("2101"))
+        // 2101 is eligible again!
+        assertEquals("2101", engine.getNextCandidate())
     }
 
     @Test
@@ -81,27 +91,27 @@ class BatteryDiscoveryEngineTest {
         var currentTime = 100_000L
         val engine = BatteryDiscoveryEngine(timeProvider = { currentTime })
 
-        // Cycle 1: 2228C1 fails
+        // Cycle 1: 2101 fails
         val c1 = engine.getNextCandidate()
-        assertEquals("2228C1", c1)
+        assertEquals("2101", c1)
         engine.onCandidateFailed(c1!!, ProbeStatus.NO_DATA)
 
-        // Cycle 2: 2228C0 responds with valid payload
+        // Cycle 2: 21C3 responds with valid payload
         val c2 = engine.getNextCandidate()
-        assertEquals("2228C0", c2)
-        val validPayload = "6228C03C3D3C3C3206"
+        assertEquals("21C3", c2)
+        val validPayload = "61C33C3D3C3C3206"
         engine.onCandidateSuccess(c2!!, validPayload)
 
         // Verifications for VAL-OBD-005
         assertTrue(engine.isDiscovered)
-        assertEquals("2228C0", engine.latchedPid)
+        assertEquals("21C3", engine.latchedPid)
         // Candidate probing ceases
         assertNull(engine.getNextCandidate())
 
         val outcomes = engine.probeOutcomes
-        assertEquals(ProbeStatus.NO_DATA, outcomes["2228C1"]?.status)
-        assertEquals(ProbeStatus.SUCCESS, outcomes["2228C0"]?.status)
-        assertEquals(validPayload, outcomes["2228C0"]?.rawResponse)
+        assertEquals(ProbeStatus.NO_DATA, outcomes["2101"]?.status)
+        assertEquals(ProbeStatus.SUCCESS, outcomes["21C3"]?.status)
+        assertEquals(validPayload, outcomes["21C3"]?.rawResponse)
     }
 
     @Test
@@ -109,15 +119,15 @@ class BatteryDiscoveryEngineTest {
         var currentTime = 100_000L
         val engine = BatteryDiscoveryEngine(timeProvider = { currentTime })
 
-        engine.onCandidateSuccess("2228C1", "6228C1...")
+        engine.onCandidateSuccess("2101", "6101...")
         assertTrue(engine.isDiscovered)
-        assertEquals("2228C1", engine.latchedPid)
+        assertEquals("2101", engine.latchedPid)
 
         engine.reset()
         assertFalse(engine.isDiscovered)
         assertNull(engine.latchedPid)
         assertEquals(0, engine.probeOutcomes.size)
-        assertEquals("2228C1", engine.getNextCandidate())
+        assertEquals("2101", engine.getNextCandidate())
     }
 
     /**

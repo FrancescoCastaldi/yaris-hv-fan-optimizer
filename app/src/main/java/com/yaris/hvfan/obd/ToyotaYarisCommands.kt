@@ -307,13 +307,17 @@ object ToyotaYarisCommands {
     const val PID_READ_BATTERY_DATA_LITHIUM_2 = "21C4"   // TNGA Lithium Pack Fallback 2
     const val PID_READ_BATTERY_DATA_ALT = "2228C0"       // Alternative Mode 22
 
-    // Fallback chain trasparente centralina ibrida Denso HV Battery (R2)
+    // Fallback chain trasparente centralina ibrida Denso HV Battery:
+    // Priorità ai PID universali Mode 21 (Dr. Prius / Hybrid Assistant standard) che rispondono su TNGA-B
+    // senza richiedere sessione UDS estesa, seguiti dai PID Mode 22.
     val BATTERY_FALLBACK_PIDS = listOf(
-        PID_READ_BATTERY_DATA_TNGA,      // 2228C1
-        PID_READ_BATTERY_DATA_ALT,       // 2228C0
-        "2101",                          // Mode 21 Local ID 01 (Denso / KWP)
-        PID_READ_BATTERY_DATA_LITHIUM_1, // 21C3
-        PID_READ_BATTERY_DATA_LEGACY     // 2161
+        "2101",                          // Mode 21 Local ID 01 (Denso BMS primario universale)
+        PID_READ_BATTERY_DATA_LITHIUM_1, // 21C3 (TNGA Lithium Pack Telemetry 1)
+        PID_READ_BATTERY_DATA_LITHIUM_2, // 21C4 (TNGA Lithium Pack Telemetry 2)
+        PID_READ_BATTERY_DATA_LEGACY,    // 2161 (KWP Mode 21)
+        PID_READ_BATTERY_DATA_TNGA,      // 2228C1 (Mode 22 UDS fallback)
+        PID_READ_BATTERY_DATA_ALT,       // 2228C0 (Mode 22 UDS fallback 2)
+        "220101"                         // 220101 (Mode 22 UDS fallback 3)
     )
 
     // Active Test / IO Control: Set Battery Cooling Fan to Level 6 (MAX)
