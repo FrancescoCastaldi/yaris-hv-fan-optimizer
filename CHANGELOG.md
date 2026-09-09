@@ -4,6 +4,14 @@ Tutti i cambiamenti e miglioramenti significativi di questo progetto sono docume
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/) e aderisce al [Semantic Versioning](https://semver.org/lang/it/):
 - **MAJOR (`X.0.0`)**: Modifiche architetturali radicali, nuove sezioni o ridisegno totale della dashboard.
 - **MINOR (`0.X.0`)**: Aggiunta di nuove funzionalità, sensori, codifiche o telemetrie.
+## [3.0.1] - 2026-09-09
+### 🛡️ Fix Definitivo Oscillazione READY/Standby & Bypass Filtro Gateway TNGA
+- **Eliminazione Flapping READY 13V $\leftrightarrow$ Sleep**:
+  - Rimossa la condizione errata che forzava l'entrata in standby a basso consumo prima di aver tentato l'interrogazione diretta della centralina motore (`7E0`).
+  - Tolleranza e calibrazione per dongle con letture ADC imprecise: l'auto viene considerata attiva appena riceve risposte CAN, prevenendo loop infiniti di disconnessione.
+  - Rimozione del timeout di 4 secondi su `7DF` durante il risveglio: aggancio rapido immediato e diretto sull'ECU motore `7E0`.
+  - Isteresi rigorosa con soglia a 10 errori consecutivi e 4 verifiche di standby prima di dichiarare l'auto spenta.
+
 ## [3.0.0] - 2026-09-09
 ### 🚀 MAJOR RELEASE: Forzatura Manuale Attiva Ventola HV (L1–L6), Stepper Cockpit & Bypass UDS
 - **Controllo Attivo e Forzatura Manuale Diretta (L1–L6)**:

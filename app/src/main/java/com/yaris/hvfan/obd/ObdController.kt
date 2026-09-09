@@ -6,6 +6,7 @@ import com.yaris.hvfan.ble.BleManager
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.sync.Mutex
 
 data class ObdLiveState(
     val isInitialized: Boolean = false,
@@ -339,77 +340,54 @@ class ObdController(
                     addLog("⚠️ Stadio 0 fallito: nessun frame CAN in broadcast 7DF. Central Gateway Toyota potrebbe filtrare. Procedo a Stadio 1 diretto (7E0)...")
                 }
 
-                // Gestione stato Standby a basso consumo: attivo SOLO se tensione < 13.0V E il CAN 7DF non ha risposto
-                if (!isReady && !stage0Ok && real12v > 0f) {
-                    addLog("💤 Auto in Standby (12V: ${real12v}V < 13.0V, CAN silente). Standby a basso consumo attivo.")
-                    isProtocolInitialized = true
-                    stateMachine.onVehicleStandby()
-                    discoveryEngine.reset()
-                    _liveState.value = _liveState.value.copy(
-                        isInitialized = true,
-                        isLoopRunning = true,
-                        hasEcuCommunication = false,
-                        isVehicleReady = false,
-                        isStandbyMode = true,
-                        capabilityState = stateMachine.currentCapabilityState,
-                        auxiliary12vVoltage = real12v,
-                        ecuAlertMessage = "Auto in standby a basso consumo: accendi la vettura (spia verde READY o quadro) per avviare la telemetria.",
-                        batteryAdapterLimitationWarning = null
-                    )
+                // Stadio 1: aggancio rapido centralina motore standard (7E0 / 7E8)
+                addLog("Handshake CAN Stadio 1: aggancio rapido bus su Centralina Motore (7E0 / 7E8)...")
+                ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU, force = true)
+                var stage1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_SUPPORTED_PIDS, timeoutMs = 4000L)
+                var cleanStage1 = Elm327Protocol.cleanResponse(stage1Res)
+                if (Elm327Protocol.isError(cleanStage1) || cleanStage1.contains("TIMEOUT") || cleanStage1.contains("NODATA")) {
+                    addLog("PID 0100 in attesa, tentativo con PID 010C (RPM)...")
+                    stage1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_ENGINE_RPM, timeoutMs = 4000L)
+                    cleanStage1 = Elm327Protocol.cleanResponse(stage1Res)
+                }
+                val stage1Ok = Elm327Protocol.isValidCanResponse(stage1Res)
+                if (stage1Ok) {
+                    addLog("✅ Handshake CAN Stadio 1 completato: bus CAN 11-bit 500k agganciato (risposta: $cleanStage1)!")
+                    lastValidCanTimestamp = timeProvider()
+                    stateMachine.onEngineTelemetrySuccess()
                 } else {
-                    if (isReady || stage0Ok) {
-                        stateMachine.onVehicleReady()
-                    }
+                    addLog("ℹ️ Handshake CAN Stadio 1: nessuna risposta standard ($cleanStage1). Procedo al loop attivo.")
+                }
 
-                    // Stadio 1: aggancio rapido centralina motore standard (7E0 / 7E8)
-                    addLog("Handshake CAN Stadio 1: aggancio rapido bus su Centralina Motore (7E0 / 7E8)...")
-                    ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU, force = true)
-                    var stage1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_SUPPORTED_PIDS, timeoutMs = 4000L)
-                    var cleanStage1 = Elm327Protocol.cleanResponse(stage1Res)
-                    if (Elm327Protocol.isError(cleanStage1) || cleanStage1.contains("TIMEOUT")) {
-                        addLog("PID 0100 non ha risposto (risposta: $cleanStage1), tentativo rapido con PID 010C (RPM)...")
-                        stage1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_ENGINE_RPM, timeoutMs = 4000L)
-                        cleanStage1 = Elm327Protocol.cleanResponse(stage1Res)
-                    }
-                    val stage1Ok = Elm327Protocol.isValidCanResponse(stage1Res)
-                    if (stage1Ok) {
-                        addLog("✅ Handshake CAN Stadio 1 completato: bus CAN 11-bit 500k agganciato (risposta: $cleanStage1)!")
-                        lastValidCanTimestamp = timeProvider()
-                        stateMachine.onEngineTelemetrySuccess()
-                    } else {
-                        addLog("ℹ️ Handshake CAN Stadio 1 fallito (risposta: $cleanStage1).")
-                    }
+                val canOk = stage0Ok || stage1Ok
+                val isActuallyReady = isReady || canOk || (real12v >= 12.2f)
 
-                    // Stadio 2: predisposizione discovery centralina ibrida Denso HV Battery (7E2)
-                    addLog("Handshake CAN Stadio 2: predisposizione motore discovery phased batteria Denso HV (7E2)...")
-                    discoveryEngine.reset()
-                    stateMachine.onBatteryDiscoveryProbing()
-                    ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU)
+                if (isActuallyReady) {
+                    stateMachine.onVehicleReady()
+                }
 
-                    val canOk = stage0Ok || stage1Ok
-                    val isActuallyReady = isReady || canOk
-                    isProtocolInitialized = true
-                    _liveState.value = _liveState.value.copy(
-                        isInitialized = true,
-                        isLoopRunning = true,
-                        hasEcuCommunication = canOk,
-                        isVehicleReady = isActuallyReady,
-                        isStandbyMode = !isActuallyReady,
-                        capabilityState = stateMachine.currentCapabilityState,
-                        auxiliary12vVoltage = real12v,
-                        ecuAlertMessage = when {
-                            canOk -> null
-                            isActuallyReady -> {
-                                if (real12v > 0f) {
-                                    "Veicolo attivo (12V: ${String.format(java.util.Locale.US, "%.1f", real12v)}V). Sincronizzazione con ECU Toyota in corso..."
-                                } else {
-                                    "Veicolo attivo. Sincronizzazione con ECU Toyota in corso..."
-                                }
-                            }
-                            else -> "Auto in standby a basso consumo: accendi la vettura (spia verde READY o quadro) per avviare la telemetria."
-                        },
-                        batteryAdapterLimitationWarning = null
-                    )
+                // Stadio 2: predisposizione discovery centralina ibrida Denso HV Battery (7E2)
+                addLog("Handshake CAN Stadio 2: predisposizione motore discovery phased batteria Denso HV (7E2)...")
+                discoveryEngine.reset()
+                stateMachine.onBatteryDiscoveryProbing()
+                ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU)
+
+                isProtocolInitialized = true
+                _liveState.value = _liveState.value.copy(
+                    isInitialized = true,
+                    isLoopRunning = true,
+                    hasEcuCommunication = canOk,
+                    isVehicleReady = isActuallyReady,
+                    isStandbyMode = !isActuallyReady,
+                    capabilityState = stateMachine.currentCapabilityState,
+                    auxiliary12vVoltage = real12v,
+                    ecuAlertMessage = when {
+                        canOk -> null
+                        isActuallyReady -> "Veicolo attivo (12V: ${String.format(java.util.Locale.US, "%.1f", real12v)}V). Sincronizzazione con ECU Toyota in corso..."
+                        else -> "In attesa di risposta CAN centralina: accendi la vettura (spia READY) per avviare la telemetria."
+                    },
+                    batteryAdapterLimitationWarning = null
+                )
 
                     // 8. Test supporto Multi-PID per telemetria motore e Dragy se il veicolo è attivo
                     if (canOk) {
@@ -428,7 +406,6 @@ class ObdController(
                     } else {
                         isMultiPidSupported = false
                     }
-                }
                 addLog("Inizializzazione completata! Avvio scheduler Dual-Rate...")
 
                 // 8. Dual-Rate Adaptive Loop
@@ -692,17 +669,13 @@ class ObdController(
                 lastStandbyExitTimestamp = now
                 delay(250) // Stabilizzazione ricetrasmettitore CAN su adapter e bus
 
-                // La tensione conferma il DC-DC attivo o il quadro acceso; protocollo convalidato con risposta ECU reale in broadcast
-                stateMachine.onCanSearching()
-                val s0Ok = canProbe?.isValid ?: probeBroadcastCan(attempts = 1, timeoutMs = 4000L).isValid
-
-                // Handshake Stadio 1: aggancio rapido motore
+                // Al risveglio dallo standby andiamo direttamente sull'ECU Motore 7E0
                 ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU, force = true)
-                var s1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_SUPPORTED_PIDS, timeoutMs = 4000L)
+                var s1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_SUPPORTED_PIDS, timeoutMs = 3000L)
                 var s1Ok = Elm327Protocol.isValidCanResponse(s1Res)
                 
                 if (!s1Ok) {
-                    s1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_ENGINE_RPM, timeoutMs = 4000L)
+                    s1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_ENGINE_RPM, timeoutMs = 3000L)
                     s1Ok = Elm327Protocol.isValidCanResponse(s1Res)
                 }
                 
@@ -715,7 +688,7 @@ class ObdController(
                 stateMachine.onBatteryDiscoveryProbing()
                 ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU)
 
-                val canOk = s0Ok || s1Ok
+                val canOk = s1Ok || (canProbe?.isValid == true)
                 standbyCycleCounter = 0
                 if (canOk) {
                     lastValidCanTimestamp = now
@@ -755,15 +728,15 @@ class ObdController(
         // GESTIONE TRANSIZIONE A STANDBY SE L'AUTO VIENE SPENTA DURANTE IL FUNZIONAMENTO
         val isCanSilentForStandby = (lastValidCanTimestamp > 0L && (now - lastValidCanTimestamp > 12000L)) ||
                                     (lastValidCanTimestamp == 0L && (now - loopStartTimestamp > 12000L))
-        if (consecutiveCanErrors >= 6 && isCanSilentForStandby) {
+        if (consecutiveCanErrors >= 10 && isCanSilentForStandby) {
             val voltRes = bleManager.sendCommand(Elm327Protocol.CMD_VOLTAGE)
             val volt = Elm327Protocol.parseBatteryVoltage(voltRes) ?: lastKnown12v
             lastKnown12v = volt
-            val isStandbyVoltage = Elm327Protocol.isVehicleStandby(volt) || (!Elm327Protocol.isVehicleReady(volt) && volt > 0f)
+            val isStandbyVoltage = Elm327Protocol.isVehicleStandby(volt)
             if (isStandbyVoltage && volt > 0f) {
                 consecutiveStandbyChecks++
-                if (consecutiveStandbyChecks >= 2) {
-                    addLog("💤 Auto spenta (12V: ${volt}V <= 12.6V, CAN silente). Entrata in standby a basso consumo.")
+                if (consecutiveStandbyChecks >= 4) {
+                    addLog("💤 Auto spenta (12V: ${volt}V < 11.8V, CAN silente per >12s). Entrata in standby.")
                     currentCanHeader = ""
                     discoveryEngine.reset()
                     stateMachine.onVehicleStandby()
