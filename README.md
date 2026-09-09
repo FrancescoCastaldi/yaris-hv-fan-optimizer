@@ -1,7 +1,7 @@
-# Toyota Yaris MK4 Hybrid - HV Battery Cooling, GR Cockpit & ECU Coding Suite 🏎️⚡
+# Toyota Yaris MK4 Hybrid — HV Battery Cooling, GR Cockpit & ECU Coding Suite 🏎️⚡
 
 [![Website](https://img.shields.io/badge/Website-Live%20Portal-00E5FF.svg?style=for-the-badge&logo=googlechrome)](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/)
-[![Download APK](https://img.shields.io/badge/Download-APK%20Release%20(v3.0.4)-D71920.svg?style=for-the-badge&logo=android)](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisHvFanControl-v3.0.4.apk)
+[![Download APK](https://img.shields.io/badge/Download-APK%20Release%20(v3.0.5)-D71920.svg?style=for-the-badge&logo=android)](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisHvFanControl-v3.0.5.apk)
 [![OBD Bridge APK](https://img.shields.io/badge/Download-OBD%20Bridge%20(v1.0.0)-00E5FF.svg?style=for-the-badge&logo=android)](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisObdBridge-v1.0.0.apk)
 [![Platform](https://img.shields.io/badge/Platform-Android%208.0%2B%20(API%2026%2B)-3DDC84.svg?style=flat&logo=android)](https://www.android.com/)
 [![Kotlin](https://img.shields.io/badge/Kotlin-1.9.24-7F52FF.svg?style=flat&logo=kotlin)](https://kotlinlang.org/)
@@ -10,116 +10,128 @@
 [![RSA Signed](https://img.shields.io/badge/Signature-RSA%202048--bit%20(V1/V2/V3/V4)-00E676.svg?style=flat&logo=letsencrypt)](yaris_release.keystore)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Applicazione Android nativa ad altissime prestazioni per **Toyota Yaris MK4 Hybrid (Piattaforma XP210 / TNGA-B, MY2020 - MY2025+)**. Interagisce via Bluetooth Low Energy (BLE) o Bluetooth Classic SPP con l'infrastruttura CAN bus dell'auto per offrire:
-1. **Handshake Avanzato Intelligente Stile Hybrid Assistant & Dr. Prius (v2.9.6+)**:
-   - Sequenza preventiva di risveglio `\r\r` per svegliare Vgate iCar Pro da sleep/low-power standby;
-   - Warm Start / Reset (`AT WS` / `AT Z`) con attesa dedicata a 600ms senza bloccare il baudrate;
-   - Rilevamento robusto dello stato READY auto tramite tensione reale batteria 12V (`AT RV >= 13.0V` convertitore DC-DC attivo) immune a banner di versione firmware, con sincronizzazione periodica via probe frame CAN;
-   - Modalità Standby a basso consumo quando l'auto è spenta o non READY, azzerando le richieste CAN e prevenendo saturazione bus, errori `NO DATA` e scarica della batteria 12V;
-2. **Flow Control Hardware ISO-TP Denso Multi-Frame (PID 2228C1)**:
-   - Configurazione hardware dinamica del chip ELM/STN (`AT CRA 7EA`, `AT FC SH 7E2`, `AT FC SD 300000`, `AT FC SM 1`) con timeout calibrato a ~819ms (`AT ST C8`, v2.9.14) per dare margine sufficiente ai cloni ELM327/Vlinker sulle risposte multi-frame delle celle batteria HV e ventola;
-3. **Watchdog di Riconnessione Silenziosa & Auto-Connect Istantaneo all'Avvio**:
-   - Closed-loop watchdog con backoff esponenziale automatico e socket streaming thread-safe, senza dialog bloccanti o fastidiosi in caso di disconnessione o spegnimento vettura;
-   - Connessione istantanea in background al dispositivo Vgate salvato o già associato in Android senza forzare la modale di scansione;
-4. **Sfondo Esclusivo Motorsport Carbon Fiber 3K High-Definition (v2.9.7)**: Texture in fibra di carbonio 2x2 Twill ad alta definizione scalata sulla densità AMOLED (36dp / 400+ PPI), fotometria con riflessi titanio/grafite realistici (`#2A303E` / `#363F50`), mezzitoni (`#161B24`), solchi d'ombra carbonio puro (`#080A0E`) e vignettatura radiale GPU;
-5. **Smart Auto-Cooling Protection Suite**: Controllo termico predittivo con soglia regolabile (28°C–42°C), isteresi di spegnimento (1°C–5°C), selettore di velocità bersaglio (L1–L6), esecuzione continua in background 24/7 con segnale audio e vibrazione haptic all'innesco;
-6. **Telemetria MoTeC / Gazoo Racing & Cronometro Dragy 0-100 km/h** con interpolazione lineare ad alta precisione;
-7. **Gestione Termica Attiva & Forzatura Ventola Batteria HV Denso con Closed-Loop ECU ACK e Hall RPM**;
-8. **Suite Completa di Codifiche Centralina ECU UDS** (Toyota Touch 3, Bip retromarcia comfort, Chiusura porte, Alzacristalli da chiave, Frecce comfort e ADAS);
-9. **Modulo Standalone OBD Bridge & Sniffer (:sniffer)** per registrare il traffico OBD Man-In-The-Middle e analizzare Dr. Prius / Car Scanner su porta TCP locale 35000.
+Native Android telemetry and diagnostic application for the **Toyota Yaris MK4 Hybrid (XP210 / TNGA-B Platform, MY2020–2025+)**. Connects via Bluetooth Low Energy (BLE) or Bluetooth Classic SPP to vehicle CAN infrastructure to deliver:
+
+1. **Intelligent Handshake Protocol (v2.9.6+)**:
+   - Proactive `\r\r` wake-up sequence recovering adapters (e.g. Vgate iCar Pro) from low-power standby.
+   - Warm Start / Reset (`AT WS` / `AT Z`) with calibrated 600ms settling time without baud rate loss.
+   - Robust vehicle READY detection via true 12V bus voltage (`AT RV >= 13.0V`, active DC-DC converter), immune to firmware banner strings, complemented by periodic CAN probe verification.
+   - Low-power standby state when vehicle is off or non-READY, eliminating bus flooding, `NO DATA` loops, and 12V auxiliary battery drain.
+2. **Denso Multi-Frame ISO-TP Hardware Flow Control (PID 2228C1)**:
+   - Dynamic ELM/STN hardware configuration (`AT CRA 7EA`, `AT FC SH 7E2`, `AT FC SD 300000`, `AT FC SM 1`) with calibrated timeout (`AT ST C8`, ~819ms) providing ample headroom for multi-frame cell and fan responses.
+3. **Silent Reconnection Watchdog & Instant Auto-Connect**:
+   - Closed-loop background watchdog with exponential backoff and thread-safe streaming; non-blocking recovery upon ignition cycles.
+   - Seamless auto-pairing to previously bonded Bluetooth adapters without scan modal friction.
+4. **Motorsport Carbon Fiber 3K High-Definition Visual Engine**:
+   - 2x2 Twill carbon weave scaled for AMOLED displays (36dp / 400+ PPI) with realistic graphite/titanium highlights (`#2A303E` / `#363F50`), midtones (`#161B24`), deep shadow voids (`#080A0E`), and GPU-accelerated radial vignette.
+5. **Smart Auto-Cooling Protection Suite**:
+   - Predictive thermal regulation with adjustable trigger threshold (28°C–42°C), hysteresis band (1°C–5°C), target fan speed selection (L1–L6), and continuous 24/7 background execution via `ForegroundService` with audible and haptic notifications.
+6. **MoTeC / Gazoo Racing Telemetry & Dragy 0–100 km/h Precision Timer**:
+   - High-precision linear interpolation for 0–50 km/h and 0–100 km/h acceleration tracking with persistent Personal Best (PB) logging.
+7. **Active Denso HV Battery Cooling Fan Control**:
+   - UDS IO Control Mode 0x2F / Mode 0x30 direct fan speed control with closed-loop ECU acknowledgment and Hall RPM feedback.
+8. **Comprehensive UDS ECU Customization Suite**:
+   - Complete on-demand configuration for Toyota Touch 3 display audio, reverse comfort beep, auto-door locking, key-fob window roll, comfort turn signals, and ADAS alerts.
+9. **Standalone OBD Bridge & Sniffer Module (`:sniffer`)**:
+   - Dedicated MITM proxy utility logging raw bidirectional OBD traffic for Car Scanner and Dr. Prius analysis via local TCP port 35000.
 
 ---
 
-## 🌐 Sito Web Ufficiale & Download Diretto
-- **Portale Web Ufficiale**: 👉 **[https://francescocastaldi.github.io/yaris-hv-fan-optimizer/](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/)**
-- **Simulatore Interattivo Web**: 👉 **[https://francescocastaldi.github.io/yaris-hv-fan-optimizer/preview.html](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/preview.html)**
-- **Download Diretto Yaris HV Fan Control (v3.0.4)**: 👉 **[Scarica YarisHvFanControl-v3.0.4.apk](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisHvFanControl-v3.0.4.apk)**
-- **Download Diretto Yaris OBD Bridge & Sniffer (v1.0.0)**: 👉 **[Scarica YarisObdBridge-v1.0.0.apk](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisObdBridge-v1.0.0.apk)**
+## 🌐 Official Web Portal & Downloads
+
+- **Official Web Portal**: [https://francescocastaldi.github.io/yaris-hv-fan-optimizer/](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/)
+- **Interactive Web Simulator**: [https://francescocastaldi.github.io/yaris-hv-fan-optimizer/preview.html](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/preview.html)
+- **Direct Download — Yaris HV Fan Control (v3.0.5)**: [YarisHvFanControl-v3.0.5.apk](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisHvFanControl-v3.0.5.apk)
+- **Direct Download — Yaris OBD Bridge & Sniffer (v1.0.0)**: [YarisObdBridge-v1.0.0.apk](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisObdBridge-v1.0.0.apk)
 
 ---
 
-## 🌟 Architettura a 3 Schede (Release v2.9.1 MoTeC Motorsport Edition)
+## 🌟 Application Architecture (3-Tab Interface)
 
-### 1. 🏁 Scheda `COCKPIT` (Telemetria & Prestazioni)
-- **Logo Ufficiale Toyota Gazoo Racing "GR"**: Badge vettoriale originale ad alto contrasto con contorni bianchi nitidi su sfondo Dark/OLED.
-- **Tachimetro Digitale Gigante (52sp)**: Lettura in tempo reale della velocità reale da CAN bus (`PID 010D`).
-- **Launch Control Light Automatico**: Indicatore `[🟢 LAUNCH READY]` a 0 km/h e `[⏱️ SCATTO IN CORSO]` al primo tocco dell'acceleratore.
-- **Cronometro Dragy 0-50 km/h e 0-100 km/h**: Misurazione automatica dello scatto con memorizzazione persistente del **Personal Best (PB)**.
-- **Telemetria Motore Termico M15A-FXE**: Anticipo di accensione reale (`PID 010E` °BTDC), carico motore (`PID 0104` %) e posizione farfalla (`PID 0111` %).
+### 1. 🏁 `COCKPIT` Tab (Telemetry & Performance)
+- **Official Gazoo Racing "GR" Badge**: High-contrast vector badge on OLED dark background.
+- **Large Digital Speedometer (52sp)**: Real-time road speed directly from engine CAN bus (`PID 010D`).
+- **Automatic Launch Control Indicator**: Transitions from `[🟢 LAUNCH READY]` at standstill to `[⏱️ ACCELERATING]` on first throttle input.
+- **Dragy Sprint Timer (0–50 km/h & 0–100 km/h)**: Automatic split-second sprint timing with persistent Personal Best storage.
+- **M15A-FXE Engine Telemetry**: Real-time ignition timing advance (`PID 010E` °BTDC), calculated engine load (`PID 0104` %), and throttle position (`PID 0111` %).
 
-### 2. 🌀 Scheda `VENTOLA` (Smart Auto-Cooling, Termica & Sicurezza Ibrida)
+### 2. 🌀 `FAN` Tab (Smart Auto-Cooling & Hybrid Safety)
 - **Smart Auto-Cooling Protection System**:
-  - Slider continuo per la temperatura di innesco (28.0°C – 42.0°C, step 0.5°C).
-  - Slider isteresi di spegnimento regolabile (1.0°C – 5.0°C) per prevenire oscillazioni on/off.
-  - Selettore velocità ventola target da Livello 1 a Livello 6 con preset rapidi (*Gazoo Track*, *Bilanciato*, *Comfort*).
-  - Monitoraggio attivo 24/7 in background tramite `ForegroundService` con segnale acustico e haptic all'innesco.
-- **Forzatura Attiva Ventola Denso (Livello 6 MAX)**: Invia frame UDS IO Control Mode 30 (`300806`) per raffreddare istantaneamente il pacco batteria.
-- **Prevenzione Tagli Termici (Zero Derating)**: Mantiene le celle tra 22°C e 26°C, scongiurando il taglio di coppia da 59 kW e della frenata rigenerativa sopra i 36°C.
-- **Monitoraggio 4 Sonde Celle**: Lettura in tempo reale di tutte le temperature del pacco e della temperatura di aspirazione (`PID 2228C1`).
-- **Analisi Fasi Warm-Up (S0 ➔ S4)**: Tracciamento delle fasi di riscaldamento del catalizzatore e del liquido refrigerante per la massima efficienza in modalità EV.
+  - Continuous slider for trigger threshold (28.0°C–42.0°C in 0.5°C steps).
+  - Adjustable hysteresis band (1.0°C–5.0°C) eliminating cycling chatter.
+  - Target fan speed selector (Levels 1 through 6) with quick presets (*Gazoo Track*, *Balanced*, *Comfort*).
+  - Uninterrupted 24/7 background operation via `ForegroundService` with alert audio and haptic feedback.
+- **Denso Fan Manual Override (Level 6 MAX)**: Dispatches UDS IO Control commands (`2F 58 03 06` / `30 08 06`) to instantly evacuate battery pack heat.
+- **Thermal Derating Prevention (Zero Power Cut)**: Maintains cells between 22°C and 26°C, averting EV motor derating and regenerative braking throttling above 36°C.
+- **4-Probe Cell Monitoring**: Real-time intake temperature and 4-probe module array tracking (`PID 2228C1`).
+- **HSD Warm-Up Stage Tracking (S0 ➔ S4)**: Real-time monitoring of catalyst and coolant temperatures for optimal Atkinson EV gliding.
 
-### 3. 🛠️ Scheda `CODIFICHE` (Personalizzazioni Centralina UDS)
-- **📺 Toyota Touch 3 (Display Audio)**:
-  - *Animazione di Avvio Schermo*: Impostabile su **🏁 Toyota Gazoo Racing (GR)**, **⚡ Hybrid Synergy Drive** o **Toyota Standard**.
-  - *Auto Sound Levelizer (ASL)*: Compensazione automatica del volume in base alla velocità.
-  - *Ritardo Spegnimento Retrocamera in D*: 5s o 10s per manovre comode.
-  - *Bip Touchscreen & Guadagno Microfono Viva Voce*.
-- **🔔 Comfort & Cicalini di Bordo**:
-  - *Cicalino Retromarcia*: **Singolo Bip (One Beep Comfort)** o Bip Continuo OEM.
-  - *Cicalini Cinture di Sicurezza*: Disattivazione/Attivazione selettiva guidatore, passeggero e sedili posteriori.
-- **🔑 Smart Key & Serrature**:
-  - *Chiusura Automatica Porte*: A 20 km/h (Speed Lock) o all'inserimento della marcia D.
-  - *Sblocco Automatico*: All'inserimento della marcia P.
-  - *Apertura/Chiusura Finestrini da Telecomando* (Pressione prolungata).
-  - *Volume Sirena Esterna Answerback*: Feedback acustico di chiusura e apertura porte.
-- **💡 Luci, Frecce & Plafoniera**:
-  - *Frecce Comfort al Tocco (Lane Change)*: 3, 4, 5 o 6 lampeggi automatici.
-  - *Sensibilità Fari Crepuscolari & Follow Me Home*: 30s, 60s, 90s.
-  - *Temporizzazione Luce Abitacolo*: 7.5s, 15s, 30s e illuminazione vano piedi in marcia.
-- **🛡️ ADAS & Clima**:
-  - *Bip Limiti di Velocità RSA*: Muto (solo visivo) o sonoro.
-  - *Sensibilità Angolo Cieco (BSM) & Volume Avviso Corsia (LDA)*.
-  - *Funzionamento A/C con Tasto AUTO* & Modalità Eco AirCon.
-- **🔄 Sicurezza & Ripristino Fabbrica**: Pulsante dedicato per ripristinare tutte le impostazioni OEM di fabbrica a 1-click.
+### 3. 🛠️ `CODING` Tab (UDS ECU Customization)
+- **Toyota Touch 3 (Display Audio)**:
+  - Startup animation selection: Gazoo Racing (GR), Hybrid Synergy Drive, or Toyota Standard.
+  - Auto Sound Levelizer (ASL) speed-sensitive volume compensation.
+  - Reverse camera shutoff delay (5s or 10s).
+  - Touchscreen beep tone & hands-free microphone gain.
+- **Comfort & Cabin Sounders**:
+  - Reverse alert: Single Beep Comfort or continuous OEM sounder.
+  - Seat belt reminder chimes: selective disable for driver, front passenger, and rear row.
+- **Smart Key & Central Locking**:
+  - Speed-sensing auto-lock at 20 km/h or shift into D.
+  - Auto-unlock upon shifting into P.
+  - Remote key-fob long-press window open/close.
+  - Answerback horn volume feedback.
+- **Lighting & Convenience**:
+  - One-touch lane-change turn signals (3, 4, 5, or 6 flashes).
+  - Twilight sensor sensitivity & Follow-Me-Home headlights (30s, 60s, 90s).
+  - Interior cabin lighting timers (7.5s, 15s, 30s) and footwell illumination.
+- **ADAS & Climate Control**:
+  - Road Sign Assist (RSA) speed-limit alert mode: Visual-only or Audible.
+  - Blind Spot Monitor (BSM) sensitivity & Lane Departure Alert (LDA) volume.
+  - Air conditioning link with AUTO button & Eco AirCon profile.
+- **One-Click Factory Reset**: Dedicated fail-safe restoring all customizable parameters to OEM defaults.
 
 ---
 
-## 🧪 Test Automatizzati & Qualità del Codice (100% Passing)
-La pipeline di build integra oltre 90 test unitari e di integrazione simulata (`app/src/test/java/com/yaris/hvfan/`):
-- `ToyotaCommandsTest.kt` / `Elm327ParserTest.kt`: Parsing frame UDS batteria, costanti diagnostiche, pulizia protocollo e filtraggio risposte;
-- `EcuCodingAndPipelineTest.kt`: Formule telemetria, formule °BTDC, percentuali carico e default ECU;
-- `ObdControllerIntegrationTest.kt`: Logica cronometro Dragy, macchina a stati warm-up e payload di scrittura UDS Mode 3B/2E;
-- `ObdStateMachineTest.kt`: Transizioni della macchina a stati delle capacità (standby, CAN searching, discovery batteria, auto-recovery);
-- `ObdInitSequenceTest.kt`: Sequenza di init ELM327, ordine comandi AT SP/AT ST e assenza di filtri AT CRA distruttivi sui cloni;
-- `BatteryDiscoveryEngineTest.kt` / `ObdControllerBatteryDiscoveryTest.kt`: Probing a fasi della fallback chain batteria, cooldown per-candidato, aggancio (latch) al primo PID valido e contatore `completedFailureCycles`;
-- `EngineTelemetryResilienceTest.kt`: Invariante zero-starvation della telemetria motore anche sotto timeout ripetuti di 3000ms sulla discovery batteria (VAL-OBD-007/012);
-- `AdapterErrorHandlingIntegrationTest.kt` (v2.9.14): Suite dedicata alla gestione degli errori dell'adapter OBD-II — NODATA persistente su tutta la fallback chain, payload malformati/non parsabili, eccezioni di trasporto (disconnessioni simulate), risposte UDS negative (0x7F) e recupero automatico di un adapter "flaky", incluso il nuovo alert `batteryAdapterLimitationWarning` per probabile incompatibilità hardware.
+## 🧪 Automated Testing & Code Integrity (100% Passing)
 
-Esegui i test localmente con:
+The project includes over 90 automated unit and integration tests under `app/src/test/java/com/yaris/hvfan/`:
+- `ToyotaCommandsTest.kt` / `Elm327ParserTest.kt`: UDS battery frame decoding, diagnostic constants, protocol sanitation, and response filtering.
+- `EcuCodingAndPipelineTest.kt`: Telemetry math, ignition timing advance formulas, load percentages, and ECU defaults.
+- `ObdControllerIntegrationTest.kt`: Dragy timing logic, warm-up state machine, and UDS write payloads.
+- `ObdStateMachineTest.kt`: Capability state transitions (standby, CAN discovery, battery latching, auto-recovery).
+- `ObdInitSequenceTest.kt`: ELM327 initialization sequences, AT command ordering, and clone-safe flow control.
+- `BatteryDiscoveryEngineTest.kt` / `ObdControllerBatteryDiscoveryTest.kt`: Candidate fallback chain probing, candidate cooldowns, latching, and failure cycle tracking.
+- `EngineTelemetryResilienceTest.kt`: Zero-starvation invariant verifying fast engine telemetry under continuous 3000ms battery discovery timeouts (VAL-OBD-007/012).
+- `AdapterErrorHandlingIntegrationTest.kt`: Adapter error resilience exercising persistent `NODATA`, malformed frames, transport drops, negative UDS responses (0x7F), and transient recovery with `batteryAdapterLimitationWarning` assertions.
+
+Execute the test suite locally:
 ```bash
-gradle testDebugUnitTest
+cmd /c "set JAVA_HOME=D:\Tools\jdk-21\jdk-21&& set ANDROID_HOME=D:\Tools\android-sdk&& set PATH=%JAVA_HOME%\bin;%PATH%&& D:\Tools\gradle\gradle-8.7\bin\gradle.bat testDebugUnitTest"
 ```
 
 ---
 
-## 🔌 Adattatori OBD-II BLE Compatibili
-- **Vgate iCar Pro BLE 4.0+ / iCar 2 BLE** *(Piena compatibilità plug-and-play e low-power standby)*
-- **vLinker MC+ / FD+ (BLE)** *(Consigliato per massima velocità multi-frame CAN)*
+## 🔌 Supported OBD-II BLE Adapters
+
+- **Vgate iCar Pro BLE 4.0+ / iCar 2 BLE** (Full plug-and-play and low-power standby compatibility)
+- **vLinker MC+ / FD+ (BLE)** (Recommended for high-speed multi-frame CAN transmission)
 - **Veepeak OBDCheck BLE / BLE+**
 - **Carista OBD BLE**
-- **Adattatori ELM327 BLE 4.0+ generici**
+- **Standard ELM327 BLE 4.0+ Adapters**
 
 ---
 
-## ⚠️ Compatibilità Adapter OBD-II
-Se il log dell'app mostra ripetutamente errori `NODATA` sulla lettura della temperatura del pacco batteria (PID `2228C1` e relativa catena di fallback) mentre i dati di motore, velocità e RPM arrivano regolari, molto probabilmente **non si tratta di un bug dell'app**, ma di un limite hardware dell'adapter OBD-II in uso.
-- **Perché succede**: la query della centralina batteria ibrida Denso HV (header CAN `7E2`) è una richiesta UDS **multi-frame** (ISO-TP), che richiede all'adapter di gestire correttamente il flow-control tra più frame CAN consecutivi. Molti adapter economici **ELM327 "clone" o Vlinker generici** hanno un'implementazione carente o instabile di questo meccanismo. Le query verso le altre centraline (motore `7E0`, body `750`, quadro `7C0`, ADAS `7A0`) sono invece **single-frame** e per questo continuano a funzionare normalmente anche su hardware di fascia bassa.
-- **Come riconoscere il problema**: se per più cicli di discovery consecutivi nessun PID della catena di fallback batteria si aggancia mai, pur con bus CAN motore attivo e telemetria regolare, è quasi certamente un limite dell'adapter e non un malfunzionamento dell'app.
-- **Cosa fare**: per una lettura affidabile della centralina batteria ibrida, si raccomanda di preferire adapter con **chipset originali OBDLink (STN11xx / STN21xx)** rispetto ai cloni ELM327/Vlinker generici, che offrono un supporto molto più robusto delle risposte multi-frame ISO-TP.
+## ⚠️ OBD-II Adapter Multi-Frame Compatibility
+
+If app logs display persistent `NODATA` errors on battery temperature queries (`PID 2228C1` and fallback candidates) while speed, RPM, and engine load stream normally, this indicates an **adapter hardware limitation rather than an application defect**.
+
+- **Root Cause**: Querying the Denso HV Battery ECU (`7E2`) requires **ISO-TP multi-frame** handling with flow-control between consecutive CAN frames. Low-cost ELM327 clones frequently lack compliant multi-frame firmware logic. In contrast, queries to engine (`7E0`), body (`750`), meter (`7C0`), and ADAS (`7A0`) are **single-frame** and succeed even on budget hardware.
+- **Identification**: When consecutive discovery cycles fail to latch any battery PID while engine telemetry updates smoothly, the adapter is unable to assemble multi-frame responses.
+- **Recommended Action**: Use adapters featuring genuine **OBDLink STN chipsets (STN11xx / STN21xx)** or verified **vLinker** hardware for reliable multi-frame ISO-TP decoding.
 
 ---
 
-## 🏗️ Architettura & Flusso Dati
+## 🏗️ System Architecture & Data Pipeline
 
 ```mermaid
 graph TD
@@ -133,29 +145,33 @@ graph TD
 
 ---
 
-## 🕵️ Yaris OBD Bridge & Sniffer (Modulo Standalone `:sniffer`)
+## 🕵️ Yaris OBD Bridge & Sniffer (Standalone Module `:sniffer`)
 
-L'ecosistema include il modulo autonomo **Yaris OBD Bridge**, una utility per reverse engineering e diagnostica MITM (Man-In-The-Middle) scaricabile come APK indipendente:
-- **Download Diretto**: 👉 **[Scarica YarisObdBridge-v1.0.0.apk](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisObdBridge-v1.0.0.apk)**
-- **Funzionamento**:
-  1. Si connette all'adattatore Bluetooth OBD-II (Classic SPP o BLE);
-  2. Avvia un server TCP locale in ascolto su `127.0.0.1:35000` (o `0.0.0.0:35000`);
-  3. Le app terze come **Dr. Prius** o **Car Scanner** possono collegarsi configurando la connessione in modalità **Wi-Fi / TCP** su IP `127.0.0.1` e porta `35000`;
-  4. Ogni singolo comando inviato dall'app (`TX >>>`) e la risposta restituita dal dongle/ECU (`RX <<<`) vengono registrati con timestamp a precisione millisecondo;
-  5. Il file di log può essere esportato e condiviso istantaneamente tramite WhatsApp, Drive, Telegram o Email con il pulsante dedicato **"Ferma & Condividi Log"**.
+The repository includes **Yaris OBD Bridge**, an independent diagnostic and MITM reverse-engineering utility distributed as a standalone APK:
+
+- **Direct Download**: [YarisObdBridge-v1.0.0.apk](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisObdBridge-v1.0.0.apk)
+- **Operational Workflow**:
+  1. Connects to OBD-II Bluetooth hardware (Classic SPP or BLE).
+  2. Binds a local TCP bridge server listening on `127.0.0.1:35000` (and `0.0.0.0:35000`).
+  3. Third-party applications (e.g. **Dr. Prius** or **Car Scanner**) connect via **Wi-Fi / TCP mode** targeting `127.0.0.1:35000`.
+  4. Every outbound frame (`TX >>>`) and inbound response (`RX <<<`) is recorded with millisecond-accurate timestamps.
+  5. The resulting diagnostic trace file can be shared immediately via system share sheets (Drive, Telegram, Email, WhatsApp).
 
 ---
 
-## 🛠️ Compilazione e Rilascio Locale
-Per compilare ed eseguire i test unitari con firma RSA su entrambi i moduli:
+## 🛠️ Local Build & Distribution Pipeline
+
+Compile, test, and RSA-sign both release packages via the validated environment script:
 ```cmd
-D:\Sviluppo\yaris-hv-fan-android\build_apk.bat
+build_apk.bat
 ```
-I binari APK generati vengono automaticamente verificati, firmati con certificato RSA e posizionati sia nella root che nella cartella `docs/`:
-- `YarisHvFanControl-v3.0.1.apk` (Applicazione principale)
-- `YarisObdBridge-v1.0.0.apk` (Modulo autonomo bridge & sniffer)
+
+Generated APKs are automatically verified, signed with release keys, and placed in both the project root and `docs/`:
+- `YarisHvFanControl-v3.0.5.apk` (Primary application)
+- `YarisObdBridge-v1.0.0.apk` (Standalone MITM sniffer & bridge)
 
 ---
 
-## 📄 Licenza
-Progetto distribuito sotto licenza MIT. Vedere il file [LICENSE](LICENSE) per ulteriori dettagli.
+## 📄 License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for complete terms.

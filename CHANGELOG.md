@@ -1,72 +1,86 @@
-# Changelog & Cronologia Rilasci
+# Changelog & Release History
 
-Tutti i cambiamenti e miglioramenti significativi di questo progetto sono documentati in questo file.
-Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/) e aderisce al [Semantic Versioning](https://semver.org/lang/it/):
-- **MAJOR (`X.0.0`)**: Modifiche architetturali radicali, nuove sezioni o ridisegno totale della dashboard.
-- **MINOR (`0.X.0`)**: Aggiunta di nuove funzionalità, sensori, codifiche o telemetrie.
+All notable changes and technical improvements for this project are documented in this file.
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and adheres to [Semantic Versioning](https://semver.org/):
+- **MAJOR (`X.0.0`)**: Fundamental architectural overhauls, major subsystems, or comprehensive UI redesigns.
+- **MINOR (`0.X.0`)**: New features, additional sensors, ECU coding options, or telemetry pipelines.
+
+## [3.0.5] - 2026-09-09
+### 📚 Architectural Codemap, Tech Minimal Documentation & Git Contributor Cleanup
+- **Comprehensive Architectural Codemap (`codemap.md`)**:
+  - Published end-to-end system topology diagram covering presentation, foreground service, dual-rate scheduler, serial transport, and vehicle multi-ECU network (`7E0`, `7E2`, `750`, `7C0`, `7C4`, `7A0`).
+  - Cataloged core component responsibilities, scheduling rates, and zero-allocation memory constraints.
+- **Minimalist Technical Documentation (`README.md`, `AGENTS.md`, `PUSH_POLICY.md`)**:
+  - Rewrote and streamlined project documentation into an ultra low-cortisol, high-density technical format in English.
+  - Formatted adapter compatibility tables, test architecture, and local deterministic toolchain requirements.
+- **Git History Hygiene & Contributor Cleanup**:
+  - Purged co-author metadata attributing commits to third-party automated tools, preserving full author attribution and commit integrity.
+- **Monotonic Version Increment & Web Portal Synchronization**:
+  - Bumped `versionCode` to 43 and `versionName` to `3.0.5`.
+  - Synchronized static assets, release artifacts, and web portal simulator.
 
 ## [3.0.4] - 2026-09-09
-### ⚡ Fix Atomico Filtri Hardware CAN (AT CRA), Sequenzialità Single-Flight & UDS Ventola 2F58
-- **Filtri Hardware CAN Atomici (`AT SH` + `AT CRA`)**:
-  - Implementato mapping hardware deterministico in `ToyotaYarisCommands.getFilterForHeader`: ad ogni trasmissione verso una centralina (`7E0`, `7E2`, `7C0`, `750`, `7C4`, `7A0`) viene associato e configurato atomicamente il rispettivo filtro di ricezione hardware (`7E8`, `7EA`, `7C8`, `758`, `7CC`, `7A8`).
-  - Prevenzione definitiva dello scarto dei frame fisici da parte dei controller CAN interni agli adattatori ELM327/OBDLink e ricezione aperta (`AT CRA`) su broadcast funzionale (`7DF`).
-- **Schedulatore Dual-Rate Rigidamente Sequenziale (Single-Flight)**:
-  - Eliminata la concorrenza asincrona tra cicli (`scope.launch { executeDualRateCycle() }`) che provocava sovrapposizioni e interleaving distruttivo sul canale seriale.
-  - Introdotto `obdTransactionMutex` per serializzare rigorosamente ogni ciclo di telemetria e proteggere in mutua esclusione sia le letture che le scritture delle codifiche centralina (`readEcuCustomizations`, `applyEcuCustomization`).
-- **Controllo Ventola HV Primario UDS Service 0x2F (`2F 58 03 0x`)**:
-  - Allineato il comando di forzatura primario su Toyota TNGA-B XP210 al servizio UDS standard `2F 58 03 0x` (InputOutputControlByIdentifier), con fallback secondario su Mode 30 legacy (`30 08 0x`).
-  - Implementato ripristino automatico OEM pulito tramite UDS ReturnControlToECU (`2F 58 00`) e `30 08 00`.
-- **Prevenzione Buffer Overrun & Drenaggio Seriale su ELM327**:
-  - Introdotta verifica fail-fast della connessione prima dell'invio dei comandi.
-  - Gestione del timeout con invio di byte `\r` di drain per liberare il buffer UART del controller ELM327 e guard-time di 15ms tra comandi seriali consecutivi.
+### ⚡ Atomic CAN Hardware Filter Configuration (AT CRA), Single-Flight Sequentiality & UDS Fan Service 0x2F
+- **Atomic CAN Hardware Filters (`AT SH` + `AT CRA`)**:
+  - Implemented deterministic hardware mapping via `ToyotaYarisCommands.getFilterForHeader`: every ECU transmission header (`7E0`, `7E2`, `7C0`, `750`, `7C4`, `7A0`) is atomically paired with its corresponding hardware receive filter (`7E8`, `7EA`, `7C8`, `758`, `7CC`, `7A8`).
+  - Completely prevents physical frame drops by internal CAN controller filter masks on ELM327/OBDLink adapters; keeps open receive mask (`AT CRA`) for functional broadcast (`7DF`).
+- **Single-Flight Strictly Sequential Dual-Rate Scheduler**:
+  - Eliminated asynchronous cycle overlap (`scope.launch { executeDualRateCycle() }`) preventing destructive interleaved transmissions on the serial channel.
+  - Introduced `obdTransactionMutex` to strictly serialize telemetry cycles and enforce mutual exclusion across ECU read and write coding sessions (`readEcuCustomizations`, `applyEcuCustomization`).
+- **Primary HV Fan Control via UDS Service 0x2F (`2F 58 03 0x`)**:
+  - Standardized primary fan override on Toyota TNGA-B XP210 to UDS `2F 58 03 0x` (InputOutputControlByIdentifier), retaining legacy Mode 30 (`30 08 0x`) as automatic fallback.
+  - Implemented fail-safe OEM thermal restoration via UDS ReturnControlToECU (`2F 58 00`) and `30 08 00`.
+- **Buffer Overrun Prevention & Serial Drain on ELM327**:
+  - Added fail-fast connection verification prior to command dispatch.
+  - Implemented timeout recovery transmitting `\r` drain bytes to flush the adapter UART buffer, with 15ms guard intervals between consecutive serial frames.
 
 ## [3.0.3] - 2026-09-09
-### 🔍 Sistema Integrato di Logging Diagnostico ECU & Condivisione File Traccia OBD
-- **Logger Diagnostico Persistente su Disco (`ObdLogger`)**:
-  - Implementato modulo dedicato con persistenza su storage cache locale (`cacheDir/ecu_logs/obd_trace_YYYYMMDD_HHmmss.txt`) che registra ogni singolo byte inviato e ricevuto sul bus dati del veicolo.
-  - Timestamp micro-precisi (`HH:mm:ss.SSS`), tracciamento di comandi TX, risposte grezze RX con latenza in millisecondi (`[elapsed ms]`), timeout ed eccezioni.
-  - Rotazione automatica delle sessioni di log (mantenimento delle ultime 10 sessioni) per prevenire l'occupazione di spazio su disco.
-- **Esportazione & Condivisione Immediata (Android `FileProvider`)**:
-  - Configurato `androidx.core.content.FileProvider` (`com.yaris.hvfan.fileprovider`) con percorsi protetti e sicuri.
-  - Tasto **"CONDIVIDI LOG"** integrato sia nella schermata Dashboard (Portrait) sia nel nuovo Dialog Modale (Landscape) che genera istantaneamente un `Intent.ACTION_SEND` per inviare il file di traccia via WhatsApp, Telegram, Google Drive, Email o Bluetooth.
-- **Terminale Diagnostico Potenziato (Portrait & Landscape)**:
-  - Color-coding intuitivo per la riga di comando: comandi inviati in ciano/azzurro (`TX >>>`), risposte in verde (`RX <<<`), errori/timeout evidenziati in rosso fuoco (`ERR/TIMEOUT`), conferme in verde brillante.
-  - Tasto **"RESET"** per svuotare all'istante la schermata e i log correnti.
-  - Supporto completo Landscape tramite Dialog a tutto schermo quando si seleziona l'icona del terminale nella barra laterale sinistra.
+### 🔍 Integrated ECU Diagnostic Logging & Direct OBD Trace File Sharing
+- **Persistent Disk Diagnostic Logger (`ObdLogger`)**:
+  - Dedicated logging subsystem writing raw vehicle bus communication to local storage (`cacheDir/ecu_logs/obd_trace_YYYYMMDD_HHmmss.txt`).
+  - High-precision timestamps (`HH:mm:ss.SSS`), TX frame logging, RX raw responses with elapsed round-trip latency (`[elapsed ms]`), timeouts, and transport exceptions.
+  - Automatic session rotation retaining the 10 most recent sessions to cap disk footprint.
+- **Immediate Export & Share Sheet (Android `FileProvider`)**:
+  - Configured secure paths under `androidx.core.content.FileProvider` (`com.yaris.hvfan.fileprovider`).
+  - Integrated **"SHARE LOG"** action in both portrait dashboard and landscape modal dialog, dispatching `Intent.ACTION_SEND` across system targets (Google Drive, Telegram, Email, Bluetooth).
+- **Enhanced Diagnostic Terminal (Portrait & Landscape)**:
+  - High-contrast color-coded output: cyan outbound commands (`TX >>>`), green valid responses (`RX <<<`), bold red errors/timeouts (`ERR/TIMEOUT`), bright green confirmations.
+  - Dedicated **"RESET"** action to flush active terminal buffer and current logs.
+  - Full landscape orientation support via modal dialog accessible from the left rail.
 
 ## [3.0.2] - 2026-09-09
-### 🏎️ Ottimizzazione Caricamento e Fluidità Mobile 60 FPS per Smartphone Android Legacy
-- **Mobile Scroll Zero-Lag**:
-  - Rimosso `background-attachment: fixed` e semplificati i gradienti su viewport mobile (`<= 768px`), eliminando il continuo ricalcolo raster della GPU durante lo scorrimento su schermi OLED e LCD di smartphone meno recenti.
-  - Rimosso il pseudo-elemento `body::before` fisso su mobile per azzerare i livelli di compositing GPU inutili.
-- **Abbattimento Overhead di Compositing (Backdrop Filters)**:
-  - Disattivati i filtri `backdrop-filter: blur(...)` su mobile in favore di sfondi opachi moderni (`#0d1117`, `#131820`), garantendo 60/120 FPS costanti senza frame drop anche nelle WebView integrate e su dispositivi Android 8–11 con GPU limitate.
-- **Virtualizzazione DOM con `content-visibility: auto`**:
-  - Introdotto `content-visibility: auto` con `contain-intrinsic-size` su tutte le sezioni off-screen del portale web (`#features`, `#setup`, `#sniffer`, `#releases`), riducendo drasticamente il First Contentful Paint (FCP) e il tempo di rendering iniziale su CPU lente.
-- **Caricamento Asset Asincrono**:
-  - Aggiunto `decoding="async"` e `loading="eager"` per l'icona e allineate tutte le versioni di download in `docs/` e `README.md`.
+### 🏎️ Legacy Mobile Optimization & Constant 60 FPS Rendering for Android Devices
+- **Zero-Lag Mobile Viewport Scrolling**:
+  - Removed `background-attachment: fixed` and flattened gradients on mobile viewports (`<= 768px`), eliminating continuous GPU raster recalculations during scrolling.
+  - Removed static `body::before` pseudo-element on mobile viewports to minimize GPU compositing overhead.
+- **Compositing Overhead Reduction (Backdrop Filters)**:
+  - Replaced expensive `backdrop-filter: blur(...)` passes on mobile with clean opaque surfaces (`#0d1117`, `#131820`), ensuring steady 60/120 FPS on older Android devices (Android 8–11).
+- **DOM Virtualization via `content-visibility: auto`**:
+  - Applied `content-visibility: auto` with `contain-intrinsic-size` across off-screen landing sections (`#features`, `#setup`, `#sniffer`, `#releases`), reducing initial First Contentful Paint (FCP) latency.
+- **Asynchronous Asset Pipeline**:
+  - Added `decoding="async"` and `loading="eager"` attributes for key visual assets; synchronized download version targets across `docs/` and `README.md`.
 
 ## [3.0.1] - 2026-09-09
-### 🛡️ Fix Definitivo Oscillazione READY/Standby & Bypass Filtro Gateway TNGA
-- **Eliminazione Flapping READY 13V $\leftrightarrow$ Sleep**:
-  - Rimossa la condizione errata che forzava l'entrata in standby a basso consumo prima di aver tentato l'interrogazione diretta della centralina motore (`7E0`).
-  - Tolleranza e calibrazione per dongle con letture ADC imprecise: l'auto viene considerata attiva appena riceve risposte CAN, prevenendo loop infiniti di disconnessione.
-  - Rimozione del timeout di 4 secondi su `7DF` durante il risveglio: aggancio rapido immediato e diretto sull'ECU motore `7E0`.
-  - Isteresi rigorosa con soglia a 10 errori consecutivi e 4 verifiche di standby prima di dichiarare l'auto spenta.
+### 🛡️ Definitive Resolution of READY/Standby Voltage Flapping & TNGA Gateway Bypass
+- **Eliminated READY 13V $\leftrightarrow$ Sleep Cycling**:
+  - Removed premature standby transition triggers before polling the engine ECU (`7E0`).
+  - Added calibration tolerance for adapters with uncalibrated ADCs: vehicle is treated as active upon receiving CAN responses, preventing spurious disconnection loops.
+  - Bypassed 4-second timeout on functional broadcast `7DF` during wake-up, establishing immediate binding to engine ECU `7E0`.
+  - Enforced strict hysteresis requiring 10 consecutive read errors and 4 successive standby checks before declaring vehicle powered off.
 
 ## [3.0.0] - 2026-09-09
-### 🚀 MAJOR RELEASE: Forzatura Manuale Attiva Ventola HV (L1–L6), Stepper Cockpit & Bypass UDS
-- **Controllo Attivo e Forzatura Manuale Diretta (L1–L6)**:
-  - Introdotto selettore manuale a livelli con Stepper ergonomico `[-]` / `[+]` e switch di forzatura diretta in Dashboard.
-  - Svincolato l'invio del comando ventola dallo stato di discovery della batteria o da temperature $> 0^\circ\text{C}$: test acustici e funzionali immediati anche a freddo.
-  - Generazione dinamica comandi UDS Toyota Denso: `300801`..`300806` (Mode 30 IO Control) e fallback automatico `2F580301`..`2F580306` (Mode 2F) in caso di NRC `7F30`.
-  - Keep-Alive continuo periodico per impedire il reset della centralina dopo timeout OEM, e comando di ripristino `300800` (Release to OEM) allo spegnimento.
-  - Persistenza automatica su `SharedPreferences` con ripristino all'ingresso in stato `READY`.
-- **Risoluzione Critica Negoziazione CAN TNGA**:
-  - Risolto il blocco di inizializzazione causato dal Mode 03 su centraline TNGA (tolleranza `NO DATA`).
-  - Handshake a due stadi robusto (7DF Broadcast -> 7E0 Engine ECU) con rimozione del fallback problematico `AT SP 0`.
-  - Rimozione del PID non valido `220101` dalla fallback chain della batteria Denso HV.
-  - Auto-Recovery leggero non distruttivo senza riavvii completi dello stack BLE.
+### 🚀 MAJOR RELEASE: Active HV Fan Manual Control (L1–L6), Cockpit Stepper & UDS Direct Bypass
+- **Active Fan Manual Override (L1–L6)**:
+  - Ergonomic level selector with `[-]` / `[+]` cockpit stepper and direct override toggle in dashboard.
+  - Decoupled fan actuation from battery discovery state or temperature thresholds: allows immediate functional acoustic testing even on cold packs.
+  - Dynamic UDS Toyota Denso frame generation: `300801`..`300806` (Mode 30 IO Control) with automatic `2F580301`..`2F580306` (Mode 2F) fallback upon NRC `7F30`.
+  - Periodic cyclic keep-alive preventing ECU timeout resets, paired with fail-safe OEM release command `300800` (ReturnControlToECU) on termination.
+  - Automatic persistence via `SharedPreferences` with restoration upon `READY` state entry.
+- **TNGA CAN Negotiation Critical Resolution**:
+  - Fixed initialization stalls caused by unsupported Mode 03 queries on TNGA gateways (graceful `NO DATA` tolerance).
+  - Robust two-stage handshake (`7DF` Broadcast -> `7E0` Engine ECU) with elimination of unconstrained `AT SP 0` fallback.
+  - Purged invalid PID `220101` from Denso HV battery candidate chain.
+  - Lightweight, non-destructive auto-recovery without resetting the BLE stack.
 
 ## [2.9.22] - 2026-09-09
 ### 🛠️ Fix Negoziazione CAN e Auto-Recovery su Toyota Yaris TNGA

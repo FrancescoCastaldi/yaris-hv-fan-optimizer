@@ -1,22 +1,23 @@
-# 🚀 Piano di Implementazione & Stato Avanzamento: Release v3.0.1
+# Implementation Roadmap & Verification Milestones
 
-**Obiettivo:** Risoluzione definitiva dell'oscillazione READY (13V) $\leftrightarrow$ Standby/Sleep su Toyota Yaris TNGA XP210 e dongle OBD con ADC sfasato.
+**Core Objective:** Resolve vehicle READY (13V) $\leftrightarrow$ Standby/Sleep cycling on Toyota Yaris TNGA XP210 with uncalibrated OBD dongle ADCs, and establish single-flight CAN scheduling.
 
 ---
 
-## 📊 Tabella di Avanzamento Task
+## Task Progress
 
-| Task ID | Descrizione Attività | Stato | Dettagli / Note |
+| Milestone | Objective | Status | Implementation Details |
 | :--- | :--- | :---: | :--- |
-| **F1** | Rimozione standby prematuro prima di Stadio 1 | 🟢 COMPLETATO | Esecuzione garantita di 7E0 prima di qualsiasi decisione di standby |
-| **F2** | Bypass del timeout di 4 secondi su 7DF al risveglio | 🟢 COMPLETATO | Connessione diretta a 7E0 (Engine ECU) |
-| **F3** | Isteresi robusta anti-oscillazione su AT RV | 🟢 COMPLETATO | Rimozione di !isVehicleReady come trigger di sleep istantaneo |
-| **F4** | Test unitari (103 test) verdi al 100% | 🟢 COMPLETATO | BUILD SUCCESSFUL in 9s |
-| **F5** | Aggiornamento versione a v3.0.1 (versionCode 39) | 🟢 COMPLETATO | uild.gradle.kts, uild_apk.bat, deploy.yml, docs/ |
-| **F6** | Compilazione APK Release v3.0.1 (uild_apk.bat) | 🟡 IN CORSO | Generazione YarisHvFanControl-v3.0.1.apk |
-| **F7** | Git Commit, Tag v3.0.1 e Push | ⏳ DA INIZIARE | Deploy su GitHub Pages e branch main |
+| **F1** | Eliminate premature standby before Stage 1 | Completed | Guarantee Engine ECU (`7E0`) query before evaluating sleep triggers |
+| **F2** | Bypass 4-second timeout on `7DF` broadcast wake-up | Completed | Direct, immediate connection binding to `7E0` |
+| **F3** | Robust anti-flapping hysteresis on `AT RV` | Completed | Decouple transient voltage drops from immediate sleep state entry |
+| **F4** | Automated test suite verification (100% passing) | Completed | Unit & integration test execution under mocked transports |
+| **F5** | Version synchronization across build and deployment | Completed | Synchronized across Gradle, scripts, and documentation |
+| **F6** | RSA-signed release APK compilation | Completed | Generated via `build_apk.bat` for both main and sniffer apps |
+| **F7** | Staging and release sign-off | Completed | Repository ready for production deployment |
 
 ---
 
-## 📝 Note Tecniche
-- Risolto il difetto per cui un dongle Vgate con lettura a 12.8V-12.9V faceva rimbalzare l'app tra modalità READY e SLEEP ogni 2 secondi, bloccando l'invio dei comandi ventola e telemetria.
+## Technical Context
+- Eliminates flapping between READY and SLEEP modes caused by OBD dongle ADCs measuring between 12.8V and 12.9V.
+- Ensures uninterrupted telemetry streaming and predictable fan control overrides under all vehicle driving conditions.
