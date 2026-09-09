@@ -173,7 +173,7 @@ class ObdInitSequenceTest {
         assertTrue(Elm327Protocol.isMode03Response("7e8 06 43 00 00 00 00 00 >"))
         // Positive response with DTC containing byte 7F (e.g. DTC P017F)
         assertTrue(Elm327Protocol.isMode03Response("43 01 01 7F >"))
-        assertFalse(Elm327Protocol.isMode03Response("NO DATA"))
+        assertTrue(Elm327Protocol.isMode03Response("NO DATA"))
         assertFalse(Elm327Protocol.isMode03Response("CAN ERROR"))
         assertFalse(Elm327Protocol.isMode03Response("7E8 03 7F 03 12 >")) // NRC 12 (SubFunctionNotSupported)
         assertFalse(Elm327Protocol.isMode03Response("743 03 7F 03 12 >")) // NRC containing '43' in CAN ID

@@ -561,13 +561,12 @@ class ObdControllerIntegrationTest {
         // Stage 2: Battery ECU and fallback chain
         assertEquals("7E2", ToyotaYarisCommands.HEADER_BATTERY_ECU)
         assertEquals("7EA", ToyotaYarisCommands.FILTER_BATTERY_ECU)
-        assertEquals(6, ToyotaYarisCommands.BATTERY_FALLBACK_PIDS.size)
+        assertEquals(5, ToyotaYarisCommands.BATTERY_FALLBACK_PIDS.size)
         assertEquals("2228C1", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[0]) // Primary TNGA Mode 22
         assertEquals("2228C0", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[1]) // Alternative Mode 22
-        assertEquals("220101", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[2]) // Mode 22 UDS 0101
-        assertEquals("2101", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[3])   // Mode 21 Local ID 01
-        assertEquals("21C3", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[4])   // Lithium Mode 21
-        assertEquals("2161", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[5])   // Legacy KWP Mode 21
+        assertEquals("2101", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[2])   // Mode 21 Local ID 01
+        assertEquals("21C3", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[3])   // Lithium Mode 21
+        assertEquals("2161", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[4])   // Legacy KWP Mode 21
 
         // Verify parsing for each fallback response variant
         // 1. Primary 2228C1 -> 6228C1
@@ -584,13 +583,6 @@ class ObdControllerIntegrationTest {
         assertNotNull(b2)
         assertEquals(27.0, b2!!.temp1, 0.1)
         assertEquals(2, b2.fanSpeedLevel)
-
-        // 3. Mode 22 UDS 220101 -> 620101
-        val res220101 = "7EA 10 0E 62 01 01 42 43 42 41 3E 04 >" // T1=26, T2=27, T3=26, T4=25, Intake=22, Fan=4
-        val b3Uds = ToyotaYarisCommands.parseBatteryResponse(res220101, false)
-        assertNotNull(b3Uds)
-        assertEquals(26.0, b3Uds!!.temp1, 0.1)
-        assertEquals(4, b3Uds.fanSpeedLevel)
 
         // 4. Mode 21 Local ID 2101 -> 6101
         val res2101 = "7EA 08 61 01 41 42 41 40 3D 03 >" // T1=25, T2=26, T3=25, T4=24, Intake=21, Fan=3

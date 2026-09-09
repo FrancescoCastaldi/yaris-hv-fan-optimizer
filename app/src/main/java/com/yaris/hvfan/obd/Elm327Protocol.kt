@@ -174,6 +174,10 @@ object Elm327Protocol {
      */
     fun isMode03Response(response: String): Boolean {
         val cleanAll = cleanResponse(response).uppercase()
+        // Su Toyota Yaris TNGA, Mode 03 non è sempre supportato e NODATA è una risposta valida,
+        // non un errore di bus CAN.
+        if (cleanAll.contains("NODATA")) return true
+
         if (isError(cleanAll)) return false
 
         val lines = response.split('\r', '\n')
@@ -207,6 +211,24 @@ object Elm327Protocol {
             }
         }
 
+        return false
+    }
+
+    /**
+     * Verifica se la stringa contiene un qualsiasi frame CAN hex (es. 7Ex...).
+     */
+    fun isValidCanResponse(response: String): Boolean {
+        val clean = cleanResponse(response).uppercase()
+        if (isError(clean) && !clean.contains("NODATA")) return false
+        
+        val lines = clean.split('\r', '\n', ' ')
+            .filter { it.isNotEmpty() }
+            
+        for (line in lines) {
+            if (line.matches(Regex("""^[0-9A-F]{3,}.*"""))) {
+                return true
+            }
+        }
         return false
     }
 

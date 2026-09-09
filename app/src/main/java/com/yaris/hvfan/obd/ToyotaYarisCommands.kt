@@ -301,7 +301,6 @@ object ToyotaYarisCommands {
     val BATTERY_FALLBACK_PIDS = listOf(
         PID_READ_BATTERY_DATA_TNGA,      // 2228C1
         PID_READ_BATTERY_DATA_ALT,       // 2228C0
-        "220101",                        // Mode 22 UDS Data Identifier 0101
         "2101",                          // Mode 21 Local ID 01 (Denso / KWP)
         PID_READ_BATTERY_DATA_LITHIUM_1, // 21C3
         PID_READ_BATTERY_DATA_LEGACY     // 2161

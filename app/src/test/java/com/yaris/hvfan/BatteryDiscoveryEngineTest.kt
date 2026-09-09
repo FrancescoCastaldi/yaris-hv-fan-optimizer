@@ -43,29 +43,24 @@ class BatteryDiscoveryEngineTest {
         engine.onCandidateFailed("2228C0", ProbeStatus.TIMEOUT, null)
         assertTrue(engine.isCandidateInCooldown("2228C0"))
 
-        // Cycle 3: Candidate advances to 220101
+        // Cycle 3: Candidate advances to 2101
         val c3 = engine.getNextCandidate()
-        assertEquals("220101", c3)
+        assertEquals("2101", c3)
         // Candidate 3 fails (7F NRC)
-        engine.onCandidateFailed("220101", ProbeStatus.REJECTED, "7F2211")
-        assertTrue(engine.isCandidateInCooldown("220101"))
+        engine.onCandidateFailed("2101", ProbeStatus.REJECTED, "7F2111")
+        assertTrue(engine.isCandidateInCooldown("2101"))
 
-        // Cycle 4: Candidate advances to 2101
+        // Cycle 4: Candidate advances to 21C3
         val c4 = engine.getNextCandidate()
-        assertEquals("2101", c4)
-        engine.onCandidateFailed("2101", ProbeStatus.NO_DATA, "NO DATA")
-
-        // Cycle 5: Candidate advances to 21C3
-        val c5 = engine.getNextCandidate()
-        assertEquals("21C3", c5)
+        assertEquals("21C3", c4)
         engine.onCandidateFailed("21C3", ProbeStatus.INVALID, "GARBAGE")
 
-        // Cycle 6: Candidate advances to 2161
-        val c6 = engine.getNextCandidate()
-        assertEquals("2161", c6)
+        // Cycle 5: Candidate advances to 2161
+        val c5 = engine.getNextCandidate()
+        assertEquals("2161", c5)
         engine.onCandidateFailed("2161", ProbeStatus.NO_DATA, "NO DATA")
 
-        // Now all 6 candidates have failed and are in cooldown!
+        // Now all 5 candidates have failed and are in cooldown!
         assertTrue(engine.areAllCandidatesInCooldown())
         assertNull(engine.getNextCandidate())
 

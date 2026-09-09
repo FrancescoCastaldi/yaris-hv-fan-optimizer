@@ -267,8 +267,7 @@ class ObdController(
                     val cleanRes = Elm327Protocol.cleanResponse(res)
                     addLog("RES: $cleanRes")
                     if (cmd == Elm327Protocol.CMD_PROTOCOL_CAN_11_500 && (cleanRes.contains("ERROR") || Elm327Protocol.isError(cleanRes))) {
-                        addLog("Fallback protocollo su AT SP 0 (Auto)...")
-                        bleManager.sendCommand(Elm327Protocol.PROTOCOL_FALLBACK)
+                        addLog("ℹ️ Errore su AT SP 6. Procedo comunque perché alcuni cloni non lo supportano ma negoziano dopo.")
                     }
                     delay(40)
                 }
@@ -322,16 +321,17 @@ class ObdController(
                     lastValidCanTimestamp = timeProvider()
                 }
 
-                // 6. Handshake CAN a tre stadi con aggancio rapido (R2)
-                // Permette l'aggancio CAN anche con quadro acceso e DC-DC spento (12V < 13.0V)
+                // 6. Handshake CAN a due stadi
                 addLog("Stadio 0: aggancio bus CAN in broadcast (7DF)...")
                 stateMachine.onCanSearching()
-                val stage0Ok = isMode03Active || probeBroadcastCanWithAutomaticFallback("Stadio 0")
+                val probe0 = probeBroadcastCan(attempts = 1, timeoutMs = 4000L)
+                val stage0Ok = isMode03Active || probe0.isValid
+
                 if (stage0Ok) {
                     addLog("✅ Stadio 0 completato: bus CAN 11-bit 500k agganciato in broadcast (7DF).")
                     lastValidCanTimestamp = timeProvider()
                 } else {
-                    addLog("⚠️ Stadio 0 fallito anche dopo auto-detect: nessun frame CAN valido in broadcast 7DF. Possibili cause: quadro spento, dongle non inserito a fondo nella presa OBD, o adattatore incompatibile. Proseguo comunque con gli stadi successivi...")
+                    addLog("⚠️ Stadio 0 fallito: nessun frame CAN in broadcast 7DF. Central Gateway Toyota potrebbe filtrare. Procedo a Stadio 1 diretto (7E0)...")
                 }
 
                 // Gestione stato Standby a basso consumo: attivo SOLO se tensione < 13.0V E il CAN 7DF non ha risposto
@@ -358,25 +358,21 @@ class ObdController(
 
                     // Stadio 1: aggancio rapido centralina motore standard (7E0 / 7E8)
                     addLog("Handshake CAN Stadio 1: aggancio rapido bus su Centralina Motore (7E0 / 7E8)...")
-                    ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU)
+                    ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU, force = true)
                     var stage1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_SUPPORTED_PIDS, timeoutMs = 4000L)
                     var cleanStage1 = Elm327Protocol.cleanResponse(stage1Res)
                     if (Elm327Protocol.isError(cleanStage1) || cleanStage1.contains("TIMEOUT")) {
                         addLog("PID 0100 non ha risposto (risposta: $cleanStage1), tentativo rapido con PID 010C (RPM)...")
                         stage1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_ENGINE_RPM, timeoutMs = 4000L)
                         cleanStage1 = Elm327Protocol.cleanResponse(stage1Res)
-                        if (Elm327Protocol.isError(cleanStage1)) {
-                            addLog("PID 010C non ha risposto (risposta: $cleanStage1).")
-                        }
                     }
-                    val stage1Ok = !Elm327Protocol.isError(cleanStage1) &&
-                        (cleanStage1.contains("4100") || cleanStage1.contains("410C"))
+                    val stage1Ok = Elm327Protocol.isValidCanResponse(stage1Res)
                     if (stage1Ok) {
-                        addLog("✅ Handshake CAN Stadio 1 completato: bus CAN 11-bit 500k agganciato!")
+                        addLog("✅ Handshake CAN Stadio 1 completato: bus CAN 11-bit 500k agganciato (risposta: $cleanStage1)!")
                         lastValidCanTimestamp = timeProvider()
                         stateMachine.onEngineTelemetrySuccess()
                     } else {
-                        addLog("ℹ️ Handshake CAN Stadio 1: risposta non standard ($cleanStage1), procedo a Stadio 2...")
+                        addLog("ℹ️ Handshake CAN Stadio 1 fallito (risposta: $cleanStage1).")
                     }
 
                     // Stadio 2: predisposizione discovery centralina ibrida Denso HV Battery (7E2)
@@ -480,28 +476,7 @@ class ObdController(
         return CanProbeResult(false, cleanResponse)
     }
 
-    /**
-     * Un clone puo' rispondere OK ad AT SP 6 pur non riuscendo ad agganciare il bus. Il fallback
-     * viene quindi deciso dalla prova CAN reale, non dalla sola risposta al comando AT.
-     */
-    private suspend fun probeBroadcastCanWithAutomaticFallback(context: String): Boolean {
-        var probe = probeBroadcastCan()
-        if (probe.isValid) return true
 
-        addLog("$context: nessuna risposta con protocollo 6 (risposta: ${probe.response}). Provo auto-detect ELM327 (AT SP 0)...")
-        bleManager.sendCommand(Elm327Protocol.PROTOCOL_FALLBACK, timeoutMs = 2000L)
-        delay(200)
-        currentCanHeader = ""
-        probe = probeBroadcastCan(attempts = 2, timeoutMs = 12000L)
-        if (probe.isValid) {
-            val dpnResponse = bleManager.sendCommand(Elm327Protocol.CMD_PROTOCOL_NUMBER, timeoutMs = 1500L)
-            addLog("✅ $context: CAN agganciato tramite auto-detect (AT DPN: ${Elm327Protocol.cleanResponse(dpnResponse)}).")
-            return true
-        }
-
-        addLog("$context: auto-detect senza risposta CAN valida (risposta: ${probe.response}).")
-        return false
-    }
 
     /**
      * Imposta l'header di trasmissione CAN dell'ECU bersaglio. Non viene mai inviato AT CRA:
@@ -578,59 +553,47 @@ class ObdController(
         stateMachine.onCanBusAutoRecovery()
         discoveryEngine.reset()
 
-        // Reset rapido dello stack seriale ELM327 senza perdita connessione BLE
-        bleManager.sendWakeSequence()
-        bleManager.sendCommand(Elm327Protocol.CMD_WARM_START) // Warm Start #1
-        delay(150)
-        bleManager.sendCommand(Elm327Protocol.CMD_WARM_START) // Warm Start #2 (svuotamento buffer)
-        delay(150)
-        bleManager.sendCommand(Elm327Protocol.CMD_ECHO_OFF)
-        bleManager.sendCommand(Elm327Protocol.CMD_PROTOCOL_CAN_11_500)
-        bleManager.sendCommand(Elm327Protocol.CMD_ADAPTIVE_TIMING_1)
-        bleManager.sendCommand(Elm327Protocol.CMD_HEADERS_ON)
-        bleManager.sendCommand(Elm327Protocol.CMD_LINEFEEDS_OFF)
-        bleManager.sendCommand(Elm327Protocol.CMD_SPACES_OFF)
-        bleManager.sendCommand(Elm327Protocol.CMD_CAN_AUTO_FORMAT_ON)
-        bleManager.sendCommand(Elm327Protocol.CMD_AUTO_RECEIVE)
+        // Recovery Leggero: ripristina solo filtri, timeout e header CAN senza svuotare il bus seriale
+        addLog("Tentativo auto-recovery leggero (AT AR / AT SH 7E0)...")
+        bleManager.sendCommand("AT AR")
         bleManager.sendCommand(Elm327Protocol.CMD_TIMEOUT_HANDSHAKE)
-        currentCanHeader = "" // Forza riapplicazione degli header
-        ensureCanHeader(ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST)
-        stateMachine.onElmReady()
+        ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU, force = true)
 
-        // Probe attivazione bus CAN via Mode 03 prima di procedere
-        val probe03Res = bleManager.sendCommand(Elm327Protocol.CMD_PROBE_DTC, timeoutMs = 2000L)
-        val isMode03Active = Elm327Protocol.isMode03Response(probe03Res)
-
-        // Stadio 0: riaggancio 7DF, con fallback basato sulla risposta CAN reale.
-        val s0Ok = isMode03Active || probeBroadcastCanWithAutomaticFallback("Auto-recovery Stadio 0")
-        if (!s0Ok) {
-            addLog("Auto-recovery Stadio 0: nessuna risposta in broadcast 7DF.")
-        }
-
-        // Handshake Stadio 1: aggancio rapido centralina motore per completare fase SEARCHING... su CAN 11-bit 500k
-        ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU)
         var s1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_SUPPORTED_PIDS, timeoutMs = 4000L)
-        var cleanS1 = Elm327Protocol.cleanResponse(s1Res)
-        if (Elm327Protocol.isError(cleanS1) || cleanS1.contains("TIMEOUT")) {
-            s1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_ENGINE_RPM, timeoutMs = 4000L)
-            cleanS1 = Elm327Protocol.cleanResponse(s1Res)
-        }
-        val s1Ok = !Elm327Protocol.isError(cleanS1) &&
-            (cleanS1.contains("4100") || cleanS1.contains("410C"))
-        if (s1Ok) {
-            stateMachine.onEngineTelemetrySuccess()
+        var s1Ok = Elm327Protocol.isValidCanResponse(s1Res)
+
+        if (!s1Ok) {
+            addLog("Auto-recovery leggero fallito. Eseguo Warm Start completo dello stack ELM327...")
+            // Reset rapido dello stack seriale ELM327 senza perdita connessione BLE
+            bleManager.sendWakeSequence()
+            bleManager.sendCommand(Elm327Protocol.CMD_WARM_START) // Warm Start #1
+            delay(150)
+            bleManager.sendCommand(Elm327Protocol.CMD_WARM_START) // Warm Start #2 (svuotamento buffer)
+            delay(150)
+            bleManager.sendCommand(Elm327Protocol.CMD_ECHO_OFF)
+            bleManager.sendCommand(Elm327Protocol.CMD_PROTOCOL_CAN_11_500)
+            bleManager.sendCommand(Elm327Protocol.CMD_ADAPTIVE_TIMING_1)
+            bleManager.sendCommand(Elm327Protocol.CMD_HEADERS_ON)
+            bleManager.sendCommand(Elm327Protocol.CMD_LINEFEEDS_OFF)
+            bleManager.sendCommand(Elm327Protocol.CMD_SPACES_OFF)
+            bleManager.sendCommand(Elm327Protocol.CMD_CAN_AUTO_FORMAT_ON)
+            bleManager.sendCommand(Elm327Protocol.CMD_AUTO_RECEIVE)
+            bleManager.sendCommand(Elm327Protocol.CMD_TIMEOUT_HANDSHAKE)
+            
+            ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU, force = true)
+            s1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_SUPPORTED_PIDS, timeoutMs = 4000L)
+            s1Ok = Elm327Protocol.isValidCanResponse(s1Res)
         }
 
-        // Handshake Stadio 2: reset discovery e predisposizione interrogazione non-bloccante
-        discoveryEngine.reset()
+        stateMachine.onElmReady()
         stateMachine.onBatteryDiscoveryProbing()
-        ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU)
 
-        if (s0Ok || s1Ok) {
+        if (s1Ok) {
             lastValidCanTimestamp = timeProvider()
-            addLog("✅ Procedura auto-recovery completata: bus CAN motore riagganciato.")
+            stateMachine.onEngineTelemetrySuccess()
+            addLog("✅ Procedura auto-recovery completata: bus CAN motore riagganciato (Risposta: ${Elm327Protocol.cleanResponse(s1Res)}).")
         } else {
-            addLog("⚠️ Procedura auto-recovery completata: in attesa di risposta CAN centralina.")
+            addLog("⚠️ Procedura auto-recovery fallita: nessuna risposta CAN centralina.")
         }
 
         _liveState.value = _liveState.value.copy(
@@ -726,18 +689,18 @@ class ObdController(
 
                 // La tensione conferma il DC-DC attivo o il quadro acceso; protocollo convalidato con risposta ECU reale in broadcast
                 stateMachine.onCanSearching()
-                val s0Ok = canProbe?.isValid ?: probeBroadcastCanWithAutomaticFallback("Risveglio da standby")
+                val s0Ok = canProbe?.isValid ?: probeBroadcastCan(attempts = 1, timeoutMs = 4000L).isValid
 
                 // Handshake Stadio 1: aggancio rapido motore
-                ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU)
+                ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU, force = true)
                 var s1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_SUPPORTED_PIDS, timeoutMs = 4000L)
-                var cleanS1 = Elm327Protocol.cleanResponse(s1Res)
-                if (Elm327Protocol.isError(cleanS1) || cleanS1.contains("TIMEOUT")) {
+                var s1Ok = Elm327Protocol.isValidCanResponse(s1Res)
+                
+                if (!s1Ok) {
                     s1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_ENGINE_RPM, timeoutMs = 4000L)
-                    cleanS1 = Elm327Protocol.cleanResponse(s1Res)
+                    s1Ok = Elm327Protocol.isValidCanResponse(s1Res)
                 }
-                val s1Ok = !Elm327Protocol.isError(cleanS1) &&
-                    (cleanS1.contains("4100") || cleanS1.contains("410C"))
+                
                 if (s1Ok) {
                     stateMachine.onEngineTelemetrySuccess()
                 }
@@ -1278,6 +1241,16 @@ class ObdController(
                 return@launch
             }
 
+            if (!_liveState.value.hasEcuCommunication) {
+                _liveState.value = _liveState.value.copy(
+                    ecuCodingState = _liveState.value.ecuCodingState.copy(
+                        lastOperationStatus = "Errore: Nessuna comunicazione CAN. Auto in READY?"
+                    )
+                )
+                addLog("⚠️ ECU Coding interrotto: Il bus CAN non è agganciato (hasEcuCommunication=false).")
+                return@launch
+            }
+
             isEcuOperationInProgress = true
             addLog("Avvio lettura configurazione Body ECU, Meter & Touch 3...")
             _liveState.value = _liveState.value.copy(
@@ -1369,6 +1342,16 @@ class ObdController(
                         lastOperationStatus = "Errore: OBD non connesso"
                     )
                 )
+                return@launch
+            }
+
+            if (!_liveState.value.hasEcuCommunication) {
+                _liveState.value = _liveState.value.copy(
+                    ecuCodingState = updatedState.copy(
+                        lastOperationStatus = "Errore: Nessuna comunicazione CAN. Auto in READY?"
+                    )
+                )
+                addLog("⚠️ ECU Coding interrotto: Il bus CAN non è agganciato (hasEcuCommunication=false).")
                 return@launch
             }
 
