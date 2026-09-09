@@ -442,17 +442,58 @@ class ObdControllerBatteryDiscoveryTest {
             discoveryEngine = BatteryDiscoveryEngine()
         )
 
-        // When fanForcedMax is true by default, but battery is not discovered:
-        assertTrue(controller.liveState.value.fanForcedMax)
+        // Default: manual forced is false, auto threshold won't trigger while battery is undiscovered
+        assertFalse(controller.liveState.value.isManualFanForced)
         assertEquals(BatteryEcuDiscoveryState.Undiscovered, stateMachine.currentCapabilityState.batteryEcuDiscoveryState)
 
         controller.executeBatteryThermalCycle()
 
         val dispatched = fakeTransport.dispatchedCommands
-        val fanCommands = dispatched.filter { it.startsWith("3000") || it.startsWith("2F") }
+        val fanCommands = dispatched.filter { it.startsWith("3008") || it.startsWith("2F") }
         assertTrue(
-            "Fan commands must NOT be dispatched while battery is not Discovered",
+            "Automatic fan commands must NOT be dispatched while battery is not Discovered",
             fanCommands.isEmpty()
+        )
+    }
+
+    /**
+     * Major Release v3.0.0: Manual fan forcing (L1..L6) must bypass discovery and dispatch immediately.
+     */
+    @Test
+    fun testManualFanForcingBypassesDiscovery() = runTest {
+        val fakeTransport = FakeObdTransport()
+        fakeTransport.commandResponder = { cmd, _ ->
+            when {
+                cmd.startsWith("AT") -> "OK"
+                cmd == ToyotaYarisCommands.PID_READ_BATTERY_DATA_TNGA -> "NO DATA"
+                cmd.startsWith("3008") -> "OK"
+                else -> "OK"
+            }
+        }
+
+        val stateMachine = ObdStateMachine()
+        val controller = ObdController(
+            bleManager = fakeTransport,
+            scope = this,
+            stateMachine = stateMachine,
+            discoveryEngine = BatteryDiscoveryEngine()
+        )
+
+        // User enables manual fan override to Level 5
+        controller.setManualForcedFan(true, level = 5)
+        assertTrue(controller.liveState.value.isManualFanForced)
+        assertEquals(5, controller.liveState.value.manualFanTargetLevel)
+
+        controller.executeBatteryThermalCycle()
+
+        val dispatched = fakeTransport.dispatchedCommands
+        assertTrue(
+            "Manual fan command 300805 must be dispatched even if battery is undiscovered",
+            dispatched.contains("300805")
+        )
+        assertTrue(
+            "Header must be switched to 7E2 for battery ECU",
+            dispatched.contains("AT SH 7E2")
         )
     }
 }

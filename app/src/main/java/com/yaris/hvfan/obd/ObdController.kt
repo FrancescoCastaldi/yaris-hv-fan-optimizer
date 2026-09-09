@@ -23,7 +23,9 @@ data class ObdLiveState(
     val accelerationState: AccelerationRunState = AccelerationRunState(),
     val ecuCodingState: EcuCustomizationState = EcuCustomizationState(),
     val targetThreshold: Int = 20,
-    val fanForcedMax: Boolean = true,
+    val fanForcedMax: Boolean = false,
+    val isManualFanForced: Boolean = false,
+    val manualFanTargetLevel: Int = 6,
     val autoCoolingStatus: AutoCoolingStatus = AutoCoolingStatus(),
     val capabilityState: ObdCapabilityState = ObdCapabilityState(),
     val lastLogMessage: String = "In attesa di connessione...",
@@ -80,6 +82,9 @@ class ObdController(
                 best0to50TimeSec = appPreferences?.best0to50TimeSec,
                 best0to100TimeSec = appPreferences?.best0to100TimeSec
             ),
+            isManualFanForced = appPreferences?.isManualFanForced ?: false,
+            manualFanTargetLevel = appPreferences?.manualFanTargetLevel ?: 6,
+            fanForcedMax = appPreferences?.isManualFanForced ?: false,
             autoCoolingStatus = AutoCoolingStatus(
                 isEnabled = appPreferences?.isAutoCoolingEnabled ?: false,
                 triggerTemp = appPreferences?.autoCoolingTriggerTemp ?: 34.0f,
@@ -915,30 +920,37 @@ class ObdController(
             }
 
             val isAutoCoolingActive = updatedAutoStatus.isEnabled && updatedAutoStatus.isActivelyCooling
+            val isManualForced = currentState.isManualFanForced || currentState.fanForcedMax
             val isBatteryValid = stateMachine.currentCapabilityState.batteryEcuDiscoveryState == BatteryEcuDiscoveryState.Discovered && updatedBattery.maxTemp > 0.0
-            val shouldForceFan = isBatteryValid && (currentState.fanForcedMax || isAutoCoolingActive || updatedBattery.maxTemp >= currentState.targetThreshold)
-            val activeTargetSpeed = if (currentState.fanForcedMax) 6 else if (isAutoCoolingActive) updatedAutoStatus.targetSpeed else 6
+            
+            // La forzatura manuale scavalca lo stato di discovery per permettere test immediati
+            val shouldForceFan = isManualForced || (isBatteryValid && (isAutoCoolingActive || updatedBattery.maxTemp >= currentState.targetThreshold))
+            val activeTargetSpeed = when {
+                isManualForced -> currentState.manualFanTargetLevel.coerceIn(1, 6)
+                isAutoCoolingActive -> updatedAutoStatus.targetSpeed.coerceIn(1, 6)
+                else -> 6
+            }
 
-            if (isBatteryValid) {
-                if (shouldForceFan) {
-                    val fanCmd = ToyotaYarisCommands.getFanSpeedCommand(activeTargetSpeed)
-                    val fanCmdRes = bleManager.sendCommand(fanCmd)
-                    val cleanFanRes = Elm327Protocol.cleanResponse(fanCmdRes)
-                    if (cleanFanRes.contains("7F30") || cleanFanRes.contains("ERROR")) {
-                        bleManager.sendCommand(ToyotaYarisCommands.CMD_FAN_MAX_SPEED_ALT)
-                        stateMachine.onFanActuationStateChanged(FanActuationState.REQUESTED)
-                    } else {
-                        stateMachine.onFanControlConfirmed()
-                        stateMachine.onFanActuationStateChanged(FanActuationState.CONFIRMED)
-                    }
-                    addLog("Ventola HV L$activeTargetSpeed | Batt: ${String.format(java.util.Locale.US, "%.1f", updatedBattery.maxTemp)}°C")
+            if (shouldForceFan) {
+                ensureCanHeader(ToyotaYarisCommands.HEADER_BATTERY_ECU)
+                val fanCmd = ToyotaYarisCommands.getFanSpeedCommand(activeTargetSpeed)
+                val fanCmdRes = bleManager.sendCommand(fanCmd)
+                val cleanFanRes = Elm327Protocol.cleanResponse(fanCmdRes)
+                if (cleanFanRes.contains("7F30") || cleanFanRes.contains("ERROR")) {
+                    val altCmd = ToyotaYarisCommands.getFanSpeedCommandAlt(activeTargetSpeed)
+                    bleManager.sendCommand(altCmd)
+                    stateMachine.onFanActuationStateChanged(FanActuationState.REQUESTED)
                 } else {
-                    if (currentState.batteryStatus.isFanForced) {
-                        bleManager.sendCommand(ToyotaYarisCommands.CMD_FAN_STOP_OR_RESET)
-                    }
-                    bleManager.sendCommand(ToyotaYarisCommands.CMD_TESTER_PRESENT)
-                    stateMachine.onFanActuationStateChanged(FanActuationState.OEM_AUTOMATIC)
+                    stateMachine.onFanControlConfirmed()
+                    stateMachine.onFanActuationStateChanged(FanActuationState.CONFIRMED)
                 }
+                addLog("⚡ VENTOLA HV FORZATA L$activeTargetSpeed [${if (isManualForced) "MANUALE" else "AUTO"}] | Batt: ${String.format(java.util.Locale.US, "%.1f", updatedBattery.maxTemp)}°C")
+            } else if (currentState.batteryStatus.isFanForced) {
+                ensureCanHeader(ToyotaYarisCommands.HEADER_BATTERY_ECU)
+                bleManager.sendCommand(ToyotaYarisCommands.CMD_FAN_STOP_OR_RESET)
+                bleManager.sendCommand(ToyotaYarisCommands.CMD_TESTER_PRESENT)
+                stateMachine.onFanActuationStateChanged(FanActuationState.OEM_AUTOMATIC)
+                addLog("Ventola HV: ripristinato controllo automatico OEM.")
             }
 
             _liveState.value = _liveState.value.copy(
@@ -1161,9 +1173,28 @@ class ObdController(
     }
 
     fun setForcedFan(forced: Boolean) {
-        _liveState.value = _liveState.value.copy(fanForcedMax = forced)
+        setManualForcedFan(forced, _liveState.value.manualFanTargetLevel)
+    }
+
+    fun setManualForcedFan(forced: Boolean, level: Int = _liveState.value.manualFanTargetLevel) {
+        val safeLevel = level.coerceIn(1, 6)
+        _liveState.value = _liveState.value.copy(
+            isManualFanForced = forced,
+            manualFanTargetLevel = safeLevel,
+            fanForcedMax = forced
+        )
+        appPreferences?.isManualFanForced = forced
+        appPreferences?.manualFanTargetLevel = safeLevel
         pendingBatterySafetyCheck = true
-        addLog(if (forced) "Forzatura ventola 100% ABILITATA" else "Forzatura ventola DISABILITATA (solo soglia)")
+        addLog(if (forced) "⚡ Forzatura manuale ventola L$safeLevel ABILITATA" else "Forzatura ventola DISABILITATA (controllo OEM)")
+    }
+
+    fun setManualFanTargetLevel(level: Int) {
+        val safeLevel = level.coerceIn(1, 6)
+        _liveState.value = _liveState.value.copy(manualFanTargetLevel = safeLevel)
+        appPreferences?.manualFanTargetLevel = safeLevel
+        pendingBatterySafetyCheck = true
+        addLog("Livello ventola manuale impostato a L$safeLevel")
     }
 
     fun setAutoCoolingEnabled(enabled: Boolean) {

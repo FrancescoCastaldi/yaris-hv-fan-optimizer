@@ -59,6 +59,7 @@ fun DashboardScreen(
     onReconnect: () -> Unit,
     onThresholdChanged: (Int) -> Unit,
     onForcedFanToggle: (Boolean) -> Unit,
+    onManualFanLevelChanged: (Int) -> Unit = {},
     onAutoCoolingToggle: (Boolean) -> Unit = {},
     onAutoCoolingTriggerChanged: (Float) -> Unit = {},
     onAutoCoolingHysteresisChanged: (Float) -> Unit = {},
@@ -360,7 +361,8 @@ fun DashboardScreen(
                                     onAutoCoolingToggle = onAutoCoolingToggle,
                                     onAutoCoolingTriggerChanged = onAutoCoolingTriggerChanged,
                                     onAutoCoolingHysteresisChanged = onAutoCoolingHysteresisChanged,
-                                    onAutoCoolingTargetSpeedChanged = onAutoCoolingTargetSpeedChanged
+                                    onAutoCoolingTargetSpeedChanged = onAutoCoolingTargetSpeedChanged,
+                                    onManualFanLevelChanged = onManualFanLevelChanged
                                 )
                             }
                         }
@@ -378,7 +380,8 @@ fun DashboardScreen(
                                 onAutoCoolingToggle = onAutoCoolingToggle,
                                 onAutoCoolingTriggerChanged = onAutoCoolingTriggerChanged,
                                 onAutoCoolingHysteresisChanged = onAutoCoolingHysteresisChanged,
-                                onAutoCoolingTargetSpeedChanged = onAutoCoolingTargetSpeedChanged
+                                onAutoCoolingTargetSpeedChanged = onAutoCoolingTargetSpeedChanged,
+                                onManualFanLevelChanged = onManualFanLevelChanged
                             )
                         }
                     } else {
@@ -675,7 +678,8 @@ fun DashboardScreen(
                             onAutoCoolingToggle = onAutoCoolingToggle,
                             onAutoCoolingTriggerChanged = onAutoCoolingTriggerChanged,
                             onAutoCoolingHysteresisChanged = onAutoCoolingHysteresisChanged,
-                            onAutoCoolingTargetSpeedChanged = onAutoCoolingTargetSpeedChanged
+                            onAutoCoolingTargetSpeedChanged = onAutoCoolingTargetSpeedChanged,
+                            onManualFanLevelChanged = onManualFanLevelChanged
                         )
                     }
                     DashboardTab.ECU_CODING -> {
@@ -1195,9 +1199,11 @@ fun FanManagementSection(
     onAutoCoolingToggle: (Boolean) -> Unit = {},
     onAutoCoolingTriggerChanged: (Float) -> Unit = {},
     onAutoCoolingHysteresisChanged: (Float) -> Unit = {},
-    onAutoCoolingTargetSpeedChanged: (Int) -> Unit = {}
+    onAutoCoolingTargetSpeedChanged: (Int) -> Unit = {},
+    onManualFanLevelChanged: (Int) -> Unit = {}
 ) {
-    val isFanMax = isConnected && liveState.hasEcuCommunication && (liveState.batteryStatus.isFanForced || liveState.fanForcedMax)
+    val isForced = liveState.isManualFanForced || liveState.fanForcedMax
+    val isFanMax = isConnected && (liveState.batteryStatus.isFanForced || isForced)
     val bat = liveState.batteryStatus
     val deltaT = if (isConnected && liveState.hasEcuCommunication && bat.maxTemp > 0.0) {
         val temps = listOf(bat.temp1, bat.temp2, bat.temp3, bat.temp4).filter { it > 0.0 }
@@ -1226,7 +1232,7 @@ fun FanManagementSection(
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = "OVERDRIVE VENTOLA HV",
+                                text = "FORZATURA ATTIVA VENTOLA",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Black,
                                 color = TextPrimary,
@@ -1239,7 +1245,7 @@ fun FanManagementSection(
                                 border = BorderStroke(1.dp, if (isFanMax) AccentCyan else CardBorder)
                             ) {
                                 Text(
-                                    text = if (isFanMax) "MODE 30 ACTIVE" else "AUTO OEM",
+                                    text = if (isFanMax) "UDS L${liveState.manualFanTargetLevel} FORZATA" else "AUTO OEM",
                                     fontSize = 9.sp,
                                     fontWeight = FontWeight.Bold,
                                     fontFamily = FontFamily.Monospace,
@@ -1249,7 +1255,7 @@ fun FanManagementSection(
                             }
                         }
                         Text(
-                            text = if (isFanMax) "Forzatura 100% (Duty 6/6 UDS) attiva" else "Intervento automatico alla soglia",
+                            text = if (isFanMax) "Forzatura attiva (L${liveState.manualFanTargetLevel} / 6 • ~${liveState.manualFanTargetLevel * 750} RPM)" else "Controllo automatico OEM attivo",
                             fontSize = 11.sp,
                             color = TextSecondary
                         )
@@ -1257,7 +1263,7 @@ fun FanManagementSection(
 
                     val haptic = LocalHapticFeedback.current
                     Switch(
-                        checked = liveState.fanForcedMax,
+                        checked = isForced,
                         onCheckedChange = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             onForcedFanToggle(it)
@@ -1269,6 +1275,100 @@ fun FanManagementSection(
                             uncheckedTrackColor = DarkBackground
                         )
                     )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // --- 🎛️ STEPPER SELETTORE LIVELLO L1–L6 ---
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(DarkBackground, RoundedCornerShape(6.dp))
+                        .border(1.dp, CardBorder, RoundedCornerShape(6.dp))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val haptic = LocalHapticFeedback.current
+                    val currentTarget = liveState.manualFanTargetLevel
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "LIVELLO FORZATURA:",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextSecondary,
+                            letterSpacing = 0.8.sp
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "L$currentTarget",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Black,
+                            fontFamily = FontFamily.Monospace,
+                            color = if (isForced) AccentCyan else TextPrimary
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "(~${currentTarget * 750} RPM)",
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = TextMuted
+                        )
+                    }
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Pulsante (-)
+                        Surface(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .clickable(enabled = currentTarget > 1) {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    val newLevel = (currentTarget - 1).coerceIn(1, 6)
+                                    onManualFanLevelChanged(newLevel)
+                                },
+                            color = if (currentTarget > 1) SurfaceDark else DarkBackground,
+                            border = BorderStroke(1.dp, if (currentTarget > 1) CardBorder else CardBorder.copy(alpha = 0.3f)),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = "−",
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = if (currentTarget > 1) TextPrimary else TextMuted
+                                )
+                            }
+                        }
+
+                        // Pulsante (+)
+                        Surface(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .clickable(enabled = currentTarget < 6) {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    val newLevel = (currentTarget + 1).coerceIn(1, 6)
+                                    onManualFanLevelChanged(newLevel)
+                                },
+                            color = if (currentTarget < 6) SurfaceDark else DarkBackground,
+                            border = BorderStroke(1.dp, if (currentTarget < 6) AccentCyan.copy(alpha = 0.5f) else CardBorder.copy(alpha = 0.3f)),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = "+",
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = if (currentTarget < 6) AccentCyan else TextMuted
+                                )
+                            }
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))

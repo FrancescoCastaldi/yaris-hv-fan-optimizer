@@ -127,8 +127,10 @@ class MainActivity : ComponentActivity() {
                             service?.obdController?.setTargetThreshold(temp)
                         },
                         onForcedFanToggle = { forced ->
-                            appPreferences.forcedFanSpeed = if (forced) 6 else 0
-                            service?.obdController?.setForcedFan(forced)
+                            service?.obdController?.setManualForcedFan(forced)
+                        },
+                        onManualFanLevelChanged = { level ->
+                            service?.obdController?.setManualFanTargetLevel(level)
                         },
                         onAutoCoolingToggle = { enabled ->
                             service?.obdController?.setAutoCoolingEnabled(enabled)

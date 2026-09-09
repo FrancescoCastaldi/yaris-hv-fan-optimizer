@@ -21,11 +21,11 @@ if %ERRORLEVEL% EQU 0 (
     del /Q "YarisObdBridge*.apk" 2>nul
     del /Q "docs\YarisObdBridge*.apk" 2>nul
 
-    echo Creazione copia locale: YarisHvFanControl-v2.9.22.apk
-    copy /Y "app\build\outputs\apk\release\app-release.apk" "YarisHvFanControl-v2.9.22.apk"
+    echo Creazione copia locale: YarisHvFanControl-v3.0.0.apk
+    copy /Y "app\build\outputs\apk\release\app-release.apk" "YarisHvFanControl-v3.0.0.apk"
 
     echo Copia nella cartella docs per GitHub Pages...
-    copy /Y "app\build\outputs\apk\release\app-release.apk" "docs\YarisHvFanControl-v2.9.22.apk"
+    copy /Y "app\build\outputs\apk\release\app-release.apk" "docs\YarisHvFanControl-v3.0.0.apk"
 
     copy /Y "sniffer\build\outputs\apk\release\sniffer-release.apk" "YarisObdBridge-v1.0.0.apk"
     copy /Y "sniffer\build\outputs\apk\release\sniffer-release.apk" "docs\YarisObdBridge-v1.0.0.apk"
@@ -33,7 +33,7 @@ if %ERRORLEVEL% EQU 0 (
     echo [3/3] File APK aggiornati pronti in root e docs!
     echo ========================================================
     echo   BUILD COMPLETATA CON SUCCESSO!
-    echo   1. YarisHvFanControl-v2.9.22.apk
+    echo   1. YarisHvFanControl-v3.0.0.apk
     echo   2. YarisObdBridge-v1.0.0.apk
     echo ========================================================
 ) else (

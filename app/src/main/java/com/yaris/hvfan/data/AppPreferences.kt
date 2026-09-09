@@ -23,6 +23,8 @@ class AppPreferences(context: Context) {
         private const val KEY_AUTO_COOLING_TRIGGER = "auto_cooling_trigger_temp"
         private const val KEY_AUTO_COOLING_HYSTERESIS = "auto_cooling_hysteresis"
         private const val KEY_AUTO_COOLING_SPEED = "auto_cooling_target_speed"
+        private const val KEY_MANUAL_FAN_FORCED = "manual_fan_forced"
+        private const val KEY_MANUAL_FAN_LEVEL = "manual_fan_level"
     }
 
     var savedTransportType: String
@@ -88,6 +90,14 @@ class AppPreferences(context: Context) {
     var autoCoolingTargetSpeed: Int
         get() = prefs.getInt(KEY_AUTO_COOLING_SPEED, 6)
         set(value) = prefs.edit().putInt(KEY_AUTO_COOLING_SPEED, value).apply()
+
+    var isManualFanForced: Boolean
+        get() = prefs.getBoolean(KEY_MANUAL_FAN_FORCED, false)
+        set(value) = prefs.edit().putBoolean(KEY_MANUAL_FAN_FORCED, value).apply()
+
+    var manualFanTargetLevel: Int
+        get() = prefs.getInt(KEY_MANUAL_FAN_LEVEL, 6).coerceIn(1, 6)
+        set(value) = prefs.edit().putInt(KEY_MANUAL_FAN_LEVEL, value.coerceIn(1, 6)).apply()
 
     fun clearDevice() {
         prefs.edit().remove(KEY_SAVED_MAC).remove(KEY_SAVED_NAME).remove(KEY_TRANSPORT).apply()

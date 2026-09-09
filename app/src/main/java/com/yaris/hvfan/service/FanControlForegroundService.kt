@@ -72,7 +72,7 @@ class FanControlForegroundService : Service() {
         bleManager = BleManager(this)
         obdController = ObdController(bleManager, serviceScope, appPreferences)
         obdController.setTargetThreshold(appPreferences.targetTempThreshold)
-        obdController.setForcedFan(appPreferences.forcedFanSpeed == 6)
+        obdController.setManualForcedFan(appPreferences.isManualFanForced, appPreferences.manualFanTargetLevel)
 
         createNotificationChannel()
         obdController.onAutoCoolingStateChanged = { isStarting ->

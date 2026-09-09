@@ -4,6 +4,24 @@ Tutti i cambiamenti e miglioramenti significativi di questo progetto sono docume
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/) e aderisce al [Semantic Versioning](https://semver.org/lang/it/):
 - **MAJOR (`X.0.0`)**: Modifiche architetturali radicali, nuove sezioni o ridisegno totale della dashboard.
 - **MINOR (`0.X.0`)**: Aggiunta di nuove funzionalità, sensori, codifiche o telemetrie.
+## [3.0.0] - 2026-09-09
+### 🚀 MAJOR RELEASE: Forzatura Manuale Attiva Ventola HV (L1–L6), Stepper Cockpit & Bypass UDS
+- **Controllo Attivo e Forzatura Manuale Diretta (L1–L6)**:
+  - Introdotto selettore manuale a livelli con Stepper ergonomico `[-]` / `[+]` e switch di forzatura diretta in Dashboard.
+  - Svincolato l'invio del comando ventola dallo stato di discovery della batteria o da temperature $> 0^\circ\text{C}$: test acustici e funzionali immediati anche a freddo.
+  - Generazione dinamica comandi UDS Toyota Denso: `300801`..`300806` (Mode 30 IO Control) e fallback automatico `2F580301`..`2F580306` (Mode 2F) in caso di NRC `7F30`.
+  - Keep-Alive continuo periodico per impedire il reset della centralina dopo timeout OEM, e comando di ripristino `300800` (Release to OEM) allo spegnimento.
+  - Persistenza automatica su `SharedPreferences` con ripristino all'ingresso in stato `READY`.
+- **Risoluzione Critica Negoziazione CAN TNGA**:
+  - Risolto il blocco di inizializzazione causato dal Mode 03 su centraline TNGA (tolleranza `NO DATA`).
+  - Handshake a due stadi robusto (7DF Broadcast -> 7E0 Engine ECU) con rimozione del fallback problematico `AT SP 0`.
+  - Rimozione del PID non valido `220101` dalla fallback chain della batteria Denso HV.
+  - Auto-Recovery leggero non distruttivo senza riavvii completi dello stack BLE.
+
+## [2.9.22] - 2026-09-09
+### 🛠️ Fix Negoziazione CAN e Auto-Recovery su Toyota Yaris TNGA
+- Rimozione del blocco Mode 03 e ottimizzazione handshake centralina motore.
+
 ## [2.9.21] - 2026-09-09
 ### ⚡ Allineamento Handshake ELM327 / OBD a Standard Hybrid Assistant & Header Agnostic
 - **Handshake Robusto Ibrido Toyota (`Elm327Protocol` & `ObdController`)**:

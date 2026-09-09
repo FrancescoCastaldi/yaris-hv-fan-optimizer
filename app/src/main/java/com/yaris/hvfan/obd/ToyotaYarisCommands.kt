@@ -319,6 +319,12 @@ object ToyotaYarisCommands {
         return "3008$hexLevel"
     }
 
+    fun getFanSpeedCommandAlt(level: Int): String {
+        val safeLevel = level.coerceIn(0, 6)
+        val hexLevel = String.format(java.util.Locale.US, "%02X", safeLevel)
+        return "2F5803$hexLevel"
+    }
+
     data class MultiPidEngineData(
         val speedKmh: Int? = null,
         val engineRpm: Int? = null,
