@@ -97,6 +97,8 @@ class BleManager(private val context: Context) : com.yaris.hvfan.obd.ObdTranspor
     private val responseBuffer = StringBuilder()
     @Volatile
     private var activeResponseDeferred: CompletableDeferred<String>? = null
+    @Volatile
+    private var drainPromptDeferred: CompletableDeferred<Unit>? = null
     private val commandMutex = Mutex()
 
     override fun getConnectedDeviceName(): String? = lastDeviceName
@@ -655,6 +657,8 @@ class BleManager(private val context: Context) : com.yaris.hvfan.obd.ObdTranspor
             synchronized(responseBuffer) {
                 activeResponseDeferred?.completeExceptionally(java.io.IOException("Bluetooth connection closed"))
                 activeResponseDeferred = null
+                drainPromptDeferred?.completeExceptionally(java.io.IOException("Bluetooth connection closed"))
+                drainPromptDeferred = null
                 responseBuffer.setLength(0)
             }
             socketInputStream = null
@@ -837,10 +841,33 @@ class BleManager(private val context: Context) : com.yaris.hvfan.obd.ObdTranspor
     private fun handleIncomingChunk(chunk: String) {
         synchronized(responseBuffer) {
             responseBuffer.append(chunk)
+
+            // Se il buffer inizia con un prompt '>' orfano seguito da altri caratteri,
+            // rimuovi il prompt orfano in testa così non viene scambiato per il terminatore della risposta in arrivo
+            val trimmedLeading = responseBuffer.trimStart('\r', '\n', ' ')
+            if (trimmedLeading.startsWith(">") && trimmedLeading.length > 1) {
+                val orphanIdx = responseBuffer.indexOf('>')
+                if (orphanIdx >= 0) {
+                    Log.d(TAG, "Rimosso prompt '>' orfano in testa al buffer")
+                    responseBuffer.delete(0, orphanIdx + 1)
+                }
+            }
+
             if (responseBuffer.contains(">")) {
                 val fullResponse = responseBuffer.toString()
-                responseBuffer.setLength(0)
-                activeResponseDeferred?.complete(fullResponse)
+                val content = fullResponse.replace(">", "").replace("\r", "").replace("\n", "").trim()
+                if (drainPromptDeferred != null) {
+                    responseBuffer.setLength(0)
+                    drainPromptDeferred?.complete(Unit)
+                } else if (content.isEmpty() && activeResponseDeferred != null) {
+                    // Stray prompt '>' without payload from a prior drained or aborted command.
+                    // Discard so it does not corrupt activeResponseDeferred with empty content.
+                    Log.d(TAG, "Scartato prompt '>' orfano privo di contenuto")
+                    responseBuffer.setLength(0)
+                } else {
+                    responseBuffer.setLength(0)
+                    activeResponseDeferred?.complete(fullResponse)
+                }
             }
         }
     }
@@ -871,6 +898,9 @@ class BleManager(private val context: Context) : com.yaris.hvfan.obd.ObdTranspor
      */
     override suspend fun sendWakeSequence(): Unit = commandMutex.withLock {
         try {
+            try {
+                com.yaris.hvfan.data.ObdLogger.logTx("\\r\\r (WAKE)")
+            } catch (ignored: Throwable) {}
             synchronized(responseBuffer) {
                 responseBuffer.setLength(0)
             }
@@ -885,7 +915,13 @@ class BleManager(private val context: Context) : com.yaris.hvfan.obd.ObdTranspor
                 val gatt = bluetoothGatt
                 val writeCh = writeCharacteristic
                 if (gatt != null && writeCh != null) {
-                    writeGattCharacteristic(gatt, writeCh, wakeBytes, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE)
+                    val writeType = if ((writeCh.properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0 &&
+                        (writeCh.properties and BluetoothGattCharacteristic.PROPERTY_WRITE) == 0) {
+                        BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+                    } else {
+                        BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                    }
+                    writeGattCharacteristic(gatt, writeCh, wakeBytes, writeType)
                 }
             }
             delay(150)
@@ -965,6 +1001,15 @@ class BleManager(private val context: Context) : com.yaris.hvfan.obd.ObdTranspor
             // Se è andato in timeout, l'adattatore potrebbe essere ancora occupato sul bus CAN.
             // Invia un \r e attendi una piccola finestra di drain per svuotare il buffer UART
             if (isTimedOut) {
+                val drainDeferred = CompletableDeferred<Unit>()
+                synchronized(responseBuffer) {
+                    if (responseBuffer.contains(">")) {
+                        responseBuffer.setLength(0)
+                        drainDeferred.complete(Unit)
+                    } else {
+                        drainPromptDeferred = drainDeferred
+                    }
+                }
                 try {
                     if (isSppConnected && outStream != null) {
                         withContext(Dispatchers.IO) {
@@ -985,8 +1030,13 @@ class BleManager(private val context: Context) : com.yaris.hvfan.obd.ObdTranspor
                         }
                     }
                 } catch (ignored: Throwable) {}
-                delay(50)
+
+                // Attendi fino al prompt '>' (massimo 500ms), risvegliandosi istantaneamente appena ricevuto
+                withTimeoutOrNull(500L) {
+                    drainDeferred.await()
+                }
                 synchronized(responseBuffer) {
+                    drainPromptDeferred = null
                     responseBuffer.setLength(0)
                 }
             } else {
@@ -1009,6 +1059,7 @@ class BleManager(private val context: Context) : com.yaris.hvfan.obd.ObdTranspor
             throw e
         } finally {
             synchronized(responseBuffer) {
+                drainPromptDeferred = null
                 if (activeResponseDeferred === deferred) {
                     activeResponseDeferred = null
                 }

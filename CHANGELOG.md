@@ -5,6 +5,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 - **MAJOR (`X.0.0`)**: Fundamental architectural overhauls, major subsystems, or comprehensive UI redesigns.
 - **MINOR (`0.X.0`)**: New features, additional sensors, ECU coding options, or telemetry pipelines.
 
+## [3.0.6] - 2026-09-10
+### 🚗 Vgate iCar Pro Handshake Calibration & Resilient Staged TNGA-B CAN Lock
+- **Calibrated Vgate iCar Pro Initial AT Handshake (R1)**:
+  - Implemented calibrated sequence: `\r\r` (wake-up), `AT Z` (clean reset with 300ms bootloader settling delay), `AT E0`, `AT L0`, `AT S0`, `AT H0`, `AT SP 6` (ISO 15765-4 CAN 11-bit 500kbaud) with graceful fallback to `AT SP 0`, `AT AT 1` (Adaptive Timing 1), and `AT CAF 1` (CAN Auto Formatting).
+  - Preserved buffer safety by omitting aggressive hardware filters (`AT CRA`) and custom Flow Control (`AT FC`) during initial CAN negotiation, avoiding Vgate internal buffer lockup.
+  - Sized broadcast CAN initial query (`7DF` -> `0100` / `010C`) wait timeout to 8000ms with robust prompt drain up to 500ms on timeout to avoid UART desynchronization.
+- **Resilient Staged Handshake Architecture (R2)**:
+  - **Stage 1 (Engine ECU 7E0 Lock)**: Direct targeting of Engine ECU (`AT SH 7E0` with hardware filter isolation) using standard PIDs (`010C` RPM, `010D` Speed, `0100` Supported PIDs) with positive response validation (`41 0C` / `41 0D` / `41 00`) and up to 3 retry attempts on `NO DATA` / `CAN ERROR`.
+  - **Stage 2 (Denso HV Battery 7E2 Fallback Chain)**: Seamless PID fallback chain (`2228C1` -> `2228C0` -> `2101` -> `21C3` -> `2161`) with controlled auto-retries before latching the active battery PID into `BatteryDiscoveryEngine`.
+- **Diagnostic UI & Handshake Progress Feedback (R3)**:
+  - Replaced generic "non ricevo dati" alert with granular stage indicators ("Sveglia adattatore", "Sincronizzazione CAN 500k", "Aggancio motore 7E0", "Lettura batteria 7E2") in both live state banner and log trace (`ObdLogger`).
+- **Monotonic Version Increment & Web Portal Synchronization**:
+  - Bumped `versionCode` to 44 and `versionName` to `3.0.6`.
+  - Updated web portal links, simulator, and build automation scripts.
+
 ## [3.0.5] - 2026-09-09
 ### 📚 Architectural Codemap, Tech Minimal Documentation & Git Contributor Cleanup
 - **Comprehensive Architectural Codemap (`codemap.md`)**:

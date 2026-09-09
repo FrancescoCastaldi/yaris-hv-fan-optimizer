@@ -288,4 +288,202 @@ class ObdInitSequenceTest {
         assertNull(ToyotaYarisCommands.parseCoolantTemp("4105 ERROR"))
         assertNull(ToyotaYarisCommands.parseVehicleSpeed("410D CAN ERROR"))
     }
+
+    @Test
+    fun testVgateCalibratedInitCommandsSequence() {
+        assertEquals("AT Z", Elm327Protocol.VGATE_CALIBRATED_INIT_COMMANDS.first())
+        assertEquals("AT ST 96", Elm327Protocol.VGATE_CALIBRATED_INIT_COMMANDS.last())
+
+        assertEquals(
+            listOf(
+                "AT Z", "AT E0", "AT L0", "AT S0", "AT H0",
+                "AT SP 6", "AT AT 1", "AT CAF 1", "AT AR", "AT ST 96"
+            ),
+            Elm327Protocol.VGATE_CALIBRATED_INIT_COMMANDS
+        )
+
+        for (cmd in Elm327Protocol.VGATE_CALIBRATED_INIT_COMMANDS) {
+            val compact = cmd.uppercase().replace(" ", "")
+            assertFalse(
+                "AT CRA non deve comparire nella sequenza calibrata Vgate: $cmd",
+                compact.startsWith("ATCRA")
+            )
+            assertFalse(
+                "AT FC non deve comparire nella sequenza calibrata Vgate: $cmd",
+                compact.startsWith("ATFC")
+            )
+        }
+
+        assertTrue(
+            "AT AR deve essere presente per garantire filtro hardware pulito",
+            Elm327Protocol.VGATE_CALIBRATED_INIT_COMMANDS.contains("AT AR")
+        )
+    }
+
+    @Test
+    fun testStage1PositiveResponseDetection() {
+        // Mode 01 PID 0C (RPM) positive detection
+        assertTrue(Elm327Protocol.isStage1PositiveResponse("010C", "410C1F40"))
+        assertTrue(Elm327Protocol.isStage1PositiveResponse("010C", "41 0C 1F 40 >"))
+        assertTrue(Elm327Protocol.isStage1PositiveResponse("010C", "7E8 04 41 0C 1F 40 >"))
+        // Engine stopped (0 RPM)
+        assertTrue(Elm327Protocol.isStage1PositiveResponse("010C", "41 0C 00 00 >"))
+        assertTrue(Elm327Protocol.isStage1PositiveResponse("010C", "7E8 04 41 0C 00 00 >"))
+        // Lowercase
+        assertTrue(Elm327Protocol.isStage1PositiveResponse("010c", "7e8 04 41 0c 1f 40 >"))
+        // With SEARCHING
+        assertTrue(Elm327Protocol.isStage1PositiveResponse("010C", "SEARCHING...\r\n41 0C 1F 40 >"))
+        // Negative / error
+        assertFalse(Elm327Protocol.isStage1PositiveResponse("010C", "NO DATA\r\n>"))
+        assertFalse(Elm327Protocol.isStage1PositiveResponse("010C", "CAN ERROR\r\n>"))
+        assertFalse(Elm327Protocol.isStage1PositiveResponse("010C", "TIMEOUT"))
+        assertFalse(Elm327Protocol.isStage1PositiveResponse("010C", "?\r\n>"))
+
+        // Mode 01 PID 0D (Speed) positive detection
+        assertTrue(Elm327Protocol.isStage1PositiveResponse("010D", "41 0D 00 >")) // 0 km/h
+        assertTrue(Elm327Protocol.isStage1PositiveResponse("010D", "41 0D 32 >")) // 50 km/h
+        assertTrue(Elm327Protocol.isStage1PositiveResponse("010D", "7E8 03 41 0D 64 >"))
+        assertFalse(Elm327Protocol.isStage1PositiveResponse("010D", "NO DATA"))
+        assertFalse(Elm327Protocol.isStage1PositiveResponse("010D", "CAN ERROR"))
+
+        // Mode 01 PID 00 (Supported PIDs) positive detection
+        assertTrue(Elm327Protocol.isStage1PositiveResponse("0100", "41 00 BE 7F A8 11 >"))
+        assertTrue(Elm327Protocol.isStage1PositiveResponse("0100", "7E8 06 41 00 BE 7F A8 11 >"))
+        assertFalse(Elm327Protocol.isStage1PositiveResponse("0100", "NO DATA"))
+    }
+
+    @Test
+    fun testStage2BatteryFallbackChainPidsParsing() {
+        assertEquals(5, ToyotaYarisCommands.BATTERY_FALLBACK_PIDS.size)
+        assertEquals("2228C1", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[0])
+        assertEquals("2228C0", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[1])
+        assertEquals("2101", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[2])
+        assertEquals("21C3", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[3])
+        assertEquals("2161", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[4])
+
+        // Candidate 1: 2228C1
+        val res28C1 = "62 28 C1 44 45 44 43 41 03"
+        val parsed28C1 = ToyotaYarisCommands.parseBatteryResponse(res28C1, false)
+        assertNotNull(parsed28C1)
+        assertEquals(28.0, parsed28C1!!.temp1, 0.1)
+
+        // Candidate 2: 2228C0
+        val res28C0 = "62 28 C0 44 45 44 43 41 03"
+        val parsed28C0 = ToyotaYarisCommands.parseBatteryResponse(res28C0, false)
+        assertNotNull(parsed28C0)
+        assertEquals(28.0, parsed28C0!!.temp1, 0.1)
+
+        // Candidate 3: 2101 (Mode 21 response 6101)
+        val res2101 = "61 01 44 45 44 43 41 03"
+        val parsed2101 = ToyotaYarisCommands.parseBatteryResponse(res2101, false)
+        assertNotNull(parsed2101)
+        assertEquals(28.0, parsed2101!!.temp1, 0.1)
+
+        // Candidate 4: 21C3 (Lithium pack response 61C3)
+        val res21C3 = "61 C3 44 45 44 43 41 03"
+        val parsed21C3 = ToyotaYarisCommands.parseBatteryResponse(res21C3, false)
+        assertNotNull(parsed21C3)
+        assertEquals(28.0, parsed21C3!!.temp1, 0.1)
+
+        // Candidate 5: 2161 (Legacy KWP response 6161)
+        val res2161 = "61 61 44 45 44 43 41 03"
+        val parsed2161 = ToyotaYarisCommands.parseBatteryResponse(res2161, false)
+        assertNotNull(parsed2161)
+        assertEquals(28.0, parsed2161!!.temp1, 0.1)
+
+        // Invalid candidate responses
+        assertNull(ToyotaYarisCommands.parseBatteryResponse("NO DATA\r\n>", false))
+        assertNull(ToyotaYarisCommands.parseBatteryResponse("CAN ERROR\r\n>", false))
+        assertNull(ToyotaYarisCommands.parseBatteryResponse("7F 22 31\r\n>", false))
+    }
+
+    @Test
+    fun testCloneDongleAtResponsesAndMultilineSearchingCanError() {
+        // Clone adapters returning '?' on AT AT 1 or AT CAF 1 or AT AR
+        val cloneQuestionMark = "?\r\n>"
+        assertEquals("?", Elm327Protocol.cleanResponse(cloneQuestionMark))
+        assertTrue(Elm327Protocol.isError(cloneQuestionMark))
+        assertFalse(Elm327Protocol.isStage1PositiveResponse("010C", cloneQuestionMark))
+
+        // Multiline stream with SEARCHING... followed by UNABLE TO CONNECT
+        val searchingUnableToConnect = "SEARCHING...\r\rUNABLE TO CONNECT\r\n>"
+        assertEquals("UNABLETOCONNECT", Elm327Protocol.cleanResponse(searchingUnableToConnect))
+        assertTrue(Elm327Protocol.isError(searchingUnableToConnect))
+        assertFalse(Elm327Protocol.isStage1PositiveResponse("010C", searchingUnableToConnect))
+        assertFalse(Elm327Protocol.hasSupportedPidsResponse(searchingUnableToConnect))
+
+        // Multiline stream with SEARCHING... followed by CAN ERROR
+        val searchingCanError = "SEARCHING...\r\rCAN ERROR\r\n>"
+        assertEquals("CANERROR", Elm327Protocol.cleanResponse(searchingCanError))
+        assertTrue(Elm327Protocol.isError(searchingCanError))
+        assertFalse(Elm327Protocol.isStage1PositiveResponse("010C", searchingCanError))
+
+        // Multiline stream with SEARCHING... followed by positive 0 RPM (car stopped in READY)
+        val searchingReady0Rpm = "SEARCHING...\r\r41 0C 00 00\r\n>"
+        assertEquals("410C0000", Elm327Protocol.cleanResponse(searchingReady0Rpm))
+        assertFalse(Elm327Protocol.isError(searchingReady0Rpm))
+        assertTrue(Elm327Protocol.isStage1PositiveResponse("010C", searchingReady0Rpm))
+
+        // Multiline stream with SEARCHING... followed by positive 0 km/h
+        val searchingReady0Speed = "SEARCHING...\r\r7E8 03 41 0D 00\r\n>"
+        assertEquals("7E803410D00", Elm327Protocol.cleanResponse(searchingReady0Speed))
+        assertFalse(Elm327Protocol.isError(searchingReady0Speed))
+        assertTrue(Elm327Protocol.isStage1PositiveResponse("010D", searchingReady0Speed))
+    }
+
+    @Test
+    fun testStrayPromptRejectionAndCleanResponse() {
+        // Bare prompt '>' or whitespace with prompt
+        val barePrompt = ">\r\n"
+        assertEquals("", Elm327Protocol.cleanResponse(barePrompt))
+        assertTrue(Elm327Protocol.isError(barePrompt))
+        assertFalse(Elm327Protocol.isStage1PositiveResponse("010C", barePrompt))
+
+        val strayDrainPrompt = "\r\n>"
+        assertEquals("", Elm327Protocol.cleanResponse(strayDrainPrompt))
+        assertTrue(Elm327Protocol.isError(strayDrainPrompt))
+        assertFalse(Elm327Protocol.isStage1PositiveResponse("010D", strayDrainPrompt))
+
+        // Content emptiness check for orphan prompt detection
+        val contentOnlyPrompt = "\r\n>".replace(">", "").replace("\r", "").replace("\n", "").trim()
+        assertTrue("Un prompt orfano privo di dati deve risultare vuoto", contentOnlyPrompt.isEmpty())
+
+        val validPayloadPrompt = "41 0C 1F 40\r\n>".replace(">", "").replace("\r", "").replace("\n", "").trim()
+        assertFalse("Una risposta valida con dati non deve risultare vuota", validPayloadPrompt.isEmpty())
+    }
+
+    @Test
+    fun testMultilineCanResponseWithSecondaryEcuNoDataAndErrors() {
+        // Multi-ECU response where engine responds positive on 010C but secondary ECU returns NO DATA
+        val multiline010C = "7E8 04 41 0C 00 00\r\nNO DATA\r\n>"
+        assertTrue("isStage1PositiveResponse deve accettare frame positivo anche in presenza di NO DATA",
+            Elm327Protocol.isStage1PositiveResponse("010C", multiline010C))
+        assertEquals(0, ToyotaYarisCommands.parseEngineRpm(multiline010C))
+        assertTrue(Elm327Protocol.isValidCanResponse(multiline010C))
+
+        // Multi-ECU response on 010D with secondary ECU CAN ERROR
+        val multiline010D = "7E8 03 41 0D 32\r\nCAN ERROR\r\n>"
+        assertTrue("isStage1PositiveResponse deve accettare velocità positiva anche con CAN ERROR",
+            Elm327Protocol.isStage1PositiveResponse("010D", multiline010D))
+        assertEquals(50, ToyotaYarisCommands.parseVehicleSpeed(multiline010D))
+        assertTrue(Elm327Protocol.isValidCanResponse(multiline010D))
+
+        // Broadcast 0100 with NO DATA from non-powertrain ECU
+        val multiline0100 = "SEARCHING...\r\n7E8 06 41 00 BE 7F A8 11\r\nNO DATA\r\n>"
+        assertTrue("hasSupportedPidsResponse deve trovare 4100 anche con SEARCHING e NO DATA",
+            Elm327Protocol.hasSupportedPidsResponse(multiline0100))
+
+        // isValidCanResponse where NO DATA is the first line
+        val noDataFirst = "NO DATA\r\n7E8 04 41 0C 00 00\r\n>"
+        assertTrue("isValidCanResponse deve riconoscere frame esadecimale valido anche se preceduto da NO DATA",
+            Elm327Protocol.isValidCanResponse(noDataFirst))
+
+        // Battery UDS multi-frame with stray NO DATA at end
+        val batteryWithNoData = "7EA 10 17 62 28 C1 44 45 44 43 41 03\r\nNO DATA\r\n>"
+        val parsedBattery = ToyotaYarisCommands.parseBatteryResponse(batteryWithNoData, false)
+        assertNotNull("parseBatteryResponse non deve fallire se la risposta contiene NO DATA di coda", parsedBattery)
+        assertEquals(28.0, parsedBattery!!.temp1, 0.1)
+
+        assertTrue(Elm327Protocol.isUdsPositiveResponse(batteryWithNoData, "22"))
+    }
 }

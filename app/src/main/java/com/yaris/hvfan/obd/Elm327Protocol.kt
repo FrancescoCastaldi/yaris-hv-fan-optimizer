@@ -59,6 +59,20 @@ object Elm327Protocol {
         CMD_TIMEOUT_HANDSHAKE    // Finestra ampia per l'handshake sul bus
     )
 
+    // Sequenza calibrata per Vgate iCar Pro & CAN TNGA-B conforme ai requisiti R1
+    val VGATE_CALIBRATED_INIT_COMMANDS = listOf(
+        CMD_RESET,               // AT Z (reset pulito Vgate)
+        CMD_ECHO_OFF,            // AT E0
+        CMD_LINEFEEDS_OFF,       // AT L0
+        CMD_SPACES_OFF,          // AT S0
+        CMD_HEADERS_OFF,         // AT H0
+        CMD_PROTOCOL_CAN_11_500, // AT SP 6
+        CMD_ADAPTIVE_TIMING_1,   // AT AT 1
+        CMD_CAN_AUTO_FORMAT_ON,  // AT CAF 1
+        CMD_AUTO_RECEIVE,        // AT AR
+        CMD_TIMEOUT_HANDSHAKE    // AT ST 96
+    )
+
     const val PROTOCOL_FALLBACK = "AT SP 0" // Auto-detect protocol if SP 6 fails
 
     fun cleanResponse(raw: String): String {
@@ -161,9 +175,54 @@ object Elm327Protocol {
         return voltage != null && voltage <= 12.6f
     }
 
+    /**
+     * Isola le righe valide di risposta CAN/UDS da un output grezzo ELM327 multi-riga,
+     * scartando banner di sincronizzazione (SEARCHING...) e righe di errore (NO DATA, CAN ERROR)
+     * provenienti da ECU secondarie o da timeout parziali del bus.
+     */
+    fun extractValidFrames(raw: String): List<String> {
+        val lines = raw.split('\r', '\n')
+            .map { cleanResponse(it).uppercase() }
+            .filter { it.isNotEmpty() && !isError(it) }
+        if (lines.isNotEmpty()) return lines
+        val cleanSingle = cleanResponse(raw).uppercase()
+        return if (cleanSingle.isNotEmpty() && !isError(cleanSingle)) listOf(cleanSingle) else emptyList()
+    }
+
     fun hasSupportedPidsResponse(response: String): Boolean {
+        val frames = extractValidFrames(response)
+        if (frames.any { it.contains("4100") }) return true
         val clean = cleanResponse(response).uppercase()
-        return !isError(clean) && clean.contains("4100")
+        return clean.contains("4100") && !clean.startsWith("NO DATA") && !clean.startsWith("NODATA") && !clean.startsWith("CAN ERROR")
+    }
+
+    /**
+     * Verifica se la risposta al probe di Stadio 1 (010C RPM, 010D Velocità, 0100 PIDs supportati)
+     * è positiva (Service 01 -> Response 41 XX), gestendo sia risposte con header (ATH1, es. 7E8 04 41 0C 1F 40)
+     * sia senza header (ATH0, es. 41 0C 1F 40 o 41 0D 00), inclusi regimi minimi/fermo (00 00)
+     * e risposte multi-ECU dove una centralina secondaria restituisce NO DATA / CAN ERROR.
+     */
+    fun isStage1PositiveResponse(command: String, response: String): Boolean {
+        val cleanCmd = cleanResponse(command).uppercase()
+        val frames = extractValidFrames(response)
+        if (frames.isNotEmpty()) {
+            return frames.any { frame ->
+                when {
+                    cleanCmd.contains("010C") -> frame.contains("410C")
+                    cleanCmd.contains("010D") -> frame.contains("410D")
+                    cleanCmd.contains("0100") -> frame.contains("4100")
+                    else -> frame.contains("41")
+                }
+            }
+        }
+        val clean = cleanResponse(response).uppercase()
+        if (isError(clean)) return false
+        return when {
+            cleanCmd.contains("010C") -> clean.contains("410C")
+            cleanCmd.contains("010D") -> clean.contains("410D")
+            cleanCmd.contains("0100") -> clean.contains("4100")
+            else -> clean.contains("41")
+        }
     }
 
     /**
@@ -177,8 +236,6 @@ object Elm327Protocol {
         // Su Toyota Yaris TNGA, Mode 03 non è sempre supportato e NODATA è una risposta valida,
         // non un errore di bus CAN.
         if (cleanAll.contains("NODATA")) return true
-
-        if (isError(cleanAll)) return false
 
         val lines = response.split('\r', '\n')
             .map { cleanResponse(it).uppercase() }
@@ -218,18 +275,13 @@ object Elm327Protocol {
      * Verifica se la stringa contiene un qualsiasi frame CAN hex (es. 7Ex...).
      */
     fun isValidCanResponse(response: String): Boolean {
+        val frames = extractValidFrames(response)
+        if (frames.isNotEmpty()) {
+            return frames.any { it.matches(Regex("""^[0-9A-F]{3,}.*""")) }
+        }
         val clean = cleanResponse(response).uppercase()
         if (isError(clean) && !clean.contains("NODATA")) return false
-        
-        val lines = clean.split('\r', '\n', ' ')
-            .filter { it.isNotEmpty() }
-            
-        for (line in lines) {
-            if (line.matches(Regex("""^[0-9A-F]{3,}.*"""))) {
-                return true
-            }
-        }
-        return false
+        return clean.matches(Regex("""^[0-9A-F]{3,}.*"""))
     }
 
     /**
@@ -238,9 +290,6 @@ object Elm327Protocol {
      * e permette la presenza legittima del valore 0x7F nei dati della centralina (temperature, impostazioni di coding, ecc.).
      */
     fun isUdsPositiveResponse(response: String, expectedService: String? = null): Boolean {
-        val clean = cleanResponse(response).uppercase()
-        if (isError(clean)) return false
-
         val targetPositiveSid = expectedService?.toIntOrNull(16)?.let {
             String.format(java.util.Locale.US, "%02X", it + 0x40)
         }
@@ -249,7 +298,13 @@ object Elm327Protocol {
             .map { it.replace(">", "").trim() }
             .filter { it.isNotEmpty() && !isError(it) }
 
-        val linesToCheck = if (lines.isNotEmpty()) lines else listOf(clean)
+        val linesToCheck = if (lines.isNotEmpty()) {
+            lines
+        } else {
+            val clean = cleanResponse(response).uppercase()
+            if (isError(clean)) return false
+            listOf(clean)
+        }
 
         for (line in linesToCheck) {
             val tokens = line.split(Regex("""\s+""")).filter { it.isNotEmpty() }

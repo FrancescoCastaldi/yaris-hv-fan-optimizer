@@ -272,17 +272,20 @@ fun DashboardScreen(
 
                 // Banner Standby / Alert per orientamento Landscape
                 if ((connectionState is BleConnectionState.Ready || connectionState is BleConnectionState.Connected) &&
-                    (!liveState.hasEcuCommunication || liveState.isStandbyMode) && liveState.ecuAlertMessage != null) {
+                    (!liveState.hasEcuCommunication || liveState.isStandbyMode || !liveState.isInitialized) && liveState.ecuAlertMessage != null) {
+                    val isInitializing = !liveState.isInitialized
                     val isStandby = liveState.isStandbyMode
                     val isReadySync = liveState.isVehicleReady && !liveState.hasEcuCommunication
-                    val bannerBorder = if (isStandby || isReadySync) AccentCyan.copy(alpha = 0.5f) else WarningOrange
-                    val bannerColor = if (isStandby || isReadySync) AccentCyan else WarningOrange
+                    val isNormalProgress = isInitializing || isStandby || isReadySync
+                    val bannerBorder = if (isNormalProgress) AccentCyan.copy(alpha = 0.5f) else WarningOrange
+                    val bannerColor = if (isNormalProgress) AccentCyan else WarningOrange
                     val bannerTitle = when {
+                        isInitializing -> "HANDSHAKE OBD"
                         isStandby -> "MODALITÀ STANDBY"
                         isReadySync -> "SINCRONIZZAZIONE CAN"
                         else -> "CENTRALINA NON RISPONDE"
                     }
-                    val bannerIcon = if (isStandby || isReadySync) Icons.Default.HourglassEmpty else Icons.Default.Warning
+                    val bannerIcon = if (isNormalProgress) Icons.Default.HourglassEmpty else Icons.Default.Warning
 
                     Surface(
                         modifier = Modifier
@@ -313,16 +316,19 @@ fun DashboardScreen(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            OutlinedButton(
-                                onClick = onReconnect,
-                                shape = RoundedCornerShape(4.dp),
-                                border = BorderStroke(1.dp, bannerBorder),
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = bannerColor),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                                modifier = Modifier.height(24.dp)
-                            ) {
-                                Text(text = if (isStandby) "SVEGLIA" else "RIPROVA", fontSize = 9.sp, fontWeight = FontWeight.Black)
+                            if (!isInitializing) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                OutlinedButton(
+                                    onClick = onReconnect,
+                                    shape = RoundedCornerShape(4.dp),
+                                    border = BorderStroke(1.dp, bannerBorder),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = bannerColor),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                    modifier = Modifier.height(24.dp)
+                                ) {
+                                    val btnText = if (isStandby) "SVEGLIA" else if (isReadySync) "SINCRONIZZA" else "RIPROVA"
+                                    Text(text = btnText, fontSize = 9.sp, fontWeight = FontWeight.Black)
+                                }
                             }
                         }
                     }
@@ -600,19 +606,22 @@ fun DashboardScreen(
 
             // --- Auto-Alert / Standby Status Banner ---
             if ((connectionState is BleConnectionState.Ready || connectionState is BleConnectionState.Connected) &&
-                (!liveState.hasEcuCommunication || liveState.isStandbyMode) && liveState.ecuAlertMessage != null) {
+                (!liveState.hasEcuCommunication || liveState.isStandbyMode || !liveState.isInitialized) && liveState.ecuAlertMessage != null) {
                 Spacer(modifier = Modifier.height(10.dp))
+                val isInitializing = !liveState.isInitialized
                 val isStandby = liveState.isStandbyMode
                 val isReadySync = liveState.isVehicleReady && !liveState.hasEcuCommunication
-                val bannerBorder = if (isStandby || isReadySync) AccentCyan.copy(alpha = 0.6f) else WarningOrange
-                val bannerColor = if (isStandby || isReadySync) AccentCyan else WarningOrange
+                val isNormalProgress = isInitializing || isStandby || isReadySync
+                val bannerBorder = if (isNormalProgress) AccentCyan.copy(alpha = 0.6f) else WarningOrange
+                val bannerColor = if (isNormalProgress) AccentCyan else WarningOrange
                 val bannerTitle = when {
+                    isInitializing -> "HANDSHAKE OBD IN CORSO"
                     isStandby -> "MODALITÀ STANDBY A BASSO CONSUMO"
                     isReadySync -> "SINCRONIZZAZIONE CAN IN CORSO"
                     else -> "CENTRALINA NON RISPONDE"
                 }
-                val bannerIcon = if (isStandby || isReadySync) Icons.Default.HourglassEmpty else Icons.Default.Warning
-                val buttonText = if (isStandby) "SVEGLIA" else if (isReadySync) "SINCRONIZZA" else "RIPROVA"
+                val bannerIcon = if (isNormalProgress) Icons.Default.HourglassEmpty else Icons.Default.Warning
+                val buttonText = if (isInitializing) "ATTENDI" else if (isStandby) "SVEGLIA" else if (isReadySync) "SINCRONIZZA" else "RIPROVA"
 
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
@@ -651,10 +660,14 @@ fun DashboardScreen(
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                         OutlinedButton(
-                            onClick = onReconnect,
+                            onClick = { if (!isInitializing) onReconnect() },
+                            enabled = !isInitializing,
                             shape = RoundedCornerShape(4.dp),
-                            border = BorderStroke(1.dp, bannerBorder),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = bannerColor),
+                            border = BorderStroke(1.dp, if (!isInitializing) bannerBorder else TextMuted.copy(alpha = 0.3f)),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = bannerColor,
+                                disabledContentColor = TextMuted
+                            ),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
                             modifier = Modifier.height(30.dp)
                         ) {

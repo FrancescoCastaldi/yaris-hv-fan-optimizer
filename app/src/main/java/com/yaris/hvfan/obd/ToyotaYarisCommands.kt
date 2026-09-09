@@ -343,8 +343,15 @@ object ToyotaYarisCommands {
     )
 
     fun parseMultiPidEngineResponse(raw: String): MultiPidEngineData? {
-        val clean = Elm327Protocol.cleanResponse(raw).uppercase().replace(" ", "").replace("\r", "").replace("\n", "")
-        if (Elm327Protocol.isError(clean) || !clean.contains("41")) {
+        val frames = Elm327Protocol.extractValidFrames(raw)
+        val clean = if (frames.isNotEmpty()) {
+            frames.joinToString("")
+        } else {
+            val c = Elm327Protocol.cleanResponse(raw).uppercase().replace(" ", "").replace("\r", "").replace("\n", "")
+            if (Elm327Protocol.isError(c)) return null
+            c
+        }
+        if (!clean.contains("41")) {
             return null
         }
 
@@ -420,91 +427,112 @@ object ToyotaYarisCommands {
     }
 
     fun parseVehicleSpeed(raw: String): Int? {
-        val clean = Elm327Protocol.cleanResponse(raw).uppercase()
-        if (Elm327Protocol.isError(clean)) return null
-        if (clean.contains("410D")) {
-            val idx = clean.indexOf("410D") + 4
-            if (clean.length >= idx + 2) {
-                return clean.substring(idx, idx + 2).toIntOrNull(16)
+        val frames = Elm327Protocol.extractValidFrames(raw)
+        val candidates = if (frames.isNotEmpty()) frames else listOf(Elm327Protocol.cleanResponse(raw).uppercase())
+        for (clean in candidates) {
+            if (Elm327Protocol.isError(clean)) continue
+            if (clean.contains("410D")) {
+                val idx = clean.indexOf("410D") + 4
+                if (clean.length >= idx + 2) {
+                    return clean.substring(idx, idx + 2).toIntOrNull(16)
+                }
             }
         }
         return null
     }
 
     fun parseCoolantTemp(raw: String): Float? {
-        val clean = Elm327Protocol.cleanResponse(raw).uppercase()
-        if (Elm327Protocol.isError(clean)) return null
-        if (clean.contains("4105")) {
-            val idx = clean.indexOf("4105") + 4
-            if (clean.length >= idx + 2) {
-                val hex = clean.substring(idx, idx + 2).toIntOrNull(16) ?: return null
-                return (hex - 40).toFloat()
+        val frames = Elm327Protocol.extractValidFrames(raw)
+        val candidates = if (frames.isNotEmpty()) frames else listOf(Elm327Protocol.cleanResponse(raw).uppercase())
+        for (clean in candidates) {
+            if (Elm327Protocol.isError(clean)) continue
+            if (clean.contains("4105")) {
+                val idx = clean.indexOf("4105") + 4
+                if (clean.length >= idx + 2) {
+                    val hex = clean.substring(idx, idx + 2).toIntOrNull(16) ?: continue
+                    return (hex - 40).toFloat()
+                }
             }
         }
         return null
     }
 
     fun parseIntakeAirTemp(raw: String): Float? {
-        val clean = Elm327Protocol.cleanResponse(raw).uppercase()
-        if (Elm327Protocol.isError(clean)) return null
-        if (clean.contains("410F")) {
-            val idx = clean.indexOf("410F") + 4
-            if (clean.length >= idx + 2) {
-                val hex = clean.substring(idx, idx + 2).toIntOrNull(16) ?: return null
-                return (hex - 40).toFloat()
+        val frames = Elm327Protocol.extractValidFrames(raw)
+        val candidates = if (frames.isNotEmpty()) frames else listOf(Elm327Protocol.cleanResponse(raw).uppercase())
+        for (clean in candidates) {
+            if (Elm327Protocol.isError(clean)) continue
+            if (clean.contains("410F")) {
+                val idx = clean.indexOf("410F") + 4
+                if (clean.length >= idx + 2) {
+                    val hex = clean.substring(idx, idx + 2).toIntOrNull(16) ?: continue
+                    return (hex - 40).toFloat()
+                }
             }
         }
         return null
     }
 
     fun parseEngineRpm(raw: String): Int? {
-        val clean = Elm327Protocol.cleanResponse(raw).uppercase()
-        if (Elm327Protocol.isError(clean)) return null
-        if (clean.contains("410C")) {
-            val idx = clean.indexOf("410C") + 4
-            if (clean.length >= idx + 4) {
-                val a = clean.substring(idx, idx + 2).toIntOrNull(16) ?: return null
-                val b = clean.substring(idx + 2, idx + 4).toIntOrNull(16) ?: return null
-                return ((a * 256) + b) / 4
+        val frames = Elm327Protocol.extractValidFrames(raw)
+        val candidates = if (frames.isNotEmpty()) frames else listOf(Elm327Protocol.cleanResponse(raw).uppercase())
+        for (clean in candidates) {
+            if (Elm327Protocol.isError(clean)) continue
+            if (clean.contains("410C")) {
+                val idx = clean.indexOf("410C") + 4
+                if (clean.length >= idx + 4) {
+                    val a = clean.substring(idx, idx + 2).toIntOrNull(16) ?: continue
+                    val b = clean.substring(idx + 2, idx + 4).toIntOrNull(16) ?: continue
+                    return ((a * 256) + b) / 4
+                }
             }
         }
         return null
     }
 
     fun parseTimingAdvance(raw: String): Float? {
-        val clean = Elm327Protocol.cleanResponse(raw).uppercase()
-        if (Elm327Protocol.isError(clean)) return null
-        if (clean.contains("410E")) {
-            val idx = clean.indexOf("410E") + 4
-            if (clean.length >= idx + 2) {
-                val a = clean.substring(idx, idx + 2).toIntOrNull(16) ?: return null
-                return ((a / 2.0f) - 64.0f)
+        val frames = Elm327Protocol.extractValidFrames(raw)
+        val candidates = if (frames.isNotEmpty()) frames else listOf(Elm327Protocol.cleanResponse(raw).uppercase())
+        for (clean in candidates) {
+            if (Elm327Protocol.isError(clean)) continue
+            if (clean.contains("410E")) {
+                val idx = clean.indexOf("410E") + 4
+                if (clean.length >= idx + 2) {
+                    val a = clean.substring(idx, idx + 2).toIntOrNull(16) ?: continue
+                    return ((a / 2.0f) - 64.0f)
+                }
             }
         }
         return null
     }
 
     fun parseEngineLoad(raw: String): Float? {
-        val clean = Elm327Protocol.cleanResponse(raw).uppercase()
-        if (Elm327Protocol.isError(clean)) return null
-        if (clean.contains("4104")) {
-            val idx = clean.indexOf("4104") + 4
-            if (clean.length >= idx + 2) {
-                val a = clean.substring(idx, idx + 2).toIntOrNull(16) ?: return null
-                return (a * 100.0f) / 255.0f
+        val frames = Elm327Protocol.extractValidFrames(raw)
+        val candidates = if (frames.isNotEmpty()) frames else listOf(Elm327Protocol.cleanResponse(raw).uppercase())
+        for (clean in candidates) {
+            if (Elm327Protocol.isError(clean)) continue
+            if (clean.contains("4104")) {
+                val idx = clean.indexOf("4104") + 4
+                if (clean.length >= idx + 2) {
+                    val a = clean.substring(idx, idx + 2).toIntOrNull(16) ?: continue
+                    return (a * 100.0f) / 255.0f
+                }
             }
         }
         return null
     }
 
     fun parseThrottlePos(raw: String): Float? {
-        val clean = Elm327Protocol.cleanResponse(raw).uppercase()
-        if (Elm327Protocol.isError(clean)) return null
-        if (clean.contains("4111")) {
-            val idx = clean.indexOf("4111") + 4
-            if (clean.length >= idx + 2) {
-                val a = clean.substring(idx, idx + 2).toIntOrNull(16) ?: return null
-                return (a * 100.0f) / 255.0f
+        val frames = Elm327Protocol.extractValidFrames(raw)
+        val candidates = if (frames.isNotEmpty()) frames else listOf(Elm327Protocol.cleanResponse(raw).uppercase())
+        for (clean in candidates) {
+            if (Elm327Protocol.isError(clean)) continue
+            if (clean.contains("4111")) {
+                val idx = clean.indexOf("4111") + 4
+                if (clean.length >= idx + 2) {
+                    val a = clean.substring(idx, idx + 2).toIntOrNull(16) ?: continue
+                    return (a * 100.0f) / 255.0f
+                }
             }
         }
         return null
@@ -576,8 +604,15 @@ object ToyotaYarisCommands {
      * Parses the response from 2228C1 or 2161 into HvBatteryStatus.
      */
     fun parseBatteryResponse(raw: String, isForced: Boolean): HvBatteryStatus? {
-        val clean = Elm327Protocol.cleanResponse(raw).uppercase()
-        if (Elm327Protocol.isError(clean) || clean.length < 8) {
+        val frames = Elm327Protocol.extractValidFrames(raw)
+        val clean = if (frames.isNotEmpty()) {
+            frames.joinToString("")
+        } else {
+            val c = Elm327Protocol.cleanResponse(raw).uppercase()
+            if (Elm327Protocol.isError(c)) return null
+            c
+        }
+        if (clean.length < 8) {
             return null
         }
 

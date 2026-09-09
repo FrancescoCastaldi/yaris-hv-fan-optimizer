@@ -41,7 +41,8 @@ class ObdController(
     private val appPreferences: com.yaris.hvfan.data.AppPreferences? = null,
     val stateMachine: ObdStateMachine = ObdStateMachine(),
     val discoveryEngine: BatteryDiscoveryEngine = BatteryDiscoveryEngine(),
-    private val timeProvider: () -> Long = System::currentTimeMillis
+    private val timeProvider: () -> Long = System::currentTimeMillis,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) {
     companion object {
         private const val TAG = "ObdController"
@@ -235,55 +236,76 @@ class ObdController(
         )
     }
 
-    private fun initializeAndStartLoop() {
-        loopJob?.cancel()
-        loopJob = scope.launch(Dispatchers.IO) {
-            try {
-                stateMachine.onElmInitializing()
-                loopStartTimestamp = timeProvider()
-                standbyCycleCounter = 0
-                currentCanHeader = ""
-                _liveState.value = _liveState.value.copy(
-                    isInitialized = false,
-                    isLoopRunning = false,
-                    hasEcuCommunication = false,
-                    isVehicleReady = false,
-                    isStandbyMode = false,
-                    capabilityState = stateMachine.currentCapabilityState,
-                    ecuAlertMessage = null
-                )
+    internal suspend fun performHandshake(): Boolean {
+        stateMachine.onElmInitializing()
+        loopStartTimestamp = timeProvider()
+        standbyCycleCounter = 0
+        currentCanHeader = ""
+        _liveState.value = _liveState.value.copy(
+            isInitialized = false,
+            isLoopRunning = false,
+            hasEcuCommunication = false,
+            isVehicleReady = false,
+            isStandbyMode = false,
+            capabilityState = stateMachine.currentCapabilityState,
+            ecuAlertMessage = null
+        )
 
                 // 1. Invio preventivo di sequenza di sveglia "\r\r" per svegliare Vgate/ELM327 da sleep/low-power
-                addLog("Invio sequenza di sveglia preventiva (\\r\\r)...")
+                _liveState.value = _liveState.value.copy(ecuAlertMessage = "Sveglia adattatore...")
+                addLog("Sveglia adattatore (\\r\\r)...")
                 bleManager.sendWakeSequence()
                 delay(150)
 
-                // 2. Warm Start invece di Hard Reset: doppio AT WS con svuotamento buffer (strategia vincente Hybrid Assistant)
-                addLog("Invio Warm Start ELM327 #1 (AT WS)...")
-                val resWs1 = bleManager.sendCommand(Elm327Protocol.CMD_WARM_START, timeoutMs = 2000L)
-                addLog("Warm Start #1 Response: ${Elm327Protocol.cleanResponse(resWs1)}")
-                delay(150)
+                // 2. Reset pulito dell'adattatore (AT Z) per dongle Vgate iCar Pro con pausa di avvio
+                addLog("Reset adattatore Vgate (AT Z)...")
+                val resZ = bleManager.sendCommand(Elm327Protocol.CMD_RESET, timeoutMs = 3000L)
+                addLog("Reset Response: ${Elm327Protocol.cleanResponse(resZ)}")
+                delay(300)
 
-                addLog("Invio Warm Start ELM327 #2 (AT WS) per svuotamento buffer UART...")
-                val resWs2 = bleManager.sendCommand(Elm327Protocol.CMD_WARM_START, timeoutMs = 2000L)
-                addLog("Warm Start #2 Response: ${Elm327Protocol.cleanResponse(resWs2)}")
-                delay(200)
+                // 3. Invio sequenza di configurazione parametri base (AT E0, AT L0, AT S0, AT H0)
+                addLog("Configurazione parametri base (AT E0, AT L0, AT S0, AT H0)...")
+                bleManager.sendCommand(Elm327Protocol.CMD_ECHO_OFF)
+                delay(40)
+                bleManager.sendCommand(Elm327Protocol.CMD_LINEFEEDS_OFF)
+                delay(40)
+                bleManager.sendCommand(Elm327Protocol.CMD_SPACES_OFF)
+                delay(40)
+                bleManager.sendCommand(Elm327Protocol.CMD_HEADERS_OFF)
+                delay(40)
 
-                // 3. Invio sequenza di configurazione parametri seriali e protocollo CAN Hybrid Assistant
-                for (cmd in Elm327Protocol.INIT_COMMANDS) {
-                    if (cmd == Elm327Protocol.CMD_WARM_START || cmd == Elm327Protocol.CMD_RESET) continue
-                    addLog("CMD: $cmd")
-                    val res = bleManager.sendCommand(cmd)
-                    val cleanRes = Elm327Protocol.cleanResponse(res)
-                    addLog("RES: $cleanRes")
-                    if (cmd == Elm327Protocol.CMD_PROTOCOL_CAN_11_500 && (cleanRes.contains("ERROR") || Elm327Protocol.isError(cleanRes))) {
-                        addLog("ℹ️ Errore su AT SP 6. Procedo comunque perché alcuni cloni non lo supportano ma negoziano dopo.")
-                    }
-                    delay(40)
+                // 3b. Negoziazione protocollo CAN 11-bit 500k con fallback AT SP 0
+                addLog("Negoziazione protocollo CAN 11-bit 500k (AT SP 6)...")
+                val sp6Res = bleManager.sendCommand(Elm327Protocol.CMD_PROTOCOL_CAN_11_500)
+                val cleanSp6 = Elm327Protocol.cleanResponse(sp6Res)
+                addLog("Protocollo CAN (AT SP 6): $cleanSp6")
+                var activeProtocolCmd = Elm327Protocol.CMD_PROTOCOL_CAN_11_500
+                if (cleanSp6.contains("ERROR") || cleanSp6.contains("?") || Elm327Protocol.isError(cleanSp6)) {
+                    addLog("⚠️ Errore su AT SP 6 ($cleanSp6). Fallback su negoziazione automatica protocollo (AT SP 0)...")
+                    val sp0Res = bleManager.sendCommand(Elm327Protocol.PROTOCOL_FALLBACK)
+                    addLog("Protocollo Fallback (AT SP 0): ${Elm327Protocol.cleanResponse(sp0Res)}")
+                    activeProtocolCmd = Elm327Protocol.PROTOCOL_FALLBACK
                 }
+                delay(40)
+                val adaptiveTimingRes = bleManager.sendCommand(Elm327Protocol.CMD_ADAPTIVE_TIMING_1)
+                if (Elm327Protocol.cleanResponse(adaptiveTimingRes).contains("?")) {
+                    addLog("ℹ️ Clone ELM327 rilevato: AT AT 1 non supportato (?), continuo con timing standard.")
+                }
+                delay(40)
+                val caf1Res = bleManager.sendCommand(Elm327Protocol.CMD_CAN_AUTO_FORMAT_ON)
+                if (Elm327Protocol.cleanResponse(caf1Res).contains("?")) {
+                    addLog("ℹ️ Clone ELM327 rilevato: AT CAF 1 non supportato (?), continuo con formattazione nativa.")
+                }
+                delay(40)
+                val arRes = bleManager.sendCommand(Elm327Protocol.CMD_AUTO_RECEIVE)
+                if (Elm327Protocol.cleanResponse(arRes).contains("?")) {
+                    addLog("ℹ️ Clone ELM327 rilevato: AT AR non supportato (?).")
+                }
+                delay(40)
+                bleManager.sendCommand(Elm327Protocol.CMD_TIMEOUT_HANDSHAKE)
+                delay(40)
 
-                // 3b. Verifica del protocollo effettivamente negoziato: AT DPN e' la prova che il
-                // protocollo 6 (CAN 11-bit 500k) sia attivo e non un auto-detect andato altrove.
+                // 3c. Verifica del protocollo effettivamente negoziato: AT DPN
                 val dpnRes = bleManager.sendCommand(Elm327Protocol.CMD_PROTOCOL_NUMBER, timeoutMs = 1500L)
                 addLog("Protocollo ELM327 attivo (AT DPN): ${Elm327Protocol.cleanResponse(dpnRes)} (atteso 6 = ISO 15765-4 CAN 11-bit 500k)")
                 stateMachine.onElmReady()
@@ -319,62 +341,190 @@ class ObdController(
                     addLog("⚠️ Tensione al limite (${real12v}V): verifica che il quadro sia in READY (spia verde) e che l'adattatore non sia mal calibrato.")
                 }
 
-                // 5b. Probe di attivazione del bus CAN Toyota con Mode 03 (Request Trouble Codes) stile Hybrid Assistant
-                addLog("Probe attivazione CAN bus Toyota con Mode 03 (Request Trouble Codes)...")
-                ensureCanHeader(ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST)
-                val probe03Res = bleManager.sendCommand(Elm327Protocol.CMD_PROBE_DTC, timeoutMs = 3000L)
-                val clean03 = Elm327Protocol.cleanResponse(probe03Res)
-                addLog("Probe Mode 03 Response: $clean03")
-                val isMode03Active = Elm327Protocol.isMode03Response(probe03Res)
-                if (isMode03Active) {
-                    addLog("✅ Bus CAN attivato con successo via Mode 03.")
-                    lastValidCanTimestamp = timeProvider()
-                }
-
-                // 6. Handshake CAN a due stadi
-                addLog("Stadio 0: aggancio bus CAN in broadcast (7DF)...")
+                // 6. Sincronizzazione CAN 500k (Stadio 0: broadcast 7DF)
+                _liveState.value = _liveState.value.copy(ecuAlertMessage = "Sincronizzazione CAN 500k...")
+                addLog("Sincronizzazione CAN 500k in corso (broadcast 7DF)...")
                 stateMachine.onCanSearching()
-                val probe0 = probeBroadcastCan(attempts = 1, timeoutMs = 4000L)
-                val stage0Ok = isMode03Active || probe0.isValid
+                ensureCanHeader(ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST, force = true, skipHardwareFilters = true)
+                var stage0Res = bleManager.sendCommand(ToyotaYarisCommands.PID_SUPPORTED_PIDS, timeoutMs = 8000L)
+                var clean0 = Elm327Protocol.cleanResponse(stage0Res)
+                addLog("Broadcast 0100 Response: $clean0")
+                var stage0Ok = Elm327Protocol.hasSupportedPidsResponse(stage0Res)
+
+                if (!stage0Ok) {
+                    addLog("Nessuna risposta a 0100 in broadcast, tentativo sincronizzazione con PID 010C (RPM)...")
+                    delay(150)
+                    stage0Res = bleManager.sendCommand(ToyotaYarisCommands.PID_ENGINE_RPM, timeoutMs = 8000L)
+                    clean0 = Elm327Protocol.cleanResponse(stage0Res)
+                    addLog("Broadcast 010C Response: $clean0")
+                    stage0Ok = Elm327Protocol.isStage1PositiveResponse(ToyotaYarisCommands.PID_ENGINE_RPM, stage0Res)
+                }
 
                 if (stage0Ok) {
-                    addLog("✅ Stadio 0 completato: bus CAN 11-bit 500k agganciato in broadcast (7DF).")
+                    addLog("✅ Sincronizzazione CAN 500k completata (risposta: $clean0)!")
                     lastValidCanTimestamp = timeProvider()
                 } else {
-                    addLog("⚠️ Stadio 0 fallito: nessun frame CAN in broadcast 7DF. Central Gateway Toyota potrebbe filtrare. Procedo a Stadio 1 diretto (7E0)...")
+                    addLog("ℹ️ Sincronizzazione broadcast 7DF senza risposta immediata ($clean0). Central Gateway Toyota potrebbe filtrare broadcast. Procedo ad aggancio diretto ECU Motore (7E0)...")
                 }
 
-                // Stadio 1: aggancio rapido centralina motore standard (7E0 / 7E8)
-                addLog("Handshake CAN Stadio 1: aggancio rapido bus su Centralina Motore (7E0 / 7E8)...")
-                ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU, force = true)
-                var stage1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_SUPPORTED_PIDS, timeoutMs = 4000L)
-                var cleanStage1 = Elm327Protocol.cleanResponse(stage1Res)
-                if (Elm327Protocol.isError(cleanStage1) || cleanStage1.contains("TIMEOUT") || cleanStage1.contains("NODATA")) {
-                    addLog("PID 0100 in attesa, tentativo con PID 010C (RPM)...")
-                    stage1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_ENGINE_RPM, timeoutMs = 4000L)
+                // 7. Stadio 1: aggancio rapido centralina motore standard (7E0)
+                _liveState.value = _liveState.value.copy(ecuAlertMessage = "Aggancio motore 7E0...")
+                addLog("Handshake CAN Stadio 1: aggancio centralina motore (7E0)...")
+                ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU, force = true, skipHardwareFilters = true)
+
+                var stage1Ok = false
+                var stage1Res = ""
+                var cleanStage1 = ""
+
+                // Tentativi su 010C (RPM) con retry controllato su NO DATA / CAN ERROR
+                for (attempt in 1..3) {
+                    stage1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_ENGINE_RPM, timeoutMs = 3500L)
                     cleanStage1 = Elm327Protocol.cleanResponse(stage1Res)
+                    addLog("Probe PID 010C (Tentativo #$attempt): $cleanStage1")
+                    if (Elm327Protocol.isStage1PositiveResponse(ToyotaYarisCommands.PID_ENGINE_RPM, stage1Res)) {
+                        stage1Ok = true
+                        break
+                    }
+                    if (attempt < 3) delay(150)
                 }
-                val stage1Ok = Elm327Protocol.isValidCanResponse(stage1Res)
-                if (stage1Ok) {
-                    addLog("✅ Handshake CAN Stadio 1 completato: bus CAN 11-bit 500k agganciato (risposta: $cleanStage1)!")
+
+                if (!stage1Ok) {
+                    addLog("Nessuna risposta positiva su 010C, tentativo fallback su PID 010D (Velocità)...")
+                    for (attempt in 1..3) {
+                        stage1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_VEHICLE_SPEED, timeoutMs = 3500L)
+                        cleanStage1 = Elm327Protocol.cleanResponse(stage1Res)
+                        addLog("Probe PID 010D (Tentativo #$attempt): $cleanStage1")
+                        if (Elm327Protocol.isStage1PositiveResponse(ToyotaYarisCommands.PID_VEHICLE_SPEED, stage1Res)) {
+                            stage1Ok = true
+                            break
+                        }
+                        if (attempt < 3) delay(150)
+                    }
+                }
+
+                if (!stage1Ok) {
+                    addLog("Tentativo fallback finale su PID 0100 (Supported PIDs)...")
+                    stage1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_SUPPORTED_PIDS, timeoutMs = 3500L)
+                    cleanStage1 = Elm327Protocol.cleanResponse(stage1Res)
+                    addLog("Probe PID 0100: $cleanStage1")
+                    stage1Ok = Elm327Protocol.isStage1PositiveResponse(ToyotaYarisCommands.PID_SUPPORTED_PIDS, stage1Res)
+                }
+
+                // Se la sincronizzazione su protocollo fisso 6 fallisce (es. UNABLE TO CONNECT o CAN ERROR),
+                // esegui fallback adattativo su AT SP 0 (auto-detect) prima di procedere
+                if (!stage0Ok && !stage1Ok && activeProtocolCmd != Elm327Protocol.PROTOCOL_FALLBACK) {
+                    _liveState.value = _liveState.value.copy(ecuAlertMessage = "Sincronizzazione automatica CAN (AT SP 0)...")
+                    addLog("⚠️ Handshake CAN non agganciato su protocollo 6 ($cleanStage1). Eseguo fallback su AT SP 0 (auto-detect)...")
+                    val sp0Res = bleManager.sendCommand(Elm327Protocol.PROTOCOL_FALLBACK)
+                    addLog("Protocollo Fallback (AT SP 0): ${Elm327Protocol.cleanResponse(sp0Res)}")
+                    activeProtocolCmd = Elm327Protocol.PROTOCOL_FALLBACK
+                    bleManager.sendCommand(Elm327Protocol.CMD_AUTO_RECEIVE)
+                    bleManager.sendCommand(Elm327Protocol.CMD_TIMEOUT_HANDSHAKE)
+
+                    // Riprova broadcast 7DF con auto-detect
+                    ensureCanHeader(ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST, force = true, skipHardwareFilters = true)
+                    stage0Res = bleManager.sendCommand(ToyotaYarisCommands.PID_SUPPORTED_PIDS, timeoutMs = 8000L)
+                    clean0 = Elm327Protocol.cleanResponse(stage0Res)
+                    addLog("Broadcast 0100 (con AT SP 0): $clean0")
+                    stage0Ok = Elm327Protocol.hasSupportedPidsResponse(stage0Res)
+                    if (!stage0Ok) {
+                        stage0Res = bleManager.sendCommand(ToyotaYarisCommands.PID_ENGINE_RPM, timeoutMs = 8000L)
+                        clean0 = Elm327Protocol.cleanResponse(stage0Res)
+                        addLog("Broadcast 010C (con AT SP 0): $clean0")
+                        stage0Ok = Elm327Protocol.isStage1PositiveResponse(ToyotaYarisCommands.PID_ENGINE_RPM, stage0Res)
+                    }
+
+                    // Riprova aggancio 7E0 con auto-detect
+                    ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU, force = true, skipHardwareFilters = true)
+                    for (attempt in 1..2) {
+                        stage1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_ENGINE_RPM, timeoutMs = 3500L)
+                        cleanStage1 = Elm327Protocol.cleanResponse(stage1Res)
+                        addLog("Probe PID 010C (con AT SP 0, Tentativo #$attempt): $cleanStage1")
+                        if (Elm327Protocol.isStage1PositiveResponse(ToyotaYarisCommands.PID_ENGINE_RPM, stage1Res)) {
+                            stage1Ok = true
+                            break
+                        }
+                        if (attempt < 2) delay(150)
+                    }
+                    if (!stage1Ok) {
+                        stage1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_SUPPORTED_PIDS, timeoutMs = 3500L)
+                        cleanStage1 = Elm327Protocol.cleanResponse(stage1Res)
+                        addLog("Probe PID 0100 (con AT SP 0): $cleanStage1")
+                        stage1Ok = Elm327Protocol.isStage1PositiveResponse(ToyotaYarisCommands.PID_SUPPORTED_PIDS, stage1Res)
+                    }
+                }
+
+                if (stage1Ok || stage0Ok) {
+                    val dpnRes = bleManager.sendCommand(Elm327Protocol.CMD_PROTOCOL_NUMBER, timeoutMs = 1500L)
+                    addLog("✅ Handshake CAN completato con successo (AT DPN: ${Elm327Protocol.cleanResponse(dpnRes)})!")
                     lastValidCanTimestamp = timeProvider()
                     stateMachine.onEngineTelemetrySuccess()
                 } else {
-                    addLog("ℹ️ Handshake CAN Stadio 1: nessuna risposta standard ($cleanStage1). Procedo al loop attivo.")
+                    addLog("⚠️ Handshake CAN: nessuna risposta positiva da 7E0 / broadcast ($cleanStage1).")
                 }
 
-                val canOk = stage0Ok || stage1Ok
+                // 8. Stadio 2: passaggio alla Centralina Batteria Denso HV (7E2) con fallback a catena trasparente
+                _liveState.value = _liveState.value.copy(ecuAlertMessage = "Lettura batteria 7E2...")
+                addLog("Handshake CAN Stadio 2: passaggio a Centralina Batteria Denso HV (7E2)...")
+                ensureCanHeader(ToyotaYarisCommands.HEADER_BATTERY_ECU, force = true, skipHardwareFilters = true)
+                discoveryEngine.reset()
+                stateMachine.onBatteryDiscoveryProbing()
+
+                var stage2Ok = false
+                val fallbackChain = ToyotaYarisCommands.BATTERY_FALLBACK_PIDS // 2228C1 -> 2228C0 -> 2101 -> 21C3 -> 2161
+
+                for (candidatePid in fallbackChain) {
+                    addLog("Probe PID batteria: $candidatePid...")
+                    var candidateSuccess = false
+                    var rawBatteryRes = ""
+
+                    for (attempt in 1..2) {
+                        rawBatteryRes = bleManager.sendCommand(candidatePid, timeoutMs = 3500L)
+                        val cleanBattery = Elm327Protocol.cleanResponse(rawBatteryRes)
+                        addLog("PID $candidatePid (Tentativo #$attempt): $cleanBattery")
+
+                        val parsedStatus = ToyotaYarisCommands.parseBatteryResponse(rawBatteryRes, false)
+                        val isUdsPositive = Elm327Protocol.isUdsPositiveResponse(
+                            rawBatteryRes,
+                            candidatePid.take(2)
+                        )
+
+                        if (parsedStatus != null || isUdsPositive) {
+                            candidateSuccess = true
+                            discoveryEngine.onCandidateSuccess(candidatePid, rawBatteryRes)
+                            stateMachine.onBatteryDiscovered(candidatePid)
+                            if (parsedStatus != null) {
+                                _liveState.value = _liveState.value.copy(
+                                    batteryStatus = parsedStatus,
+                                    hasEcuCommunication = true
+                                )
+                            }
+                            addLog("✅ Centralina Batteria 7E2 agganciata con successo su PID $candidatePid!")
+                            break
+                        } else {
+                            if (attempt < 2 && (cleanBattery.contains("NODATA") || cleanBattery.contains("CANERROR") || cleanBattery.isEmpty())) {
+                                delay(150)
+                            }
+                        }
+                    }
+
+                    if (candidateSuccess) {
+                        stage2Ok = true
+                        lastValidCanTimestamp = timeProvider()
+                        break
+                    } else {
+                        discoveryEngine.onCandidateFailed(candidatePid)
+                        addLog("ℹ️ PID $candidatePid non ha risposto. Avanzo al candidato successivo nella catena...")
+                        delay(80)
+                    }
+                }
+
+                val canOk = stage0Ok || stage1Ok || stage2Ok
                 val isActuallyReady = isReady || canOk || (real12v >= 12.2f)
 
                 if (isActuallyReady) {
                     stateMachine.onVehicleReady()
                 }
-
-                // Stadio 2: predisposizione discovery centralina ibrida Denso HV Battery (7E2)
-                addLog("Handshake CAN Stadio 2: predisposizione motore discovery phased batteria Denso HV (7E2)...")
-                discoveryEngine.reset()
-                stateMachine.onBatteryDiscoveryProbing()
-                ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU)
 
                 isProtocolInitialized = true
                 _liveState.value = _liveState.value.copy(
@@ -410,13 +560,23 @@ class ObdController(
                     } else {
                         isMultiPidSupported = false
                     }
-                addLog("Inizializzazione completata! Avvio scheduler Dual-Rate...")
+        addLog("Inizializzazione completata!")
+        return canOk
+    }
 
-                // 8. Dual-Rate Adaptive Loop
+    internal fun initializeAndStartLoop() {
+        loopJob?.cancel()
+        loopJob = scope.launch(ioDispatcher) {
+            try {
+                val canOk = performHandshake()
+                if (canOk) {
+                    addLog("Avvio scheduler Dual-Rate (Handshake completato con successo)...")
+                } else {
+                    addLog("⚠️ Handshake iniziale non completato: avvio scheduler con auto-recovery continuo...")
+                }
                 lastBatteryCheckTimestamp = 0L
                 lastCoolantCheckTimestamp = 0L
                 runDualRateScheduler()
-
             } catch (e: CancellationException) {
                 addLog("Loop terminato.")
             } catch (e: Exception) {
@@ -454,7 +614,7 @@ class ObdController(
                 timeoutMs = timeoutMs
             )
             cleanResponse = Elm327Protocol.cleanResponse(response)
-            if (Elm327Protocol.hasSupportedPidsResponse(cleanResponse)) {
+            if (Elm327Protocol.hasSupportedPidsResponse(response)) {
                 return CanProbeResult(true, cleanResponse)
             }
             if (index < attempts - 1) delay(250)
@@ -469,50 +629,61 @@ class ObdController(
      * il corrispondente filtro hardware di ricezione (AT CRA), per garantire che i frame fisici
      * dell'ECU vengano sempre instradati all'applicazione senza scarti dal controller CAN interno dell'ELM327.
      */
-    internal suspend fun ensureCanHeader(header: String, force: Boolean = false) {
+    internal suspend fun ensureCanHeader(
+        header: String,
+        force: Boolean = false,
+        skipHardwareFilters: Boolean = false
+    ) {
         if (currentCanHeader != header || force) {
             currentCanHeader = ""
             bleManager.sendCommand("AT SH $header")
             delay(25)
 
-            // Configura il filtro hardware di ricezione (AT CRA) corrispondente
-            val rxFilter = ToyotaYarisCommands.getFilterForHeader(header)
-            if (rxFilter != null) {
-                bleManager.sendCommand("AT CRA $rxFilter")
-            } else {
-                // In broadcast (7DF) o header senza filtro fisso 1:1, ripristina ricezione automatica con AT AR
+            if (skipHardwareFilters) {
+                // Durante la fase iniziale di handshake CAN, evitiamo filtri AT CRA o comandi AT FC
+                // che alterano lo stack CAN dell'adattatore Vgate prima che il protocollo sia stabilizzato.
                 bleManager.sendCommand(Elm327Protocol.CMD_AUTO_RECEIVE)
-            }
-            delay(25)
+                delay(25)
+            } else {
+                // Configura il filtro hardware di ricezione (AT CRA) corrispondente
+                val rxFilter = ToyotaYarisCommands.getFilterForHeader(header)
+                if (rxFilter != null) {
+                    bleManager.sendCommand("AT CRA $rxFilter")
+                } else {
+                    // In broadcast (7DF) o header senza filtro fisso 1:1, ripristina ricezione automatica con AT AR
+                    bleManager.sendCommand(Elm327Protocol.CMD_AUTO_RECEIVE)
+                }
+                delay(25)
 
-            when (header) {
-                ToyotaYarisCommands.HEADER_BATTERY_ECU -> {
-                    if (isCustomFcSupported) {
-                        bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SH_BATTERY)
-                        delay(25)
-                        bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SD_CTS)
-                        delay(25)
-                        bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SM_CUSTOM)
-                        delay(25)
+                when (header) {
+                    ToyotaYarisCommands.HEADER_BATTERY_ECU -> {
+                        if (isCustomFcSupported) {
+                            bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SH_BATTERY)
+                            delay(25)
+                            bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SD_CTS)
+                            delay(25)
+                            bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SM_CUSTOM)
+                            delay(25)
+                        }
+                        bleManager.sendCommand(Elm327Protocol.CMD_TIMEOUT_BATTERY_ECU)
                     }
-                    bleManager.sendCommand(Elm327Protocol.CMD_TIMEOUT_BATTERY_ECU)
-                }
-                ToyotaYarisCommands.HEADER_BODY_ECU,
-                ToyotaYarisCommands.HEADER_METER_ECU,
-                ToyotaYarisCommands.HEADER_AIRCON_ECU,
-                ToyotaYarisCommands.HEADER_ADAS_ECU -> {
-                    if (isCustomFcSupported) {
-                        bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SM_DEFAULT)
-                        delay(25)
+                    ToyotaYarisCommands.HEADER_BODY_ECU,
+                    ToyotaYarisCommands.HEADER_METER_ECU,
+                    ToyotaYarisCommands.HEADER_AIRCON_ECU,
+                    ToyotaYarisCommands.HEADER_ADAS_ECU -> {
+                        if (isCustomFcSupported) {
+                            bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SM_DEFAULT)
+                            delay(25)
+                        }
+                        bleManager.sendCommand(Elm327Protocol.CMD_TIMEOUT_ECU_CODING)
                     }
-                    bleManager.sendCommand(Elm327Protocol.CMD_TIMEOUT_ECU_CODING)
-                }
-                else -> {
-                    if (isCustomFcSupported) {
-                        bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SM_DEFAULT)
-                        delay(25)
+                    else -> {
+                        if (isCustomFcSupported) {
+                            bleManager.sendCommand(ToyotaYarisCommands.CMD_FC_SM_DEFAULT)
+                            delay(25)
+                        }
+                        bleManager.sendCommand(Elm327Protocol.CMD_TIMEOUT_TELEMETRY)
                     }
-                    bleManager.sendCommand(Elm327Protocol.CMD_TIMEOUT_TELEMETRY)
                 }
             }
             currentCanHeader = header
@@ -550,36 +721,72 @@ class ObdController(
         stateMachine.onCanBusAutoRecovery()
         discoveryEngine.reset()
 
-        // Recovery Leggero: ripristina solo filtri, timeout e header CAN senza svuotare il bus seriale
+        // Recovery Leggero: ripristina solo filtri, timeout e header CAN senza alterare la sincronizzazione
         addLog("Tentativo auto-recovery leggero (AT AR / AT SH 7E0)...")
-        bleManager.sendCommand("AT AR")
+        bleManager.sendCommand(Elm327Protocol.CMD_AUTO_RECEIVE)
         bleManager.sendCommand(Elm327Protocol.CMD_TIMEOUT_HANDSHAKE)
-        ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU, force = true)
+        ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU, force = true, skipHardwareFilters = true)
 
-        var s1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_SUPPORTED_PIDS, timeoutMs = 4000L)
-        var s1Ok = Elm327Protocol.isValidCanResponse(s1Res)
+        var s1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_ENGINE_RPM, timeoutMs = 3500L)
+        var s1Ok = Elm327Protocol.isStage1PositiveResponse(ToyotaYarisCommands.PID_ENGINE_RPM, s1Res)
+        if (!s1Ok) {
+            s1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_VEHICLE_SPEED, timeoutMs = 3500L)
+            s1Ok = Elm327Protocol.isStage1PositiveResponse(ToyotaYarisCommands.PID_VEHICLE_SPEED, s1Res)
+        }
+        if (!s1Ok) {
+            s1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_SUPPORTED_PIDS, timeoutMs = 3500L)
+            s1Ok = Elm327Protocol.isStage1PositiveResponse(ToyotaYarisCommands.PID_SUPPORTED_PIDS, s1Res)
+        }
 
         if (!s1Ok) {
-            addLog("Auto-recovery leggero fallito. Eseguo Warm Start completo dello stack ELM327...")
+            addLog("Auto-recovery leggero fallito. Eseguo ripristino calibrato dello stack ELM327...")
             // Reset rapido dello stack seriale ELM327 senza perdita connessione BLE
             bleManager.sendWakeSequence()
-            bleManager.sendCommand(Elm327Protocol.CMD_WARM_START) // Warm Start #1
-            delay(150)
-            bleManager.sendCommand(Elm327Protocol.CMD_WARM_START) // Warm Start #2 (svuotamento buffer)
-            delay(150)
+            delay(100)
+            bleManager.sendCommand(Elm327Protocol.CMD_RESET, timeoutMs = 3000L)
+            delay(250)
             bleManager.sendCommand(Elm327Protocol.CMD_ECHO_OFF)
-            bleManager.sendCommand(Elm327Protocol.CMD_PROTOCOL_CAN_11_500)
-            bleManager.sendCommand(Elm327Protocol.CMD_ADAPTIVE_TIMING_1)
-            bleManager.sendCommand(Elm327Protocol.CMD_HEADERS_ON)
             bleManager.sendCommand(Elm327Protocol.CMD_LINEFEEDS_OFF)
             bleManager.sendCommand(Elm327Protocol.CMD_SPACES_OFF)
+            bleManager.sendCommand(Elm327Protocol.CMD_HEADERS_OFF)
+            val spRes = bleManager.sendCommand(Elm327Protocol.CMD_PROTOCOL_CAN_11_500)
+            if (Elm327Protocol.isError(Elm327Protocol.cleanResponse(spRes))) {
+                bleManager.sendCommand(Elm327Protocol.PROTOCOL_FALLBACK)
+            }
+            bleManager.sendCommand(Elm327Protocol.CMD_ADAPTIVE_TIMING_1)
             bleManager.sendCommand(Elm327Protocol.CMD_CAN_AUTO_FORMAT_ON)
             bleManager.sendCommand(Elm327Protocol.CMD_AUTO_RECEIVE)
             bleManager.sendCommand(Elm327Protocol.CMD_TIMEOUT_HANDSHAKE)
             
-            ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU, force = true)
-            s1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_SUPPORTED_PIDS, timeoutMs = 4000L)
-            s1Ok = Elm327Protocol.isValidCanResponse(s1Res)
+            ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU, force = true, skipHardwareFilters = true)
+            s1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_ENGINE_RPM, timeoutMs = 3500L)
+            s1Ok = Elm327Protocol.isStage1PositiveResponse(ToyotaYarisCommands.PID_ENGINE_RPM, s1Res)
+            if (!s1Ok) {
+                s1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_VEHICLE_SPEED, timeoutMs = 3500L)
+                s1Ok = Elm327Protocol.isStage1PositiveResponse(ToyotaYarisCommands.PID_VEHICLE_SPEED, s1Res)
+            }
+            if (!s1Ok) {
+                s1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_SUPPORTED_PIDS, timeoutMs = 3500L)
+                s1Ok = Elm327Protocol.isStage1PositiveResponse(ToyotaYarisCommands.PID_SUPPORTED_PIDS, s1Res)
+            }
+        }
+
+        if (!s1Ok) {
+            addLog("Tentativo auto-recovery secondario con autorilevamento protocollo (AT SP 0)...")
+            bleManager.sendCommand(Elm327Protocol.PROTOCOL_FALLBACK)
+            bleManager.sendCommand(Elm327Protocol.CMD_AUTO_RECEIVE)
+            bleManager.sendCommand(Elm327Protocol.CMD_TIMEOUT_HANDSHAKE)
+            ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU, force = true, skipHardwareFilters = true)
+            s1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_ENGINE_RPM, timeoutMs = 3500L)
+            s1Ok = Elm327Protocol.isStage1PositiveResponse(ToyotaYarisCommands.PID_ENGINE_RPM, s1Res)
+            if (!s1Ok) {
+                s1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_VEHICLE_SPEED, timeoutMs = 3500L)
+                s1Ok = Elm327Protocol.isStage1PositiveResponse(ToyotaYarisCommands.PID_VEHICLE_SPEED, s1Res)
+            }
+            if (!s1Ok) {
+                s1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_SUPPORTED_PIDS, timeoutMs = 3500L)
+                s1Ok = Elm327Protocol.isStage1PositiveResponse(ToyotaYarisCommands.PID_SUPPORTED_PIDS, s1Res)
+            }
         }
 
         stateMachine.onElmReady()
@@ -682,6 +889,11 @@ class ObdController(
                 
                 if (!s1Ok) {
                     s1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_ENGINE_RPM, timeoutMs = 3000L)
+                    s1Ok = Elm327Protocol.isValidCanResponse(s1Res)
+                }
+
+                if (!s1Ok) {
+                    s1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_VEHICLE_SPEED, timeoutMs = 3000L)
                     s1Ok = Elm327Protocol.isValidCanResponse(s1Res)
                 }
                 

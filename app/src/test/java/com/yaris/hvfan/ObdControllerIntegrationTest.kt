@@ -1,6 +1,7 @@
 package com.yaris.hvfan
 
 import com.yaris.hvfan.obd.*
+import kotlinx.coroutines.*
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -904,5 +905,310 @@ class ObdControllerIntegrationTest {
         assertTrue(Elm327Protocol.isVehicleReady(13.8f))
         assertTrue(Elm327Protocol.isVehicleReady(14.2f))
         assertTrue(Elm327Protocol.isVehicleReady(14.5f))
+    }
+
+    @Test
+    fun testEnsureCanHeaderWithSkipHardwareFilters() = kotlinx.coroutines.test.runTest {
+        val dispatched = mutableListOf<String>()
+        val fakeTransport = object : ObdTransport {
+            override val connectionState = kotlinx.coroutines.flow.MutableStateFlow<com.yaris.hvfan.ble.BleConnectionState>(
+                com.yaris.hvfan.ble.BleConnectionState.Connected("Vgate iCar Pro", "00:11:22:33:44:55")
+            )
+            override fun getConnectedDeviceName() = "Vgate iCar Pro"
+            override suspend fun sendWakeSequence() { dispatched.add("WAKE") }
+            override suspend fun sendCommand(command: String, timeoutMs: Long): String {
+                dispatched.add(command)
+                return "OK"
+            }
+        }
+        val controller = ObdController(
+            bleManager = fakeTransport,
+            scope = this
+        )
+
+        // With skipHardwareFilters = true, AT CRA and AT FC must NOT be sent
+        controller.ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU, force = true, skipHardwareFilters = true)
+        assertTrue(dispatched.contains("AT SH 7E0"))
+        assertTrue(dispatched.contains(Elm327Protocol.CMD_AUTO_RECEIVE))
+        assertFalse(dispatched.contains("AT CRA 7E8"))
+        assertFalse(dispatched.any { it.startsWith("AT FC") })
+
+        dispatched.clear()
+        controller.ensureCanHeader(ToyotaYarisCommands.HEADER_BATTERY_ECU, force = true, skipHardwareFilters = true)
+        assertTrue(dispatched.contains("AT SH 7E2"))
+        assertTrue(dispatched.contains(Elm327Protocol.CMD_AUTO_RECEIVE))
+        assertFalse(dispatched.contains("AT CRA 7EA"))
+        assertFalse(dispatched.any { it.startsWith("AT FC") })
+
+        // With skipHardwareFilters = false (default), regular AT CRA is sent
+        dispatched.clear()
+        controller.ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU, force = true, skipHardwareFilters = false)
+        assertTrue(dispatched.contains("AT SH 7E0"))
+        assertTrue(dispatched.contains("AT CRA 7E8"))
+    }
+
+    @Test
+    fun testVgateHandshakeCloneToleranceAndSuccessfulOnlineState() = kotlinx.coroutines.test.runTest {
+        val dispatched = mutableListOf<String>()
+        val fakeTransport = object : ObdTransport {
+            override val connectionState = kotlinx.coroutines.flow.MutableStateFlow<com.yaris.hvfan.ble.BleConnectionState>(
+                com.yaris.hvfan.ble.BleConnectionState.Connected("Vgate iCar Pro", "00:11:22:33:44:55")
+            )
+            override fun getConnectedDeviceName() = "Vgate iCar Pro"
+            override suspend fun sendWakeSequence() { dispatched.add("WAKE") }
+            override suspend fun sendCommand(command: String, timeoutMs: Long): String {
+                dispatched.add(command)
+                return when (command) {
+                    "AT Z" -> "ELM327 v2.2\r\n>"
+                    "AT E0", "AT L0", "AT S0", "AT H0" -> "OK\r\n>"
+                    "AT SP 6" -> "OK\r\n>"
+                    "AT AT 1", "AT CAF 1", "AT AR" -> "?\r\n>" // Clone dongle returning '?'
+                    "AT ST 96", "AT ST C8", "AT ST 32" -> "OK\r\n>"
+                    "AT DPN" -> "6\r\n>"
+                    "ATI" -> "ELM327 v2.2\r\n>"
+                    "STI", "AT@1", "ST DI" -> "?\r\n>"
+                    "AT RV" -> "14.2V\r\n>"
+                    "AT SH 7DF", "AT SH 7E0", "AT SH 7E2" -> "OK\r\n>"
+                    "AT CRA 7E8", "AT CRA 7EA" -> "OK\r\n>"
+                    "0100" -> "SEARCHING...\r\n41 00 BE 7F A8 11\r\n>"
+                    "010C" -> "41 0C 0B B8\r\n>" // 3000 RPM
+                    "2228C1" -> "62 28 C1 44 45 44 43 41 03\r\n>" // Battery 28C
+                    "010D0C11" -> "41 0D 00 0C 0B B8 11 00\r\n>" // Multi-PID
+                    else -> "OK\r\n>"
+                }
+            }
+        }
+        val controller = ObdController(
+            bleManager = fakeTransport,
+            scope = this
+        )
+
+        val canOk = controller.performHandshake()
+
+        assertTrue("performHandshake deve ritornare true", canOk)
+        assertTrue("Lo stato live deve risultare inizializzato", controller.liveState.value.isInitialized)
+        assertTrue("La comunicazione con ECU deve essere attiva", controller.liveState.value.hasEcuCommunication)
+        assertTrue("Il veicolo deve risultare in stato READY", controller.liveState.value.isVehicleReady)
+        assertNotNull("I dati batteria devono essere stati acquisiti", controller.liveState.value.batteryStatus)
+        assertEquals(28.0, controller.liveState.value.batteryStatus!!.temp1, 0.1)
+        assertNull("ecuAlertMessage deve essere null una volta online", controller.liveState.value.ecuAlertMessage)
+    }
+
+    @Test
+    fun testVgateHandshakeCanBusUnableToConnectFallbackToAtSp0() = kotlinx.coroutines.test.runTest {
+        val dispatched = mutableListOf<String>()
+        var activeProtocol = "6"
+        val fakeTransport = object : ObdTransport {
+            override val connectionState = kotlinx.coroutines.flow.MutableStateFlow<com.yaris.hvfan.ble.BleConnectionState>(
+                com.yaris.hvfan.ble.BleConnectionState.Connected("Vgate iCar Pro", "00:11:22:33:44:55")
+            )
+            override fun getConnectedDeviceName() = "Vgate iCar Pro"
+            override suspend fun sendWakeSequence() { dispatched.add("WAKE") }
+            override suspend fun sendCommand(command: String, timeoutMs: Long): String {
+                dispatched.add(command)
+                if (command == "AT SP 6") {
+                    activeProtocol = "6"
+                    return "OK\r\n>"
+                }
+                if (command == "AT SP 0") {
+                    activeProtocol = "0"
+                    return "OK\r\n>"
+                }
+                return when {
+                    command.startsWith("AT") && command != "AT RV" && command != "AT DPN" -> "OK\r\n>"
+                    command == "AT RV" -> "14.2V\r\n>"
+                    command == "AT DPN" -> if (activeProtocol == "0") "A6\r\n>" else "6\r\n>"
+                    // Under Protocol 6: CAN bus fails to connect
+                    activeProtocol == "6" && (command == "0100" || command == "010C") -> "SEARCHING...\r\rUNABLE TO CONNECT\r\n>"
+                    activeProtocol == "6" && command == "010D" -> "CAN ERROR\r\n>"
+                    // Under Protocol 0 (Fallback Auto-Detect): CAN bus succeeds
+                    activeProtocol == "0" && command == "010C" -> "41 0C 00 00\r\n>" // 0 RPM in READY
+                    activeProtocol == "0" && command == "0100" -> "41 00 BE 7F A8 11\r\n>"
+                    activeProtocol == "0" && command == "2228C1" -> "62 28 C1 44 45 44 43 41 03\r\n>"
+                    else -> "NO DATA\r\n>"
+                }
+            }
+        }
+        val controller = ObdController(
+            bleManager = fakeTransport,
+            scope = this
+        )
+
+        val canOk = controller.performHandshake()
+
+        assertTrue("performHandshake deve ritornare true dopo fallback", canOk)
+        assertTrue("AT SP 0 deve essere stato inviato come fallback", dispatched.contains("AT SP 0"))
+        assertTrue("Lo stato live deve risultare inizializzato", controller.liveState.value.isInitialized)
+        assertTrue("La comunicazione con ECU deve essere attiva dopo fallback", controller.liveState.value.hasEcuCommunication)
+        assertTrue("Il veicolo deve risultare in stato READY", controller.liveState.value.isVehicleReady)
+        assertNotNull("I dati batteria devono essere stati acquisiti", controller.liveState.value.batteryStatus)
+    }
+
+    @Test
+    fun testVgateHandshakeStage2BatteryFallbackChainExecution() = kotlinx.coroutines.test.runTest {
+        val dispatched = mutableListOf<String>()
+        val fakeTransport = object : ObdTransport {
+            override val connectionState = kotlinx.coroutines.flow.MutableStateFlow<com.yaris.hvfan.ble.BleConnectionState>(
+                com.yaris.hvfan.ble.BleConnectionState.Connected("Vgate iCar Pro", "00:11:22:33:44:55")
+            )
+            override fun getConnectedDeviceName() = "Vgate iCar Pro"
+            override suspend fun sendWakeSequence() { dispatched.add("WAKE") }
+            override suspend fun sendCommand(command: String, timeoutMs: Long): String {
+                dispatched.add(command)
+                return when (command) {
+                    "AT RV" -> "14.2V\r\n>"
+                    "AT DPN" -> "6\r\n>"
+                    "0100" -> "41 00 BE 7F A8 11\r\n>"
+                    "010C" -> "41 0C 1F 40\r\n>"
+                    // Stage 2 battery fallback responses:
+                    "2228C1" -> "NO DATA\r\n>"
+                    "2228C0" -> "7F 22 31\r\n>" // Negative response
+                    "2101" -> "61 01 44 45 44 43 41 03\r\n>" // Success on 2101
+                    else -> "OK\r\n>"
+                }
+            }
+        }
+        val controller = ObdController(
+            bleManager = fakeTransport,
+            scope = this
+        )
+
+        val canOk = controller.performHandshake()
+
+        assertTrue("performHandshake deve ritornare true su 2101", canOk)
+        assertEquals("2101", controller.discoveryEngine.latchedPid)
+        assertTrue(dispatched.contains("2228C1"))
+        assertTrue(dispatched.contains("2228C0"))
+        assertTrue(dispatched.contains("2101"))
+        assertNotNull("I dati batteria devono essere stati parsati da 2101", controller.liveState.value.batteryStatus)
+        assertEquals(28.0, controller.liveState.value.batteryStatus!!.temp1, 0.1)
+    }
+
+    @Test
+    fun testAutoRecoveryWithStationarySpeed010D() = kotlinx.coroutines.test.runTest {
+        val dispatched = mutableListOf<String>()
+        val fakeTransport = object : ObdTransport {
+            override val connectionState = kotlinx.coroutines.flow.MutableStateFlow<com.yaris.hvfan.ble.BleConnectionState>(
+                com.yaris.hvfan.ble.BleConnectionState.Connected("Vgate iCar Pro", "00:11:22:33:44:55")
+            )
+            override fun getConnectedDeviceName() = "Vgate iCar Pro"
+            override suspend fun sendWakeSequence() { dispatched.add("WAKE") }
+            override suspend fun sendCommand(command: String, timeoutMs: Long): String {
+                dispatched.add(command)
+                return when (command) {
+                    "AT RV" -> "14.2V\r\n>"
+                    "AT DPN" -> "6\r\n>"
+                    // RPM (010C) fails on stationary hybrid with petrol engine OFF
+                    "010C" -> "NO DATA\r\n>"
+                    // Vehicle speed (010D) responds with 0 km/h
+                    "010D" -> "41 0D 00\r\n>"
+                    "2228C1" -> "62 28 C1 44 45 44 43 41 03\r\n>"
+                    else -> "OK\r\n>"
+                }
+            }
+        }
+        val controller = ObdController(
+            bleManager = fakeTransport,
+            scope = this
+        )
+
+        val canOk = controller.performHandshake()
+
+        assertTrue("performHandshake deve agganciarsi tramite 010D anche se 010C e' NO DATA", canOk)
+        assertTrue(dispatched.contains("010C"))
+        assertTrue(dispatched.contains("010D"))
+        assertTrue(controller.liveState.value.hasEcuCommunication)
+    }
+
+    @Test
+    fun testHandshakeProgressAlertMessageStepProgression() = kotlinx.coroutines.test.runTest {
+        val observedSteps = mutableListOf<String?>()
+        val fakeTransport = object : ObdTransport {
+            override val connectionState = kotlinx.coroutines.flow.MutableStateFlow<com.yaris.hvfan.ble.BleConnectionState>(
+                com.yaris.hvfan.ble.BleConnectionState.Connected("Vgate iCar Pro", "00:11:22:33:44:55")
+            )
+            override fun getConnectedDeviceName() = "Vgate iCar Pro"
+            override suspend fun sendWakeSequence() {}
+            override suspend fun sendCommand(command: String, timeoutMs: Long): String {
+                return when (command) {
+                    "AT RV" -> "14.2V\r\n>"
+                    "AT DPN" -> "6\r\n>"
+                    "0100" -> "41 00 BE 7F A8 11\r\n>"
+                    "010C" -> "41 0C 1F 40\r\n>"
+                    "2228C1" -> "62 28 C1 44 45 44 43 41 03\r\n>"
+                    else -> "OK\r\n>"
+                }
+            }
+        }
+        val controller = ObdController(
+            bleManager = fakeTransport,
+            scope = this
+        )
+
+        val collectJob = backgroundScope.launch {
+            controller.liveState.collect { state ->
+                val msg = state.ecuAlertMessage
+                if (observedSteps.isEmpty() || observedSteps.last() != msg) {
+                    observedSteps.add(msg)
+                }
+            }
+        }
+
+        controller.performHandshake()
+        collectJob.cancel()
+
+        assertTrue("Deve comparire lo step 'Sveglia adattatore...'", observedSteps.contains("Sveglia adattatore..."))
+        assertTrue("Deve comparire lo step 'Sincronizzazione CAN 500k...'", observedSteps.contains("Sincronizzazione CAN 500k..."))
+        assertTrue("Deve comparire lo step 'Aggancio motore 7E0...'", observedSteps.contains("Aggancio motore 7E0..."))
+        assertTrue("Deve comparire lo step 'Lettura batteria 7E2...'", observedSteps.contains("Lettura batteria 7E2..."))
+        assertNull("Al termine del successo, ecuAlertMessage deve tornare null", observedSteps.last())
+    }
+
+    @Test
+    fun testStandbyWakeupWithStationarySpeed010DFallback() = kotlinx.coroutines.test.runTest {
+        val dispatched = mutableListOf<String>()
+        val fakeTransport = object : ObdTransport {
+            override val connectionState = kotlinx.coroutines.flow.MutableStateFlow<com.yaris.hvfan.ble.BleConnectionState>(
+                com.yaris.hvfan.ble.BleConnectionState.Connected("Vgate iCar Pro", "00:11:22:33:44:55")
+            )
+            override fun getConnectedDeviceName() = "Vgate iCar Pro"
+            override suspend fun sendWakeSequence() {}
+            override suspend fun sendCommand(command: String, timeoutMs: Long): String {
+                dispatched.add(command)
+                return when (command) {
+                    "AT RV" -> "14.2V\r\n>"
+                    "AT DPN" -> "6\r\n>"
+                    // In standby wakeup, 0100 fails and 010C fails (engine stopped)
+                    "0100" -> "NO DATA\r\n>"
+                    "010C" -> "NO DATA\r\n>"
+                    // 010D vehicle speed succeeds with 0 km/h
+                    "010D" -> "41 0D 00\r\n>"
+                    "2228C1" -> "62 28 C1 44 45 44 43 41 03\r\n>"
+                    else -> "OK\r\n>"
+                }
+            }
+        }
+        val controller = ObdController(
+            bleManager = fakeTransport,
+            scope = this
+        )
+
+        // Set state to standby mode initially
+        controller.stateMachine.onVehicleStandby()
+        val field = ObdController::class.java.getDeclaredField("_liveState")
+        field.isAccessible = true
+        @Suppress("UNCHECKED_CAST")
+        val stateFlow = field.get(controller) as kotlinx.coroutines.flow.MutableStateFlow<ObdLiveState>
+        stateFlow.value = stateFlow.value.copy(
+            isInitialized = true,
+            isStandbyMode = true,
+            hasEcuCommunication = false
+        )
+
+        controller.executeDualRateCycle()
+
+        assertTrue("010D deve essere stato interrogato come fallback su uscita da standby", dispatched.contains("010D"))
+        assertFalse("Lo stato di standby deve essere stato disattivato", controller.liveState.value.isStandbyMode)
+        assertTrue("La comunicazione con ECU deve essere attiva", controller.liveState.value.hasEcuCommunication)
     }
 }
