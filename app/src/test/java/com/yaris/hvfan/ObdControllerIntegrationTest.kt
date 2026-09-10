@@ -928,25 +928,67 @@ class ObdControllerIntegrationTest {
             scope = this
         )
 
-        // With skipHardwareFilters = true, AT CRA and AT FC must NOT be sent
+        // With skipHardwareFilters = true, AT CRA and AT FC must NOT be sent, and AT AR must NEVER be sent (R1)
         controller.ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU, force = true, skipHardwareFilters = true)
         assertTrue(dispatched.contains("AT SH 7E0"))
-        assertTrue(dispatched.contains(Elm327Protocol.CMD_AUTO_RECEIVE))
+        assertFalse("AT AR must never be emitted after AT SH (R1)", dispatched.contains(Elm327Protocol.CMD_AUTO_RECEIVE))
+        assertFalse("AT AR must never be emitted after AT SH (R1)", dispatched.contains("AT AR"))
         assertFalse(dispatched.contains("AT CRA 7E8"))
         assertFalse(dispatched.any { it.startsWith("AT FC") })
 
         dispatched.clear()
         controller.ensureCanHeader(ToyotaYarisCommands.HEADER_BATTERY_ECU, force = true, skipHardwareFilters = true)
         assertTrue(dispatched.contains("AT SH 7E2"))
-        assertTrue(dispatched.contains(Elm327Protocol.CMD_AUTO_RECEIVE))
+        assertFalse("AT AR must never be emitted after AT SH (R1)", dispatched.contains(Elm327Protocol.CMD_AUTO_RECEIVE))
+        assertFalse("AT AR must never be emitted after AT SH (R1)", dispatched.contains("AT AR"))
         assertFalse(dispatched.contains("AT CRA 7EA"))
         assertFalse(dispatched.any { it.startsWith("AT FC") })
 
-        // With skipHardwareFilters = false (default), regular AT CRA is sent
+        // With skipHardwareFilters = false (default), regular AT CRA is sent and AT AR is never sent
         dispatched.clear()
         controller.ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU, force = true, skipHardwareFilters = false)
         assertTrue(dispatched.contains("AT SH 7E0"))
         assertTrue(dispatched.contains("AT CRA 7E8"))
+        assertFalse("AT AR must never be emitted after AT SH (R1)", dispatched.contains("AT AR"))
+    }
+
+    @Test
+    fun testAtArIsNeverEmittedAfterAtSh() = kotlinx.coroutines.test.runTest {
+        val dispatched = mutableListOf<String>()
+        val fakeTransport = object : ObdTransport {
+            override val connectionState = kotlinx.coroutines.flow.MutableStateFlow<com.yaris.hvfan.ble.BleConnectionState>(
+                com.yaris.hvfan.ble.BleConnectionState.Connected("Test Adapter", "00:11:22:33:44:55")
+            )
+            override fun getConnectedDeviceName() = "Test Adapter"
+            override suspend fun sendWakeSequence() { dispatched.add("WAKE") }
+            override suspend fun sendCommand(command: String, timeoutMs: Long): String {
+                dispatched.add(command)
+                return "OK"
+            }
+        }
+        val controller = ObdController(bleManager = fakeTransport, scope = this)
+
+        val testHeaders = listOf(
+            ToyotaYarisCommands.HEADER_ENGINE_ECU,
+            ToyotaYarisCommands.HEADER_BATTERY_ECU,
+            ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST,
+            ToyotaYarisCommands.HEADER_BODY_ECU,
+            ToyotaYarisCommands.HEADER_METER_ECU,
+            ToyotaYarisCommands.HEADER_AIRCON_ECU,
+            ToyotaYarisCommands.HEADER_ADAS_ECU
+        )
+
+        for (hdr in testHeaders) {
+            dispatched.clear()
+            controller.ensureCanHeader(hdr, force = true)
+            val atShIndex = dispatched.indexOfFirst { it.startsWith("AT SH") }
+            assertTrue("Must contain AT SH command for $hdr", atShIndex >= 0)
+            val subsequentCommands = dispatched.subList(atShIndex + 1, dispatched.size)
+            assertFalse(
+                "AT AR must never be emitted after AT SH for header $hdr (R1)",
+                subsequentCommands.contains("AT AR") || subsequentCommands.contains(Elm327Protocol.CMD_AUTO_RECEIVE)
+            )
+        }
     }
 
     @Test

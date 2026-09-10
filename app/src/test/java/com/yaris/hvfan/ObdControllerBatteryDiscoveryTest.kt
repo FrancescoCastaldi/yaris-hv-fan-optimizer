@@ -457,15 +457,50 @@ class ObdControllerBatteryDiscoveryTest {
     }
 
     /**
-     * Major Release v3.0.0: Manual fan forcing (L1..L6) must bypass discovery and dispatch immediately.
+     * Requirement R3: Fan actuation must be prevented when battery communication is not established.
      */
     @Test
-    fun testManualFanForcingBypassesDiscovery() = runTest {
+    fun testFanActuationPreventedWhenBatteryCommunicationNotEstablished() = runTest {
         val fakeTransport = FakeObdTransport()
         fakeTransport.commandResponder = { cmd, _ ->
             when {
                 cmd.startsWith("AT") -> "OK"
-                cmd == ToyotaYarisCommands.PID_READ_BATTERY_DATA_TNGA -> "NO DATA"
+                cmd.startsWith("3008") || cmd.startsWith("2F58") -> "OK"
+                else -> "NO DATA"
+            }
+        }
+
+        val stateMachine = ObdStateMachine()
+        val controller = ObdController(
+            bleManager = fakeTransport,
+            scope = this,
+            stateMachine = stateMachine,
+            discoveryEngine = BatteryDiscoveryEngine()
+        )
+
+        controller.setManualForcedFan(true, level = 5)
+        assertTrue(controller.liveState.value.isManualFanForced)
+
+        controller.executeBatteryThermalCycle()
+
+        val dispatched = fakeTransport.dispatchedCommands
+        assertFalse(
+            "Fan command 2F58 must NOT be dispatched when battery communication is not established (R3)",
+            dispatched.any { it.startsWith("2F58") }
+        )
+        assertFalse(
+            "Fallback command 3008 must NOT be dispatched when battery communication is not established (R3)",
+            dispatched.any { it.startsWith("3008") }
+        )
+    }
+
+    @Test
+    fun testManualFanForcingDispatchesWhenBatteryCommunicationEstablished() = runTest {
+        val fakeTransport = FakeObdTransport()
+        fakeTransport.commandResponder = { cmd, _ ->
+            when {
+                cmd.startsWith("AT") -> "OK"
+                cmd == "2101" || cmd == ToyotaYarisCommands.PID_READ_BATTERY_DATA_TNGA -> "61 01 44 45 44 43 41 03"
                 cmd.startsWith("3008") || cmd.startsWith("2F58") -> "OK"
                 else -> "OK"
             }
@@ -511,7 +546,7 @@ class ObdControllerBatteryDiscoveryTest {
         fakeTransport.commandResponder = { cmd, _ ->
             when {
                 cmd.startsWith("AT") -> "OK"
-                cmd == ToyotaYarisCommands.PID_READ_BATTERY_DATA_TNGA -> "NO DATA"
+                cmd == "2101" || cmd == ToyotaYarisCommands.PID_READ_BATTERY_DATA_TNGA -> "61 01 44 45 44 43 41 03"
                 cmd.startsWith("2F58") -> "7F2F11" // Negative response (NRC)
                 cmd.startsWith("3008") -> "OK"
                 else -> "OK"
@@ -546,7 +581,7 @@ class ObdControllerBatteryDiscoveryTest {
         fakeTransport.commandResponder = { cmd, _ ->
             when {
                 cmd.startsWith("AT") -> "OK"
-                cmd == ToyotaYarisCommands.PID_READ_BATTERY_DATA_TNGA -> "NO DATA"
+                cmd == "2101" || cmd == ToyotaYarisCommands.PID_READ_BATTERY_DATA_TNGA -> "61 01 44 45 44 43 41 03"
                 cmd.startsWith("2F58") || cmd.startsWith("3008") -> "OK"
                 else -> "OK"
             }
@@ -559,6 +594,7 @@ class ObdControllerBatteryDiscoveryTest {
             stateMachine = stateMachine,
             discoveryEngine = BatteryDiscoveryEngine()
         )
+        controller.setTargetThreshold(45)
 
         // 1. Force fan
         controller.setManualForcedFan(true, level = 3)
@@ -616,12 +652,23 @@ class ObdControllerBatteryDiscoveryTest {
 
         fakeTransport.dispatchedCommands.clear()
 
-        // 4. Switch to Broadcast (7DF) -> AT SH 7DF + AT AR (Elm327Protocol.CMD_AUTO_RECEIVE)
+        // 4. Switch to Broadcast (7DF) -> AT SH 7DF without AT AR (R1)
         controller.ensureCanHeader(ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST)
         dispatched = fakeTransport.dispatchedCommands
         assertTrue(dispatched.contains("AT SH 7DF"))
-        assertTrue(dispatched.contains(Elm327Protocol.CMD_AUTO_RECEIVE))
+        assertFalse("AT AR must never be emitted after AT SH (R1)", dispatched.contains(Elm327Protocol.CMD_AUTO_RECEIVE))
+        assertFalse("AT AR must never be emitted after AT SH (R1)", dispatched.contains("AT AR"))
         assertFalse("Must NOT send invalid AT CRA without args", dispatched.contains("AT CRA"))
+
+        fakeTransport.dispatchedCommands.clear()
+
+        // 5. Functional engine broadcast pairing with CRA 7E8 (R2)
+        controller.activeEngineHeader = ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST
+        controller.ensureEngineHeader(force = true)
+        dispatched = fakeTransport.dispatchedCommands
+        assertTrue(dispatched.contains("AT SH 7DF"))
+        assertTrue(dispatched.contains("AT CRA 7E8"))
+        assertFalse("AT AR must never be emitted after AT SH (R1)", dispatched.contains("AT AR"))
     }
 }
 

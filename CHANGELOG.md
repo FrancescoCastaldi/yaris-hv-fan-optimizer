@@ -5,6 +5,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 - **MAJOR (`X.0.0`)**: Fundamental architectural overhauls, major subsystems, or comprehensive UI redesigns.
 - **MINOR (`0.X.0`)**: New features, additional sensors, ECU coding options, or telemetry pipelines.
 
+## [3.0.8] - 2026-09-10
+### 🛡️ CAN OBD-II Filter Sanitization, 7DF Functional Telemetry & Safe Fan Actuation
+- **R1: Elimination of Filter Corruption (`AT AR` removal after `AT SH`)**:
+  - Completely eliminated `AT AR` emission after `AT SH <header>` across all transmission contexts.
+  - Setting transmission header via `AT SH` and hardware receive filter via `AT CRA` now strictly preserves the CAN hardware filter without resetting it on ELM327 clone adapters.
+  - Kept system CAN Auto Formatting (`AT CAF 1`) active without sending corrupting Flow Control overrides.
+- **R2: Functional Addressing (`7DF`) Engine Telemetry & Fallback**:
+  - Implemented transparent fallback to functional broadcast `7DF` paired with `AT CRA 7E8` when physical `7E0` queries return `NO DATA` (such as on Toyota TNGA-B DLC3 Central Gateway isolation).
+  - Telemetry parameters (Engine RPM `010C`, Vehicle Speed `010D`, Coolant Temperature `0105`, Throttle `0111`) are acquired cleanly without dropping engine telemetry frames.
+- **R3: Safe Battery Fan Actuation & Auto-Recovery Reconnection Flapping Prevention**:
+  - Guarded fan actuation (`2F58030x` / `30080x`) to require established battery communication (`isBatteryCommunicationEstablished`: battery discovered, communication verified, temperature > 0.0°C), eliminating premature actuation commands at startup.
+  - Replaced destructive auto-recovery sequence (`\r\r` -> `AT Z` hard reset) with Warm Start (`AT WS`), preventing RFCOMM Bluetooth socket closure / crash.
+- **Monotonic Version Increment & Web Portal Synchronization**:
+  - Bumped `versionCode` to 46 and `versionName` to `3.0.8`.
+  - Updated all web portal links, simulator, and release automation scripts.
+
 ## [3.0.7] - 2026-09-10
 ### 🔋 Universal Mode 21 Battery Telemetry Prioritization & Secondary ECU Decoupling
 - **Mode 21 Universal Battery PID Prioritization**:

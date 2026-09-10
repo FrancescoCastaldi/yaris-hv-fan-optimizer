@@ -259,7 +259,16 @@ class ObdController(
 
                 // 2. Reset pulito dell'adattatore (AT Z) per dongle Vgate iCar Pro con pausa di avvio
                 addLog("Reset adattatore Vgate (AT Z)...")
-                val resZ = bleManager.sendCommand(Elm327Protocol.CMD_RESET, timeoutMs = 3000L)
+                val resZ = try {
+                    bleManager.sendCommand(Elm327Protocol.CMD_RESET, timeoutMs = 3000L)
+                } catch (e: Exception) {
+                    addLog("⚠️ AT Z non riuscito (${e.localizedMessage}), continuo con Warm Start (AT WS)...")
+                    try {
+                        bleManager.sendCommand(Elm327Protocol.CMD_WARM_START, timeoutMs = 2000L)
+                    } catch (e2: Exception) {
+                        ""
+                    }
+                }
                 addLog("Reset Response: ${Elm327Protocol.cleanResponse(resZ)}")
                 delay(300)
 
@@ -345,7 +354,7 @@ class ObdController(
                 _liveState.value = _liveState.value.copy(ecuAlertMessage = "Sincronizzazione CAN 500k...")
                 addLog("Sincronizzazione CAN 500k in corso (broadcast 7DF)...")
                 stateMachine.onCanSearching()
-                ensureCanHeader(ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST, force = true, skipHardwareFilters = true)
+                ensureCanHeader(ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST, force = true)
                 var stage0Res = bleManager.sendCommand(ToyotaYarisCommands.PID_SUPPORTED_PIDS, timeoutMs = 8000L)
                 var clean0 = Elm327Protocol.cleanResponse(stage0Res)
                 addLog("Broadcast 0100 Response: $clean0")
@@ -367,10 +376,11 @@ class ObdController(
                     addLog("ℹ️ Sincronizzazione broadcast 7DF senza risposta immediata ($clean0). Central Gateway Toyota potrebbe filtrare broadcast. Procedo ad aggancio diretto ECU Motore (7E0)...")
                 }
 
-                // 7. Stadio 1: aggancio rapido centralina motore standard (7E0)
+                // 7. Stadio 1: aggancio rapido centralina motore standard (7E0 o broadcast 7DF)
                 _liveState.value = _liveState.value.copy(ecuAlertMessage = "Aggancio motore 7E0...")
-                addLog("Handshake CAN Stadio 1: aggancio centralina motore (7E0)...")
-                ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU, force = true, skipHardwareFilters = true)
+                addLog("Handshake CAN Stadio 1: aggancio centralina motore...")
+                activeEngineHeader = ToyotaYarisCommands.HEADER_ENGINE_ECU
+                ensureEngineHeader(force = true)
 
                 var stage1Ok = false
                 var stage1Res = ""
@@ -410,6 +420,12 @@ class ObdController(
                     stage1Ok = Elm327Protocol.isStage1PositiveResponse(ToyotaYarisCommands.PID_SUPPORTED_PIDS, stage1Res)
                 }
 
+                if (!stage1Ok && stage0Ok) {
+                    addLog("ℹ️ Centralina motore 7E0 non risponde a query fisiche (filtro Central Gateway). Utilizzo broadcast funzionale 7DF.")
+                    activeEngineHeader = ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST
+                    stage1Ok = true
+                }
+
                 // Se la sincronizzazione su protocollo fisso 6 fallisce (es. UNABLE TO CONNECT o CAN ERROR),
                 // esegui fallback adattativo su AT SP 0 (auto-detect) prima di procedere
                 if (!stage0Ok && !stage1Ok && activeProtocolCmd != Elm327Protocol.PROTOCOL_FALLBACK) {
@@ -418,11 +434,10 @@ class ObdController(
                     val sp0Res = bleManager.sendCommand(Elm327Protocol.PROTOCOL_FALLBACK)
                     addLog("Protocollo Fallback (AT SP 0): ${Elm327Protocol.cleanResponse(sp0Res)}")
                     activeProtocolCmd = Elm327Protocol.PROTOCOL_FALLBACK
-                    bleManager.sendCommand(Elm327Protocol.CMD_AUTO_RECEIVE)
                     bleManager.sendCommand(Elm327Protocol.CMD_TIMEOUT_HANDSHAKE)
 
                     // Riprova broadcast 7DF con auto-detect
-                    ensureCanHeader(ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST, force = true, skipHardwareFilters = true)
+                    ensureCanHeader(ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST, force = true)
                     stage0Res = bleManager.sendCommand(ToyotaYarisCommands.PID_SUPPORTED_PIDS, timeoutMs = 8000L)
                     clean0 = Elm327Protocol.cleanResponse(stage0Res)
                     addLog("Broadcast 0100 (con AT SP 0): $clean0")
@@ -434,8 +449,8 @@ class ObdController(
                         stage0Ok = Elm327Protocol.isStage1PositiveResponse(ToyotaYarisCommands.PID_ENGINE_RPM, stage0Res)
                     }
 
-                    // Riprova aggancio 7E0 con auto-detect
-                    ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU, force = true, skipHardwareFilters = true)
+                    // Riprova aggancio motore con auto-detect
+                    ensureEngineHeader(force = true)
                     for (attempt in 1..2) {
                         stage1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_ENGINE_RPM, timeoutMs = 3500L)
                         cleanStage1 = Elm327Protocol.cleanResponse(stage1Res)
@@ -452,6 +467,10 @@ class ObdController(
                         addLog("Probe PID 0100 (con AT SP 0): $cleanStage1")
                         stage1Ok = Elm327Protocol.isStage1PositiveResponse(ToyotaYarisCommands.PID_SUPPORTED_PIDS, stage1Res)
                     }
+                    if (!stage1Ok && stage0Ok) {
+                        activeEngineHeader = ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST
+                        stage1Ok = true
+                    }
                 }
 
                 if (stage1Ok || stage0Ok) {
@@ -466,7 +485,7 @@ class ObdController(
                 // 8. Stadio 2: passaggio alla Centralina Batteria Denso HV (7E2) con fallback a catena trasparente
                 _liveState.value = _liveState.value.copy(ecuAlertMessage = "Lettura batteria 7E2...")
                 addLog("Handshake CAN Stadio 2: passaggio a Centralina Batteria Denso HV (7E2)...")
-                ensureCanHeader(ToyotaYarisCommands.HEADER_BATTERY_ECU, force = true, skipHardwareFilters = true)
+                ensureCanHeader(ToyotaYarisCommands.HEADER_BATTERY_ECU, force = true)
                 discoveryEngine.reset()
                 stateMachine.onBatteryDiscoveryProbing()
 
@@ -546,7 +565,7 @@ class ObdController(
                     // 8. Test supporto Multi-PID per telemetria motore e Dragy se il veicolo è attivo
                     if (canOk) {
                         addLog("Verifica supporto Multi-PID (010D0C11)...")
-                        ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU)
+                        ensureEngineHeader()
                         val testMultiRes = bleManager.sendCommand(ToyotaYarisCommands.CMD_MULTI_PID_ENGINE)
                         val cleanMulti = Elm327Protocol.cleanResponse(testMultiRes)
                         val parsedMulti = ToyotaYarisCommands.parseMultiPidEngineResponse(cleanMulti)
@@ -592,16 +611,27 @@ class ObdController(
     }
 
     internal var currentCanHeader: String = ""
+    internal var activeEngineHeader: String = ToyotaYarisCommands.HEADER_ENGINE_ECU
+
+    internal suspend fun ensureEngineHeader(force: Boolean = false) {
+        if (activeEngineHeader == ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST) {
+            ensureCanHeader(
+                ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST,
+                force = force,
+                customRxFilter = ToyotaYarisCommands.CRA_ENGINE_ECU
+            )
+        } else {
+            ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU, force = force)
+        }
+    }
 
     /**
-     * Esegue un probe OBD-II funzionale impostando sempre 7DF. Alcuni Vlinker/cloni conservano
-     * l'ultimo AT SH dopo standby o warm start, quindi AT AR da solo non ripristina l'header TX.
+     * Esegue un probe OBD-II funzionale impostando 7DF.
      */
     private suspend fun probeBroadcastCan(
         attempts: Int = 2,
         timeoutMs: Long = 6000L
     ): CanProbeResult {
-        bleManager.sendCommand(Elm327Protocol.CMD_AUTO_RECEIVE)
         currentCanHeader = ""
         ensureCanHeader(ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST)
         bleManager.sendCommand(Elm327Protocol.CMD_TIMEOUT_HANDSHAKE)
@@ -628,32 +658,26 @@ class ObdController(
      * Imposta l'header di trasmissione CAN dell'ECU bersaglio e configura in modo atomico
      * il corrispondente filtro hardware di ricezione (AT CRA), per garantire che i frame fisici
      * dell'ECU vengano sempre instradati all'applicazione senza scarti dal controller CAN interno dell'ELM327.
+     * R1: Non invia MAI AT AR dopo AT SH per evitare la corruzione dei filtri su cloni ELM327.
      */
     internal suspend fun ensureCanHeader(
         header: String,
         force: Boolean = false,
-        skipHardwareFilters: Boolean = false
+        skipHardwareFilters: Boolean = false,
+        customRxFilter: String? = null
     ) {
         if (currentCanHeader != header || force) {
             currentCanHeader = ""
             bleManager.sendCommand("AT SH $header")
             delay(25)
 
-            if (skipHardwareFilters) {
-                // Durante la fase iniziale di handshake CAN, evitiamo filtri AT CRA o comandi AT FC
-                // che alterano lo stack CAN dell'adattatore Vgate prima che il protocollo sia stabilizzato.
-                bleManager.sendCommand(Elm327Protocol.CMD_AUTO_RECEIVE)
-                delay(25)
-            } else {
+            if (!skipHardwareFilters) {
                 // Configura il filtro hardware di ricezione (AT CRA) corrispondente
-                val rxFilter = ToyotaYarisCommands.getFilterForHeader(header)
+                val rxFilter = customRxFilter ?: ToyotaYarisCommands.getFilterForHeader(header)
                 if (rxFilter != null) {
                     bleManager.sendCommand("AT CRA $rxFilter")
-                } else {
-                    // In broadcast (7DF) o header senza filtro fisso 1:1, ripristina ricezione automatica con AT AR
-                    bleManager.sendCommand(Elm327Protocol.CMD_AUTO_RECEIVE)
+                    delay(25)
                 }
-                delay(25)
 
                 when (header) {
                     ToyotaYarisCommands.HEADER_BATTERY_ECU -> {
@@ -685,6 +709,8 @@ class ObdController(
                         bleManager.sendCommand(Elm327Protocol.CMD_TIMEOUT_TELEMETRY)
                     }
                 }
+            } else {
+                bleManager.sendCommand(Elm327Protocol.CMD_TIMEOUT_TELEMETRY)
             }
             currentCanHeader = header
             // Pausa di stabilizzazione per i transceiver CAN dell'adattatore
@@ -721,11 +747,10 @@ class ObdController(
         stateMachine.onCanBusAutoRecovery()
         discoveryEngine.reset()
 
-        // Recovery Leggero: ripristina solo filtri, timeout e header CAN senza alterare la sincronizzazione
-        addLog("Tentativo auto-recovery leggero (AT AR / AT SH 7E0)...")
-        bleManager.sendCommand(Elm327Protocol.CMD_AUTO_RECEIVE)
+        // Recovery Leggero: ripristina timeout e header CAN senza alterare la sincronizzazione
+        addLog("Tentativo auto-recovery leggero (AT SH)...")
         bleManager.sendCommand(Elm327Protocol.CMD_TIMEOUT_HANDSHAKE)
-        ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU, force = true, skipHardwareFilters = true)
+        ensureEngineHeader(force = true)
 
         var s1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_ENGINE_RPM, timeoutMs = 3500L)
         var s1Ok = Elm327Protocol.isStage1PositiveResponse(ToyotaYarisCommands.PID_ENGINE_RPM, s1Res)
@@ -737,14 +762,23 @@ class ObdController(
             s1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_SUPPORTED_PIDS, timeoutMs = 3500L)
             s1Ok = Elm327Protocol.isStage1PositiveResponse(ToyotaYarisCommands.PID_SUPPORTED_PIDS, s1Res)
         }
+        if (!s1Ok && activeEngineHeader != ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST) {
+            addLog("Auto-recovery: 7E0 non risponde, fallback su broadcast funzionale 7DF...")
+            activeEngineHeader = ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST
+            ensureEngineHeader(force = true)
+            s1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_ENGINE_RPM, timeoutMs = 3500L)
+            s1Ok = Elm327Protocol.isStage1PositiveResponse(ToyotaYarisCommands.PID_ENGINE_RPM, s1Res)
+            if (!s1Ok) {
+                s1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_SUPPORTED_PIDS, timeoutMs = 3500L)
+                s1Ok = Elm327Protocol.isStage1PositiveResponse(ToyotaYarisCommands.PID_SUPPORTED_PIDS, s1Res)
+            }
+        }
 
         if (!s1Ok) {
-            addLog("Auto-recovery leggero fallito. Eseguo ripristino calibrato dello stack ELM327...")
-            // Reset rapido dello stack seriale ELM327 senza perdita connessione BLE
-            bleManager.sendWakeSequence()
-            delay(100)
-            bleManager.sendCommand(Elm327Protocol.CMD_RESET, timeoutMs = 3000L)
-            delay(250)
+            addLog("Auto-recovery leggero fallito. Eseguo ripristino calibrato dello stack ELM327 (Warm Start AT WS)...")
+            // Warm Start AT WS invece di \r\r -> AT Z che causa crash del socket Bluetooth (R3)
+            bleManager.sendCommand(Elm327Protocol.CMD_WARM_START, timeoutMs = 2000L)
+            delay(150)
             bleManager.sendCommand(Elm327Protocol.CMD_ECHO_OFF)
             bleManager.sendCommand(Elm327Protocol.CMD_LINEFEEDS_OFF)
             bleManager.sendCommand(Elm327Protocol.CMD_SPACES_OFF)
@@ -755,28 +789,28 @@ class ObdController(
             }
             bleManager.sendCommand(Elm327Protocol.CMD_ADAPTIVE_TIMING_1)
             bleManager.sendCommand(Elm327Protocol.CMD_CAN_AUTO_FORMAT_ON)
-            bleManager.sendCommand(Elm327Protocol.CMD_AUTO_RECEIVE)
             bleManager.sendCommand(Elm327Protocol.CMD_TIMEOUT_HANDSHAKE)
             
-            ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU, force = true, skipHardwareFilters = true)
+            ensureEngineHeader(force = true)
             s1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_ENGINE_RPM, timeoutMs = 3500L)
             s1Ok = Elm327Protocol.isStage1PositiveResponse(ToyotaYarisCommands.PID_ENGINE_RPM, s1Res)
             if (!s1Ok) {
-                s1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_VEHICLE_SPEED, timeoutMs = 3500L)
-                s1Ok = Elm327Protocol.isStage1PositiveResponse(ToyotaYarisCommands.PID_VEHICLE_SPEED, s1Res)
-            }
-            if (!s1Ok) {
                 s1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_SUPPORTED_PIDS, timeoutMs = 3500L)
                 s1Ok = Elm327Protocol.isStage1PositiveResponse(ToyotaYarisCommands.PID_SUPPORTED_PIDS, s1Res)
+            }
+            if (!s1Ok && activeEngineHeader != ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST) {
+                activeEngineHeader = ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST
+                ensureEngineHeader(force = true)
+                s1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_ENGINE_RPM, timeoutMs = 3500L)
+                s1Ok = Elm327Protocol.isStage1PositiveResponse(ToyotaYarisCommands.PID_ENGINE_RPM, s1Res)
             }
         }
 
         if (!s1Ok) {
             addLog("Tentativo auto-recovery secondario con autorilevamento protocollo (AT SP 0)...")
             bleManager.sendCommand(Elm327Protocol.PROTOCOL_FALLBACK)
-            bleManager.sendCommand(Elm327Protocol.CMD_AUTO_RECEIVE)
             bleManager.sendCommand(Elm327Protocol.CMD_TIMEOUT_HANDSHAKE)
-            ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU, force = true, skipHardwareFilters = true)
+            ensureEngineHeader(force = true)
             s1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_ENGINE_RPM, timeoutMs = 3500L)
             s1Ok = Elm327Protocol.isStage1PositiveResponse(ToyotaYarisCommands.PID_ENGINE_RPM, s1Res)
             if (!s1Ok) {
@@ -786,6 +820,12 @@ class ObdController(
             if (!s1Ok) {
                 s1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_SUPPORTED_PIDS, timeoutMs = 3500L)
                 s1Ok = Elm327Protocol.isStage1PositiveResponse(ToyotaYarisCommands.PID_SUPPORTED_PIDS, s1Res)
+            }
+            if (!s1Ok && activeEngineHeader != ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST) {
+                activeEngineHeader = ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST
+                ensureEngineHeader(force = true)
+                s1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_ENGINE_RPM, timeoutMs = 3500L)
+                s1Ok = Elm327Protocol.isStage1PositiveResponse(ToyotaYarisCommands.PID_ENGINE_RPM, s1Res)
             }
         }
 
@@ -882,8 +922,8 @@ class ObdController(
                 lastStandbyExitTimestamp = now
                 delay(250) // Stabilizzazione ricetrasmettitore CAN su adapter e bus
 
-                // Al risveglio dallo standby andiamo direttamente sull'ECU Motore 7E0
-                ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU, force = true)
+                // Al risveglio dallo standby andiamo direttamente sull'ECU Motore (attivo: 7E0 o fallback 7DF)
+                ensureEngineHeader(force = true)
                 var s1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_SUPPORTED_PIDS, timeoutMs = 3000L)
                 var s1Ok = Elm327Protocol.isValidCanResponse(s1Res)
                 
@@ -896,6 +936,18 @@ class ObdController(
                     s1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_VEHICLE_SPEED, timeoutMs = 3000L)
                     s1Ok = Elm327Protocol.isValidCanResponse(s1Res)
                 }
+
+                if (!s1Ok && activeEngineHeader != ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST) {
+                    addLog("Standby exit: 7E0 non risponde, commutazione su broadcast funzionale 7DF (R2)...")
+                    activeEngineHeader = ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST
+                    ensureEngineHeader(force = true)
+                    s1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_ENGINE_RPM, timeoutMs = 3000L)
+                    s1Ok = Elm327Protocol.isValidCanResponse(s1Res)
+                    if (!s1Ok) {
+                        s1Res = bleManager.sendCommand(ToyotaYarisCommands.PID_SUPPORTED_PIDS, timeoutMs = 3000L)
+                        s1Ok = Elm327Protocol.isValidCanResponse(s1Res)
+                    }
+                }
                 
                 if (s1Ok) {
                     stateMachine.onEngineTelemetrySuccess()
@@ -904,7 +956,7 @@ class ObdController(
                 // Handshake Stadio 2: reset discovery e predisposizione interrogazione non-bloccante
                 discoveryEngine.reset()
                 stateMachine.onBatteryDiscoveryProbing()
-                ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU)
+                ensureEngineHeader()
 
                 val canOk = s1Ok || (canProbe?.isValid == true)
                 standbyCycleCounter = 0
@@ -1112,10 +1164,12 @@ class ObdController(
 
             val isAutoCoolingActive = updatedAutoStatus.isEnabled && updatedAutoStatus.isActivelyCooling
             val isManualForced = currentState.isManualFanForced || currentState.fanForcedMax
-            val isBatteryValid = stateMachine.currentCapabilityState.batteryEcuDiscoveryState == BatteryEcuDiscoveryState.Discovered && updatedBattery.maxTemp > 0.0
+            val isBatteryDiscovered = stateMachine.currentCapabilityState.batteryEcuDiscoveryState == BatteryEcuDiscoveryState.Discovered && discoveryEngine.activeBatteryPid != null
+            val isBatteryValid = isBatteryDiscovered && updatedBattery.maxTemp > 0.0
+            val isBatteryCommunicationEstablished = (currentState.hasEcuCommunication || parsedStatus != null) && isBatteryValid
             
-            // La forzatura manuale scavalca lo stato di discovery per permettere test immediati
-            val shouldForceFan = isManualForced || (isBatteryValid && (isAutoCoolingActive || updatedBattery.maxTemp >= currentState.targetThreshold))
+            // R3: Prevenzione forzatura ventola quando la comunicazione con la centralina batteria non è stabilita
+            val shouldForceFan = isBatteryCommunicationEstablished && (isManualForced || isAutoCoolingActive || updatedBattery.maxTemp >= currentState.targetThreshold)
             val activeTargetSpeed = when {
                 isManualForced -> currentState.manualFanTargetLevel.coerceIn(1, 6)
                 isAutoCoolingActive -> updatedAutoStatus.targetSpeed.coerceIn(1, 6)
@@ -1159,16 +1213,16 @@ class ObdController(
         } finally {
             withContext(NonCancellable) {
                 try {
-                    ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU)
+                    ensureEngineHeader()
                 } catch (e: Exception) {
-                    Log.e(TAG, "Errore ripristino header CAN a 7E0 in finally", e)
+                    Log.e(TAG, "Errore ripristino header CAN motore in finally", e)
                 }
             }
         }
     }
 
     internal suspend fun executeEngineTelemetryFastCycle() {
-        ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU)
+        ensureEngineHeader()
 
         val sampleTimestamp = timeProvider()
         var currentSpeed: Int? = null
@@ -1211,6 +1265,18 @@ class ObdController(
             val rawLd = bleManager.sendCommand(ToyotaYarisCommands.PID_ENGINE_LOAD)
             val ld = ToyotaYarisCommands.parseEngineLoad(rawLd)
             if (ld != null) lastKnownLoad = ld
+        }
+
+        // Se eravamo su 7E0 e non abbiamo ricevuto né velocità né RPM (es. blocco gateway DLC3 o NO DATA),
+        // fallback automatico su broadcast funzionale 7DF (R2)
+        if (currentSpeed == null && currentRpm == null && activeEngineHeader == ToyotaYarisCommands.HEADER_ENGINE_ECU) {
+            addLog("Telemetria veloce: 7E0 non risponde, commutazione su broadcast funzionale 7DF (R2)...")
+            activeEngineHeader = ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST
+            ensureEngineHeader(force = true)
+            val retrySpd = bleManager.sendCommand(ToyotaYarisCommands.PID_VEHICLE_SPEED)
+            currentSpeed = ToyotaYarisCommands.parseVehicleSpeed(retrySpd)
+            val retryRpm = bleManager.sendCommand(ToyotaYarisCommands.PID_ENGINE_RPM)
+            currentRpm = ToyotaYarisCommands.parseEngineRpm(retryRpm)
         }
 
         if (currentSpeed != null) lastKnownSpeed = currentSpeed
@@ -1336,10 +1402,19 @@ class ObdController(
     }
 
     internal suspend fun executeCoolantWarmupCycle() {
-        ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU)
+        ensureEngineHeader()
 
-        val rawCoolant = bleManager.sendCommand(ToyotaYarisCommands.PID_COOLANT_TEMP)
-        val parsedCoolant = ToyotaYarisCommands.parseCoolantTemp(rawCoolant)
+        var rawCoolant = bleManager.sendCommand(ToyotaYarisCommands.PID_COOLANT_TEMP)
+        var parsedCoolant = ToyotaYarisCommands.parseCoolantTemp(rawCoolant)
+
+        if (parsedCoolant == null && activeEngineHeader == ToyotaYarisCommands.HEADER_ENGINE_ECU) {
+            addLog("Ciclo liquido raffreddamento: 7E0 non risponde, fallback su broadcast funzionale 7DF (R2)...")
+            activeEngineHeader = ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST
+            ensureEngineHeader(force = true)
+            rawCoolant = bleManager.sendCommand(ToyotaYarisCommands.PID_COOLANT_TEMP)
+            parsedCoolant = ToyotaYarisCommands.parseCoolantTemp(rawCoolant)
+        }
+
         if (parsedCoolant != null) {
             lastKnownCoolant = parsedCoolant
         }
@@ -1550,9 +1625,9 @@ class ObdController(
                 } finally {
                     try {
                         // Restore standard Engine CAN header for telemetry loop
-                        ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU)
+                        ensureEngineHeader()
                     } catch (e: Exception) {
-                        Log.e(TAG, "Errore ripristino header CAN 7E0 in finally", e)
+                        Log.e(TAG, "Errore ripristino header CAN motore in finally", e)
                     } finally {
                         isEcuOperationInProgress = false
                     }
@@ -1735,9 +1810,9 @@ class ObdController(
                 } finally {
                     try {
                         // Restore standard Engine CAN header for telemetry loop
-                        ensureCanHeader(ToyotaYarisCommands.HEADER_ENGINE_ECU)
+                        ensureEngineHeader()
                     } catch (e: Exception) {
-                        Log.e(TAG, "Errore ripristino header CAN 7E0 in finally", e)
+                        Log.e(TAG, "Errore ripristino header CAN motore in finally", e)
                     } finally {
                         isEcuOperationInProgress = false
                     }
