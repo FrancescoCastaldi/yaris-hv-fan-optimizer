@@ -241,6 +241,7 @@ class ObdController(
         loopStartTimestamp = timeProvider()
         standbyCycleCounter = 0
         currentCanHeader = ""
+        currentRxFilter = null
         _liveState.value = _liveState.value.copy(
             isInitialized = false,
             isLoopRunning = false,
@@ -423,6 +424,7 @@ class ObdController(
                 if (!stage1Ok && stage0Ok) {
                     addLog("ℹ️ Centralina motore 7E0 non risponde a query fisiche (filtro Central Gateway). Utilizzo broadcast funzionale 7DF.")
                     activeEngineHeader = ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST
+                    ensureEngineHeader(force = true)
                     stage1Ok = true
                 }
 
@@ -469,6 +471,7 @@ class ObdController(
                     }
                     if (!stage1Ok && stage0Ok) {
                         activeEngineHeader = ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST
+                        ensureEngineHeader(force = true)
                         stage1Ok = true
                     }
                 }
@@ -611,6 +614,7 @@ class ObdController(
     }
 
     internal var currentCanHeader: String = ""
+    internal var currentRxFilter: String? = null
     internal var activeEngineHeader: String = ToyotaYarisCommands.HEADER_ENGINE_ECU
 
     internal suspend fun ensureEngineHeader(force: Boolean = false) {
@@ -633,6 +637,7 @@ class ObdController(
         timeoutMs: Long = 6000L
     ): CanProbeResult {
         currentCanHeader = ""
+        currentRxFilter = null
         ensureCanHeader(ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST)
         bleManager.sendCommand(Elm327Protocol.CMD_TIMEOUT_HANDSHAKE)
         delay(30)
@@ -666,16 +671,23 @@ class ObdController(
         skipHardwareFilters: Boolean = false,
         customRxFilter: String? = null
     ) {
-        if (currentCanHeader != header || force) {
+        val targetRxFilter = if (!skipHardwareFilters) {
+            customRxFilter ?: ToyotaYarisCommands.getFilterForHeader(header)
+        } else null
+
+        val needsHeaderUpdate = (currentCanHeader != header) || force
+        val needsFilterUpdate = (currentRxFilter != targetRxFilter) || force
+
+        if (needsHeaderUpdate || needsFilterUpdate) {
             currentCanHeader = ""
+            currentRxFilter = null
             bleManager.sendCommand("AT SH $header")
             delay(25)
 
             if (!skipHardwareFilters) {
                 // Configura il filtro hardware di ricezione (AT CRA) corrispondente
-                val rxFilter = customRxFilter ?: ToyotaYarisCommands.getFilterForHeader(header)
-                if (rxFilter != null) {
-                    bleManager.sendCommand("AT CRA $rxFilter")
+                if (targetRxFilter != null) {
+                    bleManager.sendCommand("AT CRA $targetRxFilter")
                     delay(25)
                 }
 
@@ -713,6 +725,7 @@ class ObdController(
                 bleManager.sendCommand(Elm327Protocol.CMD_TIMEOUT_TELEMETRY)
             }
             currentCanHeader = header
+            currentRxFilter = targetRxFilter
             // Pausa di stabilizzazione per i transceiver CAN dell'adattatore
             delay(50)
         }
@@ -729,6 +742,7 @@ class ObdController(
         if (!Elm327Protocol.isVehicleReady(volt) && volt > 0f) {
             addLog("Auto non in READY (12V: ${volt}V < 13.0V): passaggio a standby a basso consumo.")
             currentCanHeader = ""
+            currentRxFilter = null
             discoveryEngine.reset()
             stateMachine.onVehicleStandby()
             _liveState.value = _liveState.value.copy(
@@ -918,6 +932,7 @@ class ObdController(
                     addLog("⚡ RILEVATO QUADRO ACCESO AUTO (12V: ${volt}V < 13.0V, CAN 7DF attivo)! Uscita dallo standby...")
                 }
                 currentCanHeader = ""
+                currentRxFilter = null
                 lastAutoRecoveryTimestamp = now
                 lastStandbyExitTimestamp = now
                 delay(250) // Stabilizzazione ricetrasmettitore CAN su adapter e bus
@@ -1008,6 +1023,7 @@ class ObdController(
                 if (consecutiveStandbyChecks >= 4) {
                     addLog("💤 Auto spenta (12V: ${volt}V < 11.8V, CAN silente per >12s). Entrata in standby.")
                     currentCanHeader = ""
+                    currentRxFilter = null
                     discoveryEngine.reset()
                     stateMachine.onVehicleStandby()
                     _liveState.value = _liveState.value.copy(
@@ -1272,6 +1288,7 @@ class ObdController(
         if (currentSpeed == null && currentRpm == null && activeEngineHeader == ToyotaYarisCommands.HEADER_ENGINE_ECU) {
             addLog("Telemetria veloce: 7E0 non risponde, commutazione su broadcast funzionale 7DF (R2)...")
             activeEngineHeader = ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST
+            isMultiPidSupported = false
             ensureEngineHeader(force = true)
             val retrySpd = bleManager.sendCommand(ToyotaYarisCommands.PID_VEHICLE_SPEED)
             currentSpeed = ToyotaYarisCommands.parseVehicleSpeed(retrySpd)
@@ -1410,6 +1427,7 @@ class ObdController(
         if (parsedCoolant == null && activeEngineHeader == ToyotaYarisCommands.HEADER_ENGINE_ECU) {
             addLog("Ciclo liquido raffreddamento: 7E0 non risponde, fallback su broadcast funzionale 7DF (R2)...")
             activeEngineHeader = ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST
+            isMultiPidSupported = false
             ensureEngineHeader(force = true)
             rawCoolant = bleManager.sendCommand(ToyotaYarisCommands.PID_COOLANT_TEMP)
             parsedCoolant = ToyotaYarisCommands.parseCoolantTemp(rawCoolant)
@@ -1513,6 +1531,7 @@ class ObdController(
         loopJob?.cancel()
         loopJob = null
         currentCanHeader = ""
+        currentRxFilter = null
         isEcuOperationInProgress = false
         discoveryEngine.reset()
         stateMachine.teardownAllCapabilities(BleTransportState.Disconnected)

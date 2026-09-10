@@ -662,13 +662,19 @@ class ObdControllerBatteryDiscoveryTest {
 
         fakeTransport.dispatchedCommands.clear()
 
-        // 5. Functional engine broadcast pairing with CRA 7E8 (R2)
+        // 5. Functional engine broadcast pairing with CRA 7E8 (R2) without needing force = true
         controller.activeEngineHeader = ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST
-        controller.ensureEngineHeader(force = true)
+        controller.ensureEngineHeader()
         dispatched = fakeTransport.dispatchedCommands
         assertTrue(dispatched.contains("AT SH 7DF"))
         assertTrue(dispatched.contains("AT CRA 7E8"))
         assertFalse("AT AR must never be emitted after AT SH (R1)", dispatched.contains("AT AR"))
+
+        fakeTransport.dispatchedCommands.clear()
+
+        // 6. Idempotent call to ensureEngineHeader() under same header & filter -> no re-dispatch
+        controller.ensureEngineHeader()
+        assertEquals("Should not re-dispatch AT commands if header and filter have not changed", 0, fakeTransport.dispatchedCommands.size)
     }
 }
 

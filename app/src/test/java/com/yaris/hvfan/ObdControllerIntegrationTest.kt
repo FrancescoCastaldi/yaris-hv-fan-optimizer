@@ -992,6 +992,125 @@ class ObdControllerIntegrationTest {
     }
 
     @Test
+    fun testEnsureEngineHeaderUpdatesFilterWithoutForce() = kotlinx.coroutines.test.runTest {
+        val dispatched = mutableListOf<String>()
+        val fakeTransport = object : ObdTransport {
+            override val connectionState = kotlinx.coroutines.flow.MutableStateFlow<com.yaris.hvfan.ble.BleConnectionState>(
+                com.yaris.hvfan.ble.BleConnectionState.Connected("Test Adapter", "00:11:22:33:44:55")
+            )
+            override fun getConnectedDeviceName() = "Test Adapter"
+            override suspend fun sendWakeSequence() { dispatched.add("WAKE") }
+            override suspend fun sendCommand(command: String, timeoutMs: Long): String {
+                dispatched.add(command)
+                return "OK"
+            }
+        }
+        val controller = ObdController(bleManager = fakeTransport, scope = this)
+
+        // 1. Initial functional broadcast without filter
+        controller.ensureCanHeader(ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST)
+        assertTrue(dispatched.contains("AT SH 7DF"))
+        assertFalse(dispatched.contains("AT CRA 7E8"))
+
+        dispatched.clear()
+
+        // 2. Switch engine active header to 7DF and call ensureEngineHeader() WITHOUT force
+        controller.activeEngineHeader = ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST
+        controller.ensureEngineHeader(force = false)
+
+        // Must detect that rxFilter changed from null to 7E8 and dispatch AT CRA 7E8
+        assertTrue("Must re-dispatch AT SH 7DF when filter changes", dispatched.contains("AT SH 7DF"))
+        assertTrue("Must dispatch AT CRA 7E8 when filter changes", dispatched.contains("AT CRA 7E8"))
+        assertFalse(dispatched.contains("AT AR"))
+
+        dispatched.clear()
+
+        // 3. Consecutive call with same header and filter must be idempotent
+        controller.ensureEngineHeader(force = false)
+        assertEquals("Subsequent call must be idempotent and dispatch 0 commands", 0, dispatched.size)
+    }
+
+    @Test
+    fun testEngineTelemetryFastCycleFallbackTo7DfOn7E0NoData() = kotlinx.coroutines.test.runTest {
+        val dispatched = mutableListOf<String>()
+        val fakeTransport = object : ObdTransport {
+            override val connectionState = kotlinx.coroutines.flow.MutableStateFlow<com.yaris.hvfan.ble.BleConnectionState>(
+                com.yaris.hvfan.ble.BleConnectionState.Connected("Test Adapter", "00:11:22:33:44:55")
+            )
+            override fun getConnectedDeviceName() = "Test Adapter"
+            override suspend fun sendWakeSequence() { dispatched.add("WAKE") }
+            override suspend fun sendCommand(command: String, timeoutMs: Long): String {
+                dispatched.add(command)
+                return when (command) {
+                    "AT SH 7E0", "AT SH 7DF", "AT CRA 7E8" -> "OK\r\n>"
+                    "010D" -> {
+                        // If current header was 7DF, succeed with 50 km/h; if 7E0, return NO DATA
+                        if (dispatched.lastOrNull { it.startsWith("AT SH") } == "AT SH 7DF") {
+                            "41 0D 32\r\n>" // 50 km/h
+                        } else {
+                            "NO DATA\r\n>"
+                        }
+                    }
+                    "010C" -> {
+                        if (dispatched.lastOrNull { it.startsWith("AT SH") } == "AT SH 7DF") {
+                            "41 0C 0F A0\r\n>" // 1000 RPM
+                        } else {
+                            "NO DATA\r\n>"
+                        }
+                    }
+                    else -> "NO DATA\r\n>"
+                }
+            }
+        }
+        val controller = ObdController(bleManager = fakeTransport, scope = this)
+        controller.activeEngineHeader = ToyotaYarisCommands.HEADER_ENGINE_ECU
+
+        controller.executeEngineTelemetryFastCycle()
+
+        assertEquals("activeEngineHeader must switch to 7DF upon 7E0 NO DATA", ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST, controller.activeEngineHeader)
+        assertTrue("Must have dispatched AT SH 7DF during fallback", dispatched.contains("AT SH 7DF"))
+        assertTrue("Must have dispatched AT CRA 7E8 during fallback", dispatched.contains("AT CRA 7E8"))
+        assertEquals("Speed must be parsed from 7DF fallback response", 50, controller.liveState.value.accelerationState.currentSpeedKmh)
+        assertTrue("Performance status must have live data after successful 7DF telemetry", controller.liveState.value.performanceStatus.hasLiveData)
+    }
+
+    @Test
+    fun testCoolantWarmupCycleFallbackTo7DfOn7E0NoData() = kotlinx.coroutines.test.runTest {
+        val dispatched = mutableListOf<String>()
+        val fakeTransport = object : ObdTransport {
+            override val connectionState = kotlinx.coroutines.flow.MutableStateFlow<com.yaris.hvfan.ble.BleConnectionState>(
+                com.yaris.hvfan.ble.BleConnectionState.Connected("Test Adapter", "00:11:22:33:44:55")
+            )
+            override fun getConnectedDeviceName() = "Test Adapter"
+            override suspend fun sendWakeSequence() { dispatched.add("WAKE") }
+            override suspend fun sendCommand(command: String, timeoutMs: Long): String {
+                dispatched.add(command)
+                return when (command) {
+                    "AT SH 7E0", "AT SH 7DF", "AT CRA 7E8" -> "OK\r\n>"
+                    "0105" -> {
+                        if (dispatched.lastOrNull { it.startsWith("AT SH") } == "AT SH 7DF") {
+                            "41 05 5A\r\n>" // 90 - 40 = 50°C
+                        } else {
+                            "NO DATA\r\n>"
+                        }
+                    }
+                    "010F" -> "41 0F 3C\r\n>" // 60 - 40 = 20°C
+                    else -> "NO DATA\r\n>"
+                }
+            }
+        }
+        val controller = ObdController(bleManager = fakeTransport, scope = this)
+        controller.activeEngineHeader = ToyotaYarisCommands.HEADER_ENGINE_ECU
+
+        controller.executeCoolantWarmupCycle()
+
+        assertEquals("activeEngineHeader must switch to 7DF upon 7E0 NO DATA", ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST, controller.activeEngineHeader)
+        assertTrue("Must have dispatched AT SH 7DF during fallback", dispatched.contains("AT SH 7DF"))
+        assertTrue("Must have dispatched AT CRA 7E8 during fallback", dispatched.contains("AT CRA 7E8"))
+        assertEquals(50.0f, controller.liveState.value.warmupStatus.coolantTemp, 0.1f)
+    }
+
+    @Test
     fun testVgateHandshakeCloneToleranceAndSuccessfulOnlineState() = kotlinx.coroutines.test.runTest {
         val dispatched = mutableListOf<String>()
         val fakeTransport = object : ObdTransport {
