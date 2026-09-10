@@ -1373,4 +1373,156 @@ class ObdControllerIntegrationTest {
         assertFalse("Lo stato di standby deve essere stato disattivato", controller.liveState.value.isStandbyMode)
         assertTrue("La comunicazione con ECU deve essere attiva", controller.liveState.value.hasEcuCommunication)
     }
+
+    @Test
+    fun testEngineTelemetryFastCycleFallbackTo7DfRetriesThrottle() = kotlinx.coroutines.test.runTest {
+        val dispatched = mutableListOf<String>()
+        val fakeTransport = object : ObdTransport {
+            override val connectionState = kotlinx.coroutines.flow.MutableStateFlow<com.yaris.hvfan.ble.BleConnectionState>(
+                com.yaris.hvfan.ble.BleConnectionState.Connected("Test Adapter", "00:11:22:33:44:55")
+            )
+            override fun getConnectedDeviceName() = "Test Adapter"
+            override suspend fun sendWakeSequence() { dispatched.add("WAKE") }
+            override suspend fun sendCommand(command: String, timeoutMs: Long): String {
+                dispatched.add(command)
+                return when (command) {
+                    "AT SH 7E0", "AT SH 7DF", "AT CRA 7E8" -> "OK\r\n>"
+                    "010D" -> {
+                        if (dispatched.lastOrNull { it.startsWith("AT SH") } == "AT SH 7DF") {
+                            "41 0D 28\r\n>" // 40 km/h
+                        } else {
+                            "NO DATA\r\n>"
+                        }
+                    }
+                    "010C" -> {
+                        if (dispatched.lastOrNull { it.startsWith("AT SH") } == "AT SH 7DF") {
+                            "41 0C 0B B8\r\n>" // 3000 RPM
+                        } else {
+                            "NO DATA\r\n>"
+                        }
+                    }
+                    "0111" -> {
+                        if (dispatched.lastOrNull { it.startsWith("AT SH") } == "AT SH 7DF") {
+                            "41 11 66\r\n>" // 102 * 100 / 255 = 40.0%
+                        } else {
+                            "NO DATA\r\n>"
+                        }
+                    }
+                    else -> "NO DATA\r\n>"
+                }
+            }
+        }
+        val controller = ObdController(bleManager = fakeTransport, scope = this)
+        controller.activeEngineHeader = ToyotaYarisCommands.HEADER_ENGINE_ECU
+
+        controller.executeEngineTelemetryFastCycle()
+
+        assertEquals(ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST, controller.activeEngineHeader)
+        assertTrue("Throttle 0111 should be retried on 7DF fallback", dispatched.contains("0111"))
+        assertEquals(40.0f, controller.liveState.value.performanceStatus.throttlePercent, 0.5f)
+    }
+
+    @Test
+    fun testCoolantWarmupCycleFallbackUpdatesTimestampsAndNotifiesSuccess() = kotlinx.coroutines.test.runTest {
+        val dispatched = mutableListOf<String>()
+        val fakeTransport = object : ObdTransport {
+            override val connectionState = kotlinx.coroutines.flow.MutableStateFlow<com.yaris.hvfan.ble.BleConnectionState>(
+                com.yaris.hvfan.ble.BleConnectionState.Connected("Test Adapter", "00:11:22:33:44:55")
+            )
+            override fun getConnectedDeviceName() = "Test Adapter"
+            override suspend fun sendWakeSequence() { dispatched.add("WAKE") }
+            override suspend fun sendCommand(command: String, timeoutMs: Long): String {
+                dispatched.add(command)
+                return when (command) {
+                    "AT SH 7E0", "AT SH 7DF", "AT CRA 7E8" -> "OK\r\n>"
+                    "0105" -> {
+                        if (dispatched.lastOrNull { it.startsWith("AT SH") } == "AT SH 7DF") {
+                            "41 05 50\r\n>" // 80 - 40 = 40°C
+                        } else {
+                            "NO DATA\r\n>"
+                        }
+                    }
+                    "010F" -> "41 0F 3C\r\n>" // 20°C
+                    else -> "NO DATA\r\n>"
+                }
+            }
+        }
+        val testFixedTime = 1_234_567L
+        val controller = ObdController(
+            bleManager = fakeTransport,
+            scope = this,
+            timeProvider = { testFixedTime }
+        )
+        controller.activeEngineHeader = ToyotaYarisCommands.HEADER_ENGINE_ECU
+
+        controller.executeCoolantWarmupCycle()
+
+        assertEquals(testFixedTime, controller.lastValidCanTimestamp)
+        assertEquals(40.0f, controller.liveState.value.warmupStatus.coolantTemp, 0.1f)
+    }
+
+    @Test
+    fun testBatteryThermalCycleUsesInjectedTimeProvider() = kotlinx.coroutines.test.runTest {
+        val fakeTransport = object : ObdTransport {
+            override val connectionState = kotlinx.coroutines.flow.MutableStateFlow<com.yaris.hvfan.ble.BleConnectionState>(
+                com.yaris.hvfan.ble.BleConnectionState.Connected("Test Adapter", "00:11:22:33:44:55")
+            )
+            override fun getConnectedDeviceName() = "Test Adapter"
+            override suspend fun sendWakeSequence() {}
+            override suspend fun sendCommand(command: String, timeoutMs: Long): String {
+                return when (command) {
+                    "2101", ToyotaYarisCommands.PID_READ_BATTERY_DATA_TNGA -> "61 01 44 45 44 43 41 03"
+                    else -> "OK\r\n>"
+                }
+            }
+        }
+        val testFixedTime = 9_876_543L
+        val controller = ObdController(
+            bleManager = fakeTransport,
+            scope = this,
+            timeProvider = { testFixedTime }
+        )
+
+        controller.executeBatteryThermalCycle()
+
+        assertEquals("Battery cycle must assign lastValidCanTimestamp using injected timeProvider", testFixedTime, controller.lastValidCanTimestamp)
+    }
+
+    @Test
+    fun testProbeBroadcastCanSetsEngineRxFilter() = kotlinx.coroutines.test.runTest {
+        val dispatched = mutableListOf<String>()
+        val fakeTransport = object : ObdTransport {
+            override val connectionState = kotlinx.coroutines.flow.MutableStateFlow<com.yaris.hvfan.ble.BleConnectionState>(
+                com.yaris.hvfan.ble.BleConnectionState.Connected("Test Adapter", "00:11:22:33:44:55")
+            )
+            override fun getConnectedDeviceName() = "Test Adapter"
+            override suspend fun sendWakeSequence() {}
+            override suspend fun sendCommand(command: String, timeoutMs: Long): String {
+                dispatched.add(command)
+                return when (command) {
+                    "AT RV" -> "12.0V\r\n>" // Non READY, triggers probeBroadcastCan
+                    "0100" -> "41 00 BE 7F A8 11\r\n>"
+                    else -> "OK\r\n>"
+                }
+            }
+        }
+        val controller = ObdController(bleManager = fakeTransport, scope = this)
+
+        // Put into standby
+        controller.stateMachine.onVehicleStandby()
+        val field = ObdController::class.java.getDeclaredField("_liveState")
+        field.isAccessible = true
+        @Suppress("UNCHECKED_CAST")
+        val stateFlow = field.get(controller) as kotlinx.coroutines.flow.MutableStateFlow<ObdLiveState>
+        stateFlow.value = stateFlow.value.copy(
+            isInitialized = true,
+            isStandbyMode = true,
+            hasEcuCommunication = false
+        )
+
+        controller.executeDualRateCycle()
+
+        assertTrue("Standby probeBroadcastCan must set AT SH 7DF", dispatched.contains("AT SH 7DF"))
+        assertTrue("Standby probeBroadcastCan must set AT CRA 7E8 to isolate engine broadcast", dispatched.contains("AT CRA 7E8"))
+    }
 }

@@ -103,7 +103,7 @@ class ObdController(
     private var isProtocolInitialized = false
     private var isMultiPidSupported = false
     private var isCustomFcSupported = false
-    private var lastValidCanTimestamp = 0L
+    internal var lastValidCanTimestamp = 0L
     private var loopStartTimestamp = 0L
     private var standbyCycleCounter = 0
     private var consecutiveStandbyChecks = 0
@@ -638,7 +638,10 @@ class ObdController(
     ): CanProbeResult {
         currentCanHeader = ""
         currentRxFilter = null
-        ensureCanHeader(ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST)
+        ensureCanHeader(
+            ToyotaYarisCommands.HEADER_FUNCTIONAL_BROADCAST,
+            customRxFilter = ToyotaYarisCommands.CRA_ENGINE_ECU
+        )
         bleManager.sendCommand(Elm327Protocol.CMD_TIMEOUT_HANDSHAKE)
         delay(30)
 
@@ -1131,7 +1134,7 @@ class ObdController(
                         discoveryEngine.onCandidateSuccess(candidateToProbe)
                         addLog("✅ Motore discovery phased batteria: agganciato PID $candidateToProbe!")
                     }
-                    lastValidCanTimestamp = System.currentTimeMillis()
+                    lastValidCanTimestamp = timeProvider()
                     stateMachine.onBatteryDiscovered(candidateToProbe)
                 } else {
                     if (isProbing) {
@@ -1149,13 +1152,13 @@ class ObdController(
             val updatedBattery = if (parsedStatus != null) {
                 parsedStatus
             } else {
-                currentState.batteryStatus.copy(timestamp = System.currentTimeMillis())
+                currentState.batteryStatus.copy(timestamp = timeProvider())
             }
 
             // Valutazione Smart Auto-Cooling
             var updatedAutoStatus = autoStatus
             if (autoStatus.isEnabled && updatedBattery.maxTemp > 0.0) {
-                val nowMs = System.currentTimeMillis()
+                val nowMs = timeProvider()
                 if (!autoStatus.isActivelyCooling && updatedBattery.maxTemp >= autoStatus.triggerTemp) {
                     // Innesco protezione termica!
                     updatedAutoStatus = autoStatus.copy(
@@ -1294,6 +1297,10 @@ class ObdController(
             currentSpeed = ToyotaYarisCommands.parseVehicleSpeed(retrySpd)
             val retryRpm = bleManager.sendCommand(ToyotaYarisCommands.PID_ENGINE_RPM)
             currentRpm = ToyotaYarisCommands.parseEngineRpm(retryRpm)
+            if (currentThrottle == null) {
+                val retryThr = bleManager.sendCommand(ToyotaYarisCommands.PID_THROTTLE_POS)
+                currentThrottle = ToyotaYarisCommands.parseThrottlePos(retryThr)
+            }
         }
 
         if (currentSpeed != null) lastKnownSpeed = currentSpeed
@@ -1435,12 +1442,15 @@ class ObdController(
 
         if (parsedCoolant != null) {
             lastKnownCoolant = parsedCoolant
+            lastValidCanTimestamp = timeProvider()
+            stateMachine.onEngineTelemetrySuccess()
         }
 
         val rawAmbient = bleManager.sendCommand(ToyotaYarisCommands.PID_INTAKE_AIR_TEMP)
         val parsedAmbient = ToyotaYarisCommands.parseIntakeAirTemp(rawAmbient)
         if (parsedAmbient != null) {
             lastKnownAmbient = parsedAmbient
+            lastValidCanTimestamp = timeProvider()
         }
 
         if (parsedCoolant != null || lastKnownCoolant > 0f) {
