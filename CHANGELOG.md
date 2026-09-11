@@ -5,6 +5,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 - **MAJOR (`X.0.0`)**: Fundamental architectural overhauls, major subsystems, or comprehensive UI redesigns.
 - **MINOR (`0.X.0`)**: New features, additional sensors, ECU coding options, or telemetry pipelines.
 
+## [3.0.9] - 2026-09-11
+### 🔌 Risoluzione Definitiva Connessione OBD-II Toyota TNGA-B & Vgate iCar Pro
+- **FIX 1: Bonifica Totale di `AT AR` dall'Handshake**:
+  - Rimosso completamente `AT AR` dalla sequenza di negoziazione in `performHandshake()`, azzerando la desincronizzazione e il ripristino involontario dei filtri di ricezione sui cloni ELM327 v2.3 / STN.
+- **FIX 2: Stabilizzazione Rigida Protocollo `AT SP 6`**:
+  - Immediata sincronizzazione su protocollo ISO 15765-4 CAN 11-bit 500kbaud (`AT SP 6`) senza mai usare `AT SPA 6`.
+  - Introdotti 100ms di guard-time per assestamento oscillatore UART/CAN e verifica con `AT DPN` con fallback agganciato su protocollo 6.
+- **FIX 3: Gateway Wake-Up e Routing Handshake a 3 Stadi**:
+  - **Stadio 0 (Sveglia Gateway Broadcast)**: query broadcast `7DF` -> `0100` preliminare per svegliare e instradare la sessione diagnostica su V-CAN e C-CAN del Central Gateway TNGA-B.
+  - **Stadio 1 (Aggancio Motore con Isolamento Hardware)**: interrogazione diretta `7E0` + `CRA 7E8` con scatto immediato su fallback broadcast funzionale `7DF` + `CRA 7E8` su risposte vuote (`NO DATA`).
+  - **Stadio 2 (Aggancio HV BMS Denso)**: commutazione su `7E2` + `CRA 7EA` con timeout esteso `AT ST FF` (~1044ms) per la ricezione completa dei frame ISO-TP multiframe.
+- **FIX 4: Gestione Avanzata Negative Response Codes (NRC) UDS**:
+  - Parser UDS NRC per `7F <Service> <NRC>`: rifiuto permanente immediato per `7F xx 11` (*ServiceNotSupported*) e `7F xx 12` (*SubFunctionNotSupported*), isolamento in attesa per `7F xx 22` (*ConditionsNotCorrect*), e attesa frame per `7F xx 78` (*ResponsePending*).
+- **FIX 5: Timeout Dinamici Calibrati sullo Stato Veicolo (READY vs ACC)**:
+  - Misurazione continua della tensione ausiliaria 12V con `AT RV`.
+  - In stato READY (convertitore DC-DC attivo, tensione >= 13.0V): applicati timeout rapidi e aggressivi (`AT ST 32` / `AT ST 64`).
+  - In stato quadro acceso non READY (< 13.0V): polling rilassato con standby timeout a basso consumo (`AT ST 64`) per preservare la batteria dei servizi.
+- **FIX 6: Resilienza Bluetooth SPP / BLE con `AT WS` & Serial Drain**:
+  - Auto-recovery CAN blindato su Warm Start `AT WS` e ritardo di stabilizzazione di 100ms, preservando intatto il socket RFCOMM/BLE.
+  - Flush automatico del buffer seriale con drain `\r` a vuoto e pausa di 50ms sui comandi andati in timeout.
+- **FIX 7: Unificazione e Pulizia Costanti Inizializzazione**:
+  - Unificata la sequenza in un'unica lista canonica `INIT_COMMANDS` con `AT H0` (formato compatto standard ELM327) e rimozione totale di `AT AR`, con alias backward-compatible `VGATE_CALIBRATED_INIT_COMMANDS`.
+- **Monotonic Version Increment & Web Portal Synchronization**:
+  - Incremento versione a `v3.0.9` (`versionCode = 47`).
+  - Sincronizzazione automatica di tutti i file di distribuzione APK e pagine web del portale.
+
 ## [3.0.8] - 2026-09-10
 ### 🛡️ CAN OBD-II Filter Sanitization, 7DF Functional Telemetry & Safe Fan Actuation
 - **R1: Elimination of Filter Corruption (`AT AR` removal after `AT SH`)**:

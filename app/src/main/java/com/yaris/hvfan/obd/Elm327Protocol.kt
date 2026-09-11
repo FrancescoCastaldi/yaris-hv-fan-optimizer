@@ -43,35 +43,24 @@ object Elm327Protocol {
     // cosi' da lasciare spazio a retry/gestione errori lato BLE.
     const val CMD_TIMEOUT_BATTERY_ECU = "AT ST FF"  // ~1044 ms (0xFF * 4.096ms) per ricezione affidabile multi-frame pacco celle Denso ISO-TP
     const val CMD_TIMEOUT_TELEMETRY = "AT ST 32"    // ~205 ms, default ELM327, per il loop rapido
+    const val CMD_TIMEOUT_TELEMETRY_STANDBY = "AT ST 64" // ~410 ms per quadro acceso / non-READY (FIX 5)
     const val CMD_TIMEOUT_ECU_CODING = "AT ST 96"   // ~614 ms per Body, Meter, Aircon e ADAS UDS Mode 21/22/3B
 
-    // Sequenza di handshake standard Hybrid Assistant ad alta affidabilità per Toyota Yaris
+    // Sequenza canonica di handshake standard calibrata per Vgate iCar Pro & Toyota Yaris Hybrid TNGA-B
     val INIT_COMMANDS = listOf(
-        CMD_WARM_START,          // Warm Start invece di Hard Reset (evita freeze su cloni ELM327)
-        CMD_ECHO_OFF,            // Echo Off
-        CMD_PROTOCOL_CAN_11_500, // ISO 15765-4 CAN 11-bit 500kbaud: protocollo prima del timing
-        CMD_ADAPTIVE_TIMING_1,   // Standard Adaptive Timing (stabile su multi-frame CAN)
-        CMD_HEADERS_ON,          // Headers On (per tracciamento ECU 7EA / 7E8 / 7B0)
-        CMD_LINEFEEDS_OFF,       // Linefeeds Off
-        CMD_SPACES_OFF,          // Spaces Off
-        CMD_CAN_AUTO_FORMAT_ON,  // CAN Auto-Formatting On
-        CMD_AUTO_RECEIVE,        // Azzera eventuali filtri AT CRA residui
-        CMD_TIMEOUT_HANDSHAKE    // Finestra ampia per l'handshake sul bus
-    )
-
-    // Sequenza calibrata per Vgate iCar Pro & CAN TNGA-B conforme ai requisiti R1
-    val VGATE_CALIBRATED_INIT_COMMANDS = listOf(
-        CMD_RESET,               // AT Z (reset pulito Vgate)
+        CMD_WARM_START,          // AT WS (Warm Start senza drop del socket Bluetooth)
         CMD_ECHO_OFF,            // AT E0
         CMD_LINEFEEDS_OFF,       // AT L0
         CMD_SPACES_OFF,          // AT S0
-        CMD_HEADERS_OFF,         // AT H0
-        CMD_PROTOCOL_CAN_11_500, // AT SP 6
+        CMD_HEADERS_OFF,         // AT H0 (headers off, default canonico compatto - FIX 7)
+        CMD_PROTOCOL_CAN_11_500, // AT SP 6 (ISO 15765-4 CAN 11-bit 500kbaud)
         CMD_ADAPTIVE_TIMING_1,   // AT AT 1
         CMD_CAN_AUTO_FORMAT_ON,  // AT CAF 1
-        CMD_AUTO_RECEIVE,        // AT AR
         CMD_TIMEOUT_HANDSHAKE    // AT ST 96
     )
+
+    // Alias per retrocompatibilità con test e riferimenti legacy: punta alla lista canonica unificata
+    val VGATE_CALIBRATED_INIT_COMMANDS = INIT_COMMANDS
 
     const val PROTOCOL_FALLBACK = "AT SP 0" // Auto-detect protocol if SP 6 fails
 
@@ -347,6 +336,73 @@ object Elm327Protocol {
         }
 
         return false
+    }
+
+    // Negative Response Codes (NRC) UDS ISO 14229 / ISO 15765-4
+    const val NRC_SERVICE_NOT_SUPPORTED = "11"
+    const val NRC_SUB_FUNCTION_NOT_SUPPORTED = "12"
+    const val NRC_CONDITIONS_NOT_CORRECT = "22"
+    const val NRC_REQUEST_SEQUENCE_ERROR = "24"
+    const val NRC_REQUEST_OUT_OF_RANGE = "31"
+    const val NRC_RESPONSE_PENDING = "78"
+
+    data class UdsNrcResponse(
+        val serviceId: String,
+        val nrc: String
+    )
+
+    /**
+     * Isola ed estrae un Negative Response Code UDS (ISO 14229 / ISO 15765-4)
+     * nel formato "7F <ServiceId> <NRC>". Gestisce sia risposte compatte (ATH0)
+     * sia formati con header CAN (ATH1, es. 7EA 03 7F 22 11 o 7EA037F2211) e multi-frame.
+     */
+    fun extractUdsNrc(response: String): UdsNrcResponse? {
+        val lines = response.split('\r', '\n')
+            .map { it.replace(">", "").trim() }
+            .filter { it.isNotEmpty() }
+
+        val linesToCheck = if (lines.isNotEmpty()) lines else listOf(cleanResponse(response).uppercase())
+
+        for (line in linesToCheck) {
+            val cleanLine = cleanResponse(line).uppercase()
+            if (!cleanLine.contains("7F")) continue
+
+            // 1. Linea tokenizzata con spazi (es. "7EA 03 7F 22 11" o "7F 22 11")
+            val tokens = line.split(Regex("""\s+""")).filter { it.isNotEmpty() }
+            if (tokens.isNotEmpty()) {
+                val idx7F = tokens.indexOfFirst { it.equals("7F", ignoreCase = true) }
+                if (idx7F >= 0 && tokens.size > idx7F + 2) {
+                    val sid = tokens[idx7F + 1].uppercase()
+                    val nrc = tokens[idx7F + 2].uppercase()
+                    if (sid.length == 2 && nrc.length == 2 &&
+                        sid.all { it in "0123456789ABCDEF" } &&
+                        nrc.all { it in "0123456789ABCDEF" }
+                    ) {
+                        return UdsNrcResponse(serviceId = sid, nrc = nrc)
+                    }
+                }
+            }
+
+            // 2. Linea compatta con header CAN 7xx (es. "7EA037F2211" o "7E8037F0111")
+            val canHeaderMatch = Regex("""(?i)^7[0-9A-F]{2}(?:1[0-9A-F]{3}|[0-9A-F]{1,2})?7F([0-9A-F]{2})([0-9A-F]{2})""").find(cleanLine)
+            if (canHeaderMatch != null) {
+                return UdsNrcResponse(
+                    serviceId = canHeaderMatch.groupValues[1].uppercase(),
+                    nrc = canHeaderMatch.groupValues[2].uppercase()
+                )
+            }
+
+            // 3. Linea compatta senza header (es. "7F2211")
+            val rawNrcMatch = Regex("""(?i)^7F([0-9A-F]{2})([0-9A-F]{2})""").find(cleanLine)
+            if (rawNrcMatch != null) {
+                return UdsNrcResponse(
+                    serviceId = rawNrcMatch.groupValues[1].uppercase(),
+                    nrc = rawNrcMatch.groupValues[2].uppercase()
+                )
+            }
+        }
+
+        return null
     }
 
     fun isError(response: String): Boolean {

@@ -47,7 +47,7 @@ class BatteryDiscoveryEngineTest {
         val c3 = engine.getNextCandidate()
         assertEquals("21C4", c3)
         // Candidate 3 fails (7F NRC)
-        engine.onCandidateFailed("21C4", ProbeStatus.REJECTED, "7F2111")
+        engine.onCandidateFailed("21C4", ProbeStatus.INVALID, "7F2122")
         assertTrue(engine.isCandidateInCooldown("21C4"))
 
         // Cycle 4: Candidate advances to 2161
@@ -171,5 +171,29 @@ class BatteryDiscoveryEngineTest {
         // reset() also clears the counter
         engine.reset()
         assertEquals(0, engine.completedFailureCycles)
+    }
+
+    @Test
+    fun testPermanentRejectionOnNrcServiceNotSupported() {
+        val engine = BatteryDiscoveryEngine()
+        assertEquals("2101", engine.getNextCandidate())
+
+        // Simulazione rifiuto UDS NRC 11 (ServiceNotSupported) o 12 (SubFunctionNotSupported)
+        engine.onCandidateRejected("2101", "7F2111")
+        assertTrue(engine.isPidRejected("2101"))
+        assertFalse(engine.isCandidateInCooldown("2101"))
+        assertEquals(0L, engine.getRemainingCooldownMs("2101"))
+
+        // Il cursore avanza al candidato successivo
+        val next = engine.getNextCandidate()
+        assertEquals("21C3", next)
+
+        // Anche dopo reset dei cooldown, 2101 resta escluso e non viene più riproposto
+        assertNotEquals("2101", engine.getNextCandidate())
+
+        // Il reset completo ripristina anche i PID rifiutati
+        engine.reset()
+        assertFalse(engine.isPidRejected("2101"))
+        assertEquals("2101", engine.getNextCandidate())
     }
 }

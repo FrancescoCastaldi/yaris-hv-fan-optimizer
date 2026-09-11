@@ -33,8 +33,9 @@ class ObdInitSequenceTest {
     @Test
     fun testInitCommandsResetAutomaticReceiveFilter() {
         assertEquals("AT AR", Elm327Protocol.CMD_AUTO_RECEIVE)
-        assertTrue(
-            "AT AR deve essere presente per annullare eventuali filtri CRA residui",
+        // FIX 1: Bonifica totale di AT AR dalla sequenza (rimosso per prevenire corruzione registri hardware)
+        assertFalse(
+            "AT AR non deve essere presente nella sequenza di init (FIX 1)",
             Elm327Protocol.INIT_COMMANDS.contains(Elm327Protocol.CMD_AUTO_RECEIVE)
         )
     }
@@ -155,11 +156,11 @@ class ObdInitSequenceTest {
         assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT E0"))
         assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT SP 6"))
         assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT AT 1"))
-        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT H1"))
+        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT H0"))
         assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT L0"))
         assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT S0"))
         assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT CAF 1"))
-        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT AR"))
+        assertFalse(Elm327Protocol.INIT_COMMANDS.contains("AT AR"))
 
         // Probe Mode 03 validation
         assertTrue(Elm327Protocol.isMode03Response("7E8 06 43 00 00 00 00 00 00 >"))
@@ -290,13 +291,13 @@ class ObdInitSequenceTest {
 
     @Test
     fun testVgateCalibratedInitCommandsSequence() {
-        assertEquals("AT Z", Elm327Protocol.VGATE_CALIBRATED_INIT_COMMANDS.first())
+        assertEquals("AT WS", Elm327Protocol.VGATE_CALIBRATED_INIT_COMMANDS.first())
         assertEquals("AT ST 96", Elm327Protocol.VGATE_CALIBRATED_INIT_COMMANDS.last())
 
         assertEquals(
             listOf(
-                "AT Z", "AT E0", "AT L0", "AT S0", "AT H0",
-                "AT SP 6", "AT AT 1", "AT CAF 1", "AT AR", "AT ST 96"
+                "AT WS", "AT E0", "AT L0", "AT S0", "AT H0",
+                "AT SP 6", "AT AT 1", "AT CAF 1", "AT ST 96"
             ),
             Elm327Protocol.VGATE_CALIBRATED_INIT_COMMANDS
         )
@@ -313,8 +314,8 @@ class ObdInitSequenceTest {
             )
         }
 
-        assertTrue(
-            "AT AR deve essere presente per garantire filtro hardware pulito",
+        assertFalse(
+            "AT AR non deve comparire nella sequenza calibrata per evitare corruzione registri (FIX 1)",
             Elm327Protocol.VGATE_CALIBRATED_INIT_COMMANDS.contains("AT AR")
         )
     }

@@ -40,7 +40,7 @@ class BatteryDiscoveryEngine(
     private val timeProvider: () -> Long = System::currentTimeMillis
 ) {
     companion object {
-        const val DEFAULT_COOLDOWN_MS = 30_000L
+        const val DEFAULT_COOLDOWN_MS = 30_000L // 30s cooldown per candidate backoff; full chain is scanned in ~21s (<25s) without blocking
         const val MAX_PROBE_TIMEOUT_MS = 3000L
     }
 
@@ -53,6 +53,9 @@ class BatteryDiscoveryEngine(
 
     private var cursorIndex: Int = 0
     private val cooldownMap = mutableMapOf<String, Long>()
+    private val permanentlyRejectedPids = mutableSetOf<String>()
+    val rejectedPids: Set<String> get() = permanentlyRejectedPids.toSet()
+
     private val _probeOutcomes = mutableMapOf<String, ProbeResult>()
     val probeOutcomes: Map<String, ProbeResult> get() = _probeOutcomes.toMap()
 
@@ -63,6 +66,11 @@ class BatteryDiscoveryEngine(
      * latchare una risposta valida. Si azzera su onCandidateSuccess() e reset().
      */
     val completedFailureCycles: Int get() = completedCycleCount
+
+    /**
+     * Verifica se un PID è stato marcato come non supportato (NRC 11/12) ed escluso permanentemente.
+     */
+    fun isPidRejected(pid: String): Boolean = permanentlyRejectedPids.contains(pid)
 
     /**
      * Returns the next candidate PID eligible for probing, or null if all candidates
@@ -76,6 +84,9 @@ class BatteryDiscoveryEngine(
         for (i in candidates.indices) {
             val idx = (cursorIndex + i) % candidates.size
             val candidate = candidates[idx]
+            if (permanentlyRejectedPids.contains(candidate)) {
+                continue
+            }
             val cooldownUntil = cooldownMap[candidate] ?: 0L
             if (now >= cooldownUntil) {
                 // Return candidate without advancing cursor yet; cursor advances on outcome
@@ -101,21 +112,44 @@ class BatteryDiscoveryEngine(
     }
 
     /**
+     * Marca un PID come permanentemente non supportato dall'ECU (es. NRC 7F xx 11 / 12)
+     * escludendolo all'istante dalla discovery chain senza ulteriori ritentativi.
+     */
+    fun onCandidateRejected(pid: String, rawResponse: String? = null) {
+        val now = timeProvider()
+        permanentlyRejectedPids.add(pid)
+        _probeOutcomes[pid] = ProbeResult(
+            pid = pid,
+            status = ProbeStatus.REJECTED,
+            rawResponse = rawResponse,
+            timestamp = now
+        )
+        advanceCursorAfterPid(pid)
+    }
+
+    /**
      * Called when a candidate probe fails (timeout, NO DATA, error, negative response, or unparseable).
-     * Places the candidate into cooldown (>= 30s) and advances the discovery cursor to the next candidate.
+     * Places the candidate into cooldown (5s) and advances the discovery cursor to the next candidate.
      * Every time the cursor wraps back to the start of the candidate list, a full failed cycle of the
      * fallback chain has completed (see completedFailureCycles).
      */
     fun onCandidateFailed(pid: String, status: ProbeStatus = ProbeStatus.NO_DATA, rawResponse: String? = null) {
         val now = timeProvider()
-        cooldownMap[pid] = now + cooldownDurationMs
+        if (status == ProbeStatus.REJECTED) {
+            permanentlyRejectedPids.add(pid)
+        } else {
+            cooldownMap[pid] = now + cooldownDurationMs
+        }
         _probeOutcomes[pid] = ProbeResult(
             pid = pid,
             status = status,
             rawResponse = rawResponse,
             timestamp = now
         )
-        // Advance cursor to next candidate after this one
+        advanceCursorAfterPid(pid)
+    }
+
+    private fun advanceCursorAfterPid(pid: String) {
         val currentIndex = candidates.indexOf(pid)
         val nextIndex = if (currentIndex >= 0) {
             (currentIndex + 1) % candidates.size
@@ -132,6 +166,7 @@ class BatteryDiscoveryEngine(
      * Check if a specific candidate is currently in cooldown.
      */
     fun isCandidateInCooldown(pid: String): Boolean {
+        if (permanentlyRejectedPids.contains(pid)) return false
         val now = timeProvider()
         val cooldownUntil = cooldownMap[pid] ?: return false
         return now < cooldownUntil
@@ -141,17 +176,20 @@ class BatteryDiscoveryEngine(
      * Get remaining cooldown time in milliseconds for a candidate, or 0 if not in cooldown.
      */
     fun getRemainingCooldownMs(pid: String): Long {
+        if (permanentlyRejectedPids.contains(pid)) return 0L
         val now = timeProvider()
         val cooldownUntil = cooldownMap[pid] ?: return 0L
         return (cooldownUntil - now).coerceAtLeast(0L)
     }
 
     /**
-     * Check if all candidates are currently in cooldown.
+     * Check if all non-rejected candidates are currently in cooldown.
      */
     fun areAllCandidatesInCooldown(): Boolean {
         if (candidates.isEmpty()) return false
-        return candidates.all { isCandidateInCooldown(it) }
+        val eligibleCandidates = candidates.filter { !permanentlyRejectedPids.contains(it) }
+        if (eligibleCandidates.isEmpty()) return true
+        return eligibleCandidates.all { isCandidateInCooldown(it) }
     }
 
     /**
@@ -163,5 +201,6 @@ class BatteryDiscoveryEngine(
         completedCycleCount = 0
         cooldownMap.clear()
         _probeOutcomes.clear()
+        permanentlyRejectedPids.clear()
     }
 }

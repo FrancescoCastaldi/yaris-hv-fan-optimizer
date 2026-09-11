@@ -1039,6 +1039,8 @@ class BleManager(private val context: Context) : com.yaris.hvfan.obd.ObdTranspor
                     drainPromptDeferred = null
                     responseBuffer.setLength(0)
                 }
+                // Pausa di stabilizzazione per ripristino stack seriale dopo timeout (FIX 6)
+                delay(50)
             } else {
                 // Guard-time tra comandi seriali consecutivi (15ms) per consentire
                 // ai chip ELM327 cloni/lenti di processare il bus e non subire buffer overrun

@@ -633,18 +633,18 @@ class ObdControllerIntegrationTest {
         assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT E0"))
         assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT SP 6"))
         assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT AT 1"))
-        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT H1"))
+        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT H0"))
         assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT L0"))
         assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT S0"))
         assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT CAF 1"))
-        assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT AR"))
+        assertFalse(Elm327Protocol.INIT_COMMANDS.contains("AT AR"))
         assertTrue(Elm327Protocol.INIT_COMMANDS.contains("AT ST 96"))
 
-        // Exact Hybrid Assistant base stack order: protocollo prima del timing, filtro ricezione azzerato
+        // Exact unified base stack order (FIX 1 e FIX 7)
         assertEquals(
             listOf(
-                "AT WS", "AT E0", "AT SP 6", "AT AT 1", "AT H1", "AT L0", "AT S0",
-                "AT CAF 1", "AT AR", "AT ST 96"
+                "AT WS", "AT E0", "AT L0", "AT S0", "AT H0",
+                "AT SP 6", "AT AT 1", "AT CAF 1", "AT ST 96"
             ),
             Elm327Protocol.INIT_COMMANDS
         )
