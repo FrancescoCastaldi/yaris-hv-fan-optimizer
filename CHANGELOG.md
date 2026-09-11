@@ -5,6 +5,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 - **MAJOR (`X.0.0`)**: Fundamental architectural overhauls, major subsystems, or comprehensive UI redesigns.
 - **MINOR (`0.X.0`)**: New features, additional sensors, ECU coding options, or telemetry pipelines.
 
+## [3.1.1] - 2026-09-11
+### 🔍 Motore di Reverse Engineering Automotive & Logging Semantico Avanzato
+- **Annotazione Semantica UDS & CAN Bus in Tempo Reale**:
+  - Tracciamento automatico e contestualizzato dell'header CAN attivo (`AT SH 7E0`, `7E2`, `7C0`, `750`, `7C4`, `7A0`, `7DF`) con risoluzione immediata dell'ECU di destinazione (Engine/Hybrid Powertrain, HV Battery Denso, Combination Meter, Main Body/Gateway, A/C, ADAS/TSS 2.5).
+  - Decodifica semantica automatica dei comandi TX:
+    * Comandi chip ELM327/STN (`ATZ`, `ATE0`, `ATH1`, `ATSP6`, `ATSH`, `ATCRA`, `ATFCSH`, ecc.).
+    * OBD Mode 01 PIDs standard con interpretazione multi-PID e formule matematiche (`PID 010C` RPM, `010D` Speed, `0105` Coolant, `0104` Load, ecc.).
+    * Diagnostic Services UDS ISO 14229-1: `10` (*DiagnosticSessionControl*), `22` (*ReadDataByIdentifier* con nome DID Toyota), `2E` (*WriteDataByIdentifier* con nome DID e interpretazione del payload in chiaro), `2F` (*InputOutputControl*), `31` (*RoutineControl*), `3E` (*TesterPresent*).
+    * Modalità proprietarie Toyota: Mode `21` (Enhanced Live Telemetry, Voltages) e Mode `30` (Active Test HV Battery Fan Control con livello selezionato).
+  - Decodifica semantica in tempo reale dei messaggi RX:
+    * Riconoscimento ACK positivi UDS/OBD: `50` (Session ACK), `62` (ReadDID ACK con decodifica del valore e spiegazione), `6E` (WriteDID ACK), `7E` (TesterPresent ACK), `41` (Mode 01 ACK con calcolo del valore fisico e unità di misura), `70` (Mode 30 ACK).
+    * Isolamento e decodifica istantanea dei codici di errore negativo UDS (NRC `7F <SID> <NRC>`): `11` (*serviceNotSupported*), `12` (*subFunctionNotSupported*), `22` (*conditionsNotCorrect* con guida diagnostica), `31` (*requestOutOfRange*), `78` (*responsePending*), ecc.
+    * Decodifica ISO-TP ISO 15765-2: Single Frame (SF), First Frame (FF con lunghezza totale), Flow Control (FC CTS con BS e STmin), Consecutive Frame (CF con numero sequenza).
+- **Report di Reverse Engineering Automatico (`ReverseEngineeringTracker`)**:
+  - Aggregazione automatica durante l'acquisizione dei comandi scambiati per ciascun header CAN.
+  - Tabulazione strutturata a fine sessione o su richiesta:
+    * READ DIDs: DIDs scoperti, ultimo payload letto e descrizione del parametro.
+    * WRITTEN DIDs: DIDs scritti con successo, parametri modificati e comando esadecimale pronto all'uso.
+    * REJECTED SERVICES: Servizi rifiutati con relativo codice NRC e motivazione diagnostica.
+    * ALTRI COMANDI: Sessioni diagnostiche, test attivi e PID scoperti.
+- **Esportazione Traccia CAN Standard (`candump` / SavvyCAN)**:
+  - Generazione parallela del file trace nel formato standard SocketCAN `(timestamp) can0 ID#PAYLOAD`.
+  - Pulsante dedicato "CANDUMP" nella UI (`DashboardScreen` e `SnifferScreen`) per esportazione e condivisione istantanea tramite share intent di sistema.
+- **Incremento Versione & Sincronizzazione**:
+  - Bump versione a `v3.1.1` (`versionCode = 49`).
+  - Sincronizzati build script, workflow CI/CD, README, portale web e file di documentazione.
+
 ## [3.1.0] - 2026-09-11
 ### ⚡ Migrazione Completa Codifiche ECU a UDS ISO 14229-1 (Toyota TNGA-B)
 - **Eliminazione Totale Dipendenze K-Line `3B`**:

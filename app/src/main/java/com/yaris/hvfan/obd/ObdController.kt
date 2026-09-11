@@ -745,6 +745,9 @@ class ObdController(
             }
             currentCanHeader = header
             currentRxFilter = targetRxFilter
+            try {
+                com.yaris.hvfan.data.ObdLogger.setActiveHeader(header)
+            } catch (ignored: Throwable) {}
             // Pausa di stabilizzazione per i transceiver CAN dell'adattatore
             delay(50)
         }

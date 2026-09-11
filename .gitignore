@@ -102,3 +102,7 @@ worktrees/
 *.dump
 Errori lettura/
 obd_bridge_*.txt
+obd_bridge_*.candump.log
+yaris_ecu_log_*.txt
+yaris_ecu_log_*.candump.log
+*.candump.log

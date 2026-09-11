@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -33,6 +34,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -440,7 +442,7 @@ fun SnifferScreen(
                 // Logging Control Buttons
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     OutlinedButton(
                         onClick = {
@@ -450,12 +452,13 @@ fun SnifferScreen(
                                 logger.startRecording(btManager.connectedDeviceName)
                             }
                         },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1.1f),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = if (isRecording) WarningOrange else TextPrimary
                         )
                     ) {
-                        Text(if (isRecording) "Pausa Registrazione" else "Avvia Registrazione Log", fontSize = 11.sp)
+                        Text(if (isRecording) "Pausa Rec" else "Avvia Rec Log", fontSize = 10.sp)
                     }
 
                     Button(
@@ -463,19 +466,41 @@ fun SnifferScreen(
                             logger.pauseRecording()
                             val shareIntent = logger.createShareIntent()
                             if (shareIntent != null) {
-                                context.startActivity(Intent.createChooser(shareIntent, "Condividi Log OBD"))
+                                context.startActivity(Intent.createChooser(shareIntent, "Condividi Log OBD & RevEng"))
                             }
                         },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1.3f),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = SurfaceDark,
                             contentColor = AccentCyan
                         ),
                         border = androidx.compose.foundation.BorderStroke(1.dp, CardBorderActive)
                     ) {
-                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Ferma & Condividi Log", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(13.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text("Condividi Log", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Button(
+                        onClick = {
+                            logger.pauseRecording()
+                            val candumpIntent = logger.createCanDumpShareIntent()
+                            if (candumpIntent != null) {
+                                context.startActivity(Intent.createChooser(candumpIntent, "Esporta Traccia CAN (candump)"))
+                            }
+                        },
+                        modifier = Modifier.weight(1.1f),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = SurfaceDark,
+                            contentColor = TextPrimary
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder)
+                    ) {
+                        Icon(Icons.Default.Tune, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(13.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text("CANDUMP", fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }

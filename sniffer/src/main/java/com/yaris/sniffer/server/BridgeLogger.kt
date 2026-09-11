@@ -35,7 +35,18 @@ class BridgeLogger(
 
     private var currentLogFile: File? = null
     private var fileWriter: PrintWriter? = null
+
+    // Candump / SavvyCAN file & writer
+    private var currentCanDumpFile: File? = null
+    private var canDumpWriter: PrintWriter? = null
+    private val canDumpLines = mutableListOf<String>()
+
     private val logLock = Any()
+
+    // Stato sessione Reverse Engineering
+    private var currentHeader: String = ""
+    private var lastTxCommand: String = ""
+    private val reverseEngineeringTracker = AutomotiveProtocolDecoder.ReverseEngineeringTracker()
 
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
     private val fileDateFormat = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
@@ -43,14 +54,26 @@ class BridgeLogger(
     companion object {
         private const val MAX_UI_LOGS = 120
 
-        fun formatTxEntry(timestampMs: Long, command: String, dateFormat: SimpleDateFormat): String {
+        fun formatTxEntry(
+            timestampMs: Long,
+            command: String,
+            dateFormat: SimpleDateFormat,
+            annotation: String = ""
+        ): String {
             val dateStr = dateFormat.format(Date(timestampMs))
-            return "[$timestampMs] [$dateStr] TX >>> $command"
+            val annotStr = if (annotation.isNotBlank()) "  $annotation" else ""
+            return "[$timestampMs] [$dateStr] TX >>> $command$annotStr"
         }
 
-        fun formatRxEntry(timestampMs: Long, response: String, dateFormat: SimpleDateFormat): String {
+        fun formatRxEntry(
+            timestampMs: Long,
+            response: String,
+            dateFormat: SimpleDateFormat,
+            annotation: String = ""
+        ): String {
             val dateStr = dateFormat.format(Date(timestampMs))
-            return "[$timestampMs] [$dateStr] RX <<< ${response.trim()}"
+            val annotStr = if (annotation.isNotBlank()) "  $annotation" else ""
+            return "[$timestampMs] [$dateStr] RX <<< ${response.trim()}$annotStr"
         }
     }
 
@@ -58,7 +81,7 @@ class BridgeLogger(
         synchronized(logLock) {
             if (_isRecording.value) return
 
-            // Resume existing paused session file if present
+            // Riprendi sessione esistente se attiva
             if (currentLogFile != null && fileWriter != null) {
                 _isRecording.value = true
                 val nowMs = System.currentTimeMillis()
@@ -70,18 +93,28 @@ class BridgeLogger(
             }
 
             fileWriter?.close()
+            canDumpWriter?.close()
+
             val timeStamp = fileDateFormat.format(Date())
             logDirectory.mkdirs()
+
+            // File log testuale principale
             val file = File(logDirectory, "obd_bridge_${timeStamp}.txt")
             currentLogFile = file
             fileWriter = PrintWriter(OutputStreamWriter(FileOutputStream(file, true), Charsets.UTF_8))
 
+            // File traccia CAN candump / SavvyCAN
+            val cdFile = File(logDirectory, "obd_bridge_${timeStamp}.candump.log")
+            currentCanDumpFile = cdFile
+            canDumpWriter = PrintWriter(OutputStreamWriter(FileOutputStream(cdFile, true), Charsets.UTF_8))
+
             val header = buildString {
                 appendLine("================================================================")
-                appendLine("  YARIS OBD BRIDGE & SNIFFER - LOG TRACE")
+                appendLine("  YARIS OBD BRIDGE & SNIFFER - LOG TRACE & REVERSE ENGINEERING")
                 appendLine("  Timestamp: ${dateFormat.format(Date())} (${System.currentTimeMillis()} ms)")
                 appendLine("  Device: ${connectedDevice ?: "Unknown / None"}")
                 appendLine("  TCP Port: 35000 (127.0.0.1)")
+                appendLine("  Protocol: UDS ISO 14229-1 & ISO 15765-2 / CAN 11-bit 500k")
                 appendLine("================================================================")
                 appendLine()
             }
@@ -97,17 +130,47 @@ class BridgeLogger(
         synchronized(logLock) {
             if (!_isRecording.value) return
             _isRecording.value = false
+
+            // Appendi sommario aggiornato di reverse engineering nel file prima della pausa
+            fileWriter?.println()
+            fileWriter?.println(reverseEngineeringTracker.generateSummary())
             fileWriter?.flush()
-            appendUiLog("⏸ REGISTRAZIONE IN PAUSA")
+            canDumpWriter?.flush()
+
+            appendUiLog("⏸ REGISTRAZIONE IN PAUSA (Sommario Reverse Engineering salvato)")
         }
     }
 
     fun logTx(command: String) {
         val nowMs = System.currentTimeMillis()
-        val entry = formatTxEntry(nowMs, command, dateFormat)
 
         synchronized(logLock) {
+            // Tracciamento automatico del cambio header CAN (AT SH <hdr>)
+            val newHeader = AutomotiveProtocolDecoder.extractHeaderFromCommand(command)
+            if (newHeader != null) {
+                currentHeader = newHeader
+            }
+
+            // Aggiorna tracker di reverse engineering
+            reverseEngineeringTracker.recordTx(command, currentHeader)
+
+            // Genera annotazione semantica
+            val annotation = AutomotiveProtocolDecoder.decodeTx(command, currentHeader)
+            val entry = formatTxEntry(nowMs, command, dateFormat, annotation)
+
+            // Genera traccia CAN standard candump
+            val canDumpTx = AutomotiveProtocolDecoder.formatCanDumpTx(nowMs, command, currentHeader)
+            if (canDumpTx != null) {
+                canDumpLines.add(canDumpTx)
+                if (_isRecording.value) {
+                    canDumpWriter?.println(canDumpTx)
+                    canDumpWriter?.flush()
+                }
+            }
+
+            lastTxCommand = command
             _txCount.value += 1
+
             if (_isRecording.value) {
                 fileWriter?.println(entry)
                 fileWriter?.flush()
@@ -118,10 +181,27 @@ class BridgeLogger(
 
     fun logRx(response: String) {
         val nowMs = System.currentTimeMillis()
-        val entry = formatRxEntry(nowMs, response, dateFormat)
 
         synchronized(logLock) {
+            // Aggiorna tracker di reverse engineering accoppiando risposta a comando precedente
+            reverseEngineeringTracker.recordRx(response, currentHeader, lastTxCommand)
+
+            // Genera annotazione semantica
+            val annotation = AutomotiveProtocolDecoder.decodeRx(response, currentHeader, lastTxCommand)
+            val entry = formatRxEntry(nowMs, response, dateFormat, annotation)
+
+            // Genera righe candump CAN bus
+            val canDumpRxList = AutomotiveProtocolDecoder.formatCanDumpRx(nowMs, response, currentHeader)
+            for (cdLine in canDumpRxList) {
+                canDumpLines.add(cdLine)
+                if (_isRecording.value) {
+                    canDumpWriter?.println(cdLine)
+                    canDumpWriter?.flush()
+                }
+            }
+
             _rxCount.value += 1
+
             if (_isRecording.value) {
                 fileWriter?.println(entry)
                 fileWriter?.flush()
@@ -169,6 +249,25 @@ class BridgeLogger(
         }
     }
 
+    fun exportCanDumpFile(): File? {
+        synchronized(logLock) {
+            canDumpWriter?.flush()
+            return currentCanDumpFile
+        }
+    }
+
+    fun getReverseEngineeringSummary(): String {
+        synchronized(logLock) {
+            return reverseEngineeringTracker.generateSummary()
+        }
+    }
+
+    fun getCurrentHeader(): String {
+        synchronized(logLock) {
+            return currentHeader
+        }
+    }
+
     fun createShareIntent(): Intent? {
         val ctx = context ?: return null
         synchronized(logLock) {
@@ -185,7 +284,7 @@ class BridgeLogger(
 
                 val header = buildString {
                     appendLine("================================================================")
-                    appendLine("  YARIS OBD BRIDGE & SNIFFER - LOG TRACE")
+                    appendLine("  YARIS OBD BRIDGE & SNIFFER - LOG TRACE & REVERSE ENGINEERING")
                     appendLine("  Timestamp: ${dateFormat.format(Date())} (${System.currentTimeMillis()} ms)")
                     appendLine("  TCP Port: 35000 (127.0.0.1)")
                     appendLine("================================================================")
@@ -195,13 +294,12 @@ class BridgeLogger(
                 _recentLogs.value.forEach { line ->
                     fileWriter?.println(line)
                 }
-                fileWriter?.flush()
             }
 
-            if (file.length() == 0L) {
-                fileWriter?.println("Log chiuso il: ${dateFormat.format(Date())}")
-                fileWriter?.flush()
-            }
+            // Includi sempre il sommario strutturato di Reverse Engineering nel log prima della condivisione
+            fileWriter?.println()
+            fileWriter?.println(reverseEngineeringTracker.generateSummary())
+            fileWriter?.flush()
 
             return try {
                 val uri: Uri = FileProvider.getUriForFile(
@@ -215,12 +313,56 @@ class BridgeLogger(
                     putExtra(Intent.EXTRA_SUBJECT, "Log OBD Bridge: ${file.name}")
                     putExtra(
                         Intent.EXTRA_TEXT,
-                        "Traccia OBD registrata con Yaris OBD Bridge.\nTotale TX: ${_txCount.value} frame\nTotale RX: ${_rxCount.value} frame"
+                        "Traccia OBD e Reverse Engineering registrata con Yaris OBD Bridge.\nTotale TX: ${_txCount.value} frame\nTotale RX: ${_rxCount.value} frame\nInclude sommario DIDs e comandi scoperti."
                     )
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
             } catch (e: Exception) {
                 logSystem("Errore generazione Share Intent: ${e.message}")
+                null
+            }
+        }
+    }
+
+    fun createCanDumpShareIntent(): Intent? {
+        val ctx = context ?: return null
+        synchronized(logLock) {
+            canDumpWriter?.flush()
+
+            var file = currentCanDumpFile
+            if (file == null || !file.exists()) {
+                val timeStamp = fileDateFormat.format(Date())
+                logDirectory.mkdirs()
+                file = File(logDirectory, "obd_bridge_${timeStamp}.candump.log")
+                currentCanDumpFile = file
+                canDumpWriter?.close()
+                canDumpWriter = PrintWriter(OutputStreamWriter(FileOutputStream(file, true), Charsets.UTF_8))
+
+                canDumpLines.forEach { line ->
+                    canDumpWriter?.println(line)
+                }
+                canDumpWriter?.flush()
+            }
+
+            val validFile = currentCanDumpFile ?: return null
+            return try {
+                val uri: Uri = FileProvider.getUriForFile(
+                    ctx,
+                    "${ctx.packageName}.fileprovider",
+                    validFile
+                )
+                Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    putExtra(Intent.EXTRA_SUBJECT, "CAN Dump Trace: ${validFile.name}")
+                    putExtra(
+                        Intent.EXTRA_TEXT,
+                        "Traccia CAN bus compatibile con candump / SavvyCAN registrata con Yaris OBD Bridge.\nTotale frame CAN: ${canDumpLines.size}"
+                    )
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+            } catch (e: Exception) {
+                logSystem("Errore generazione Share Intent CAN dump: ${e.message}")
                 null
             }
         }
@@ -233,6 +375,17 @@ class BridgeLogger(
             fileWriter?.close()
             fileWriter = null
             currentLogFile = null
+
+            canDumpWriter?.flush()
+            canDumpWriter?.close()
+            canDumpWriter = null
+            currentCanDumpFile = null
+            canDumpLines.clear()
+
+            currentHeader = ""
+            lastTxCommand = ""
+            reverseEngineeringTracker.clear()
+
             resetCounters()
             clearUiLogs()
         }
@@ -241,9 +394,18 @@ class BridgeLogger(
     fun close() {
         synchronized(logLock) {
             _isRecording.value = false
-            fileWriter?.flush()
-            fileWriter?.close()
-            fileWriter = null
+
+            if (fileWriter != null) {
+                fileWriter?.println()
+                fileWriter?.println(reverseEngineeringTracker.generateSummary())
+                fileWriter?.flush()
+                fileWriter?.close()
+                fileWriter = null
+            }
+
+            canDumpWriter?.flush()
+            canDumpWriter?.close()
+            canDumpWriter = null
         }
     }
 }

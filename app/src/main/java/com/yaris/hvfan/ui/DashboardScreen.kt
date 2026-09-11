@@ -483,6 +483,27 @@ fun DashboardScreen(
                                     }
 
                                     OutlinedButton(
+                                        onClick = {
+                                            val candumpIntent = com.yaris.hvfan.data.ObdLogger.createCanDumpShareIntent()
+                                            if (candumpIntent != null) {
+                                                context.startActivity(Intent.createChooser(candumpIntent, "Esporta Traccia CAN (candump)"))
+                                            }
+                                        },
+                                        shape = RoundedCornerShape(4.dp),
+                                        border = BorderStroke(1.dp, CardBorder),
+                                        colors = ButtonDefaults.outlinedButtonColors(
+                                            containerColor = DarkBackground,
+                                            contentColor = TextPrimary
+                                        ),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                        modifier = Modifier.height(30.dp)
+                                    ) {
+                                        Icon(Icons.Default.Tune, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(12.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("CANDUMP", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+
+                                    OutlinedButton(
                                         onClick = { com.yaris.hvfan.data.ObdLogger.clearLogs() },
                                         shape = RoundedCornerShape(4.dp),
                                         border = BorderStroke(1.dp, CardBorder),
@@ -1001,6 +1022,27 @@ fun DashboardScreen(
                             Icon(Icons.Default.Share, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(12.dp))
                             Spacer(modifier = Modifier.width(4.dp))
                             Text("CONDIVIDI LOG", fontSize = 9.sp, fontWeight = FontWeight.Black)
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                val candumpIntent = com.yaris.hvfan.data.ObdLogger.createCanDumpShareIntent()
+                                if (candumpIntent != null) {
+                                    context.startActivity(Intent.createChooser(candumpIntent, "Esporta Traccia CAN (candump)"))
+                                }
+                            },
+                            shape = RoundedCornerShape(4.dp),
+                            border = BorderStroke(1.dp, CardBorder),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = SurfaceDark,
+                                contentColor = TextPrimary
+                            ),
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                            modifier = Modifier.height(26.dp)
+                        ) {
+                            Icon(Icons.Default.Tune, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(11.dp))
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text("CANDUMP", fontSize = 9.sp, fontWeight = FontWeight.Bold)
                         }
 
                         OutlinedButton(
