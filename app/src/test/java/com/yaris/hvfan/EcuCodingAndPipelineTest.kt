@@ -101,6 +101,9 @@ class EcuCodingAndPipelineTest {
         assertTrue(Elm327Protocol.isUdsPositiveResponse("7C8 03 61 A7 00 >"))
         assertTrue(Elm327Protocol.isUdsPositiveResponse("758 05 61 01 02 03 04 >"))
         assertTrue(Elm327Protocol.isUdsPositiveResponse("5003")) // Mode 10 03 positive response
+        assertTrue(Elm327Protocol.isUdsPositiveResponse("5001")) // Mode 10 01 positive response
+        assertTrue(Elm327Protocol.isUdsPositiveResponse("6E A0 01 01", "2E")) // Mode 2E positive response
+        assertTrue(Elm327Protocol.isUdsPositiveResponse("7EA 02 7E 00 >", "3E")) // Mode 3E positive response
         // Positive response whose data payload contains 0x7F (must NOT be treated as NRC)
         assertTrue(Elm327Protocol.isUdsPositiveResponse("7C8 04 61 A7 00 7F >"))
         assertTrue(Elm327Protocol.isUdsPositiveResponse("62 28 C1 44 7F 44 43 41 03 >", "22"))
@@ -114,7 +117,8 @@ class EcuCodingAndPipelineTest {
 
         // Negative Response Code (NRC 7F)
         assertFalse(Elm327Protocol.isUdsPositiveResponse("7F 21 11"))
-        assertFalse(Elm327Protocol.isUdsPositiveResponse("7F 3B 22"))
+        assertFalse(Elm327Protocol.isUdsPositiveResponse("7F 22 11"))
+        assertFalse(Elm327Protocol.isUdsPositiveResponse("7F 2E 22"))
         assertFalse(Elm327Protocol.isUdsPositiveResponse("7F 10 12"))
         assertFalse(Elm327Protocol.isUdsPositiveResponse("7C8 03 7F 21 11 >"))
         assertFalse(Elm327Protocol.isUdsPositiveResponse("758 03 7F 21 12 >"))
@@ -125,6 +129,46 @@ class EcuCodingAndPipelineTest {
         assertFalse(Elm327Protocol.isUdsPositiveResponse("ERROR"))
         assertFalse(Elm327Protocol.isUdsPositiveResponse("?"))
         assertFalse(Elm327Protocol.isUdsPositiveResponse(""))
+    }
+
+    @Test
+    fun testUdsCodingPipelineAndHelpers() {
+        // Session & Service constants
+        assertEquals("1003", ToyotaYarisCommands.CMD_UDS_SESSION_EXTENDED)
+        assertEquals("1001", ToyotaYarisCommands.CMD_UDS_SESSION_DEFAULT)
+        assertEquals("3E00", ToyotaYarisCommands.CMD_UDS_TESTER_PRESENT)
+
+        // DIDs integrity
+        assertEquals("A001", ToyotaYarisCommands.DID_METER_REVERSE_BEEP)
+        assertEquals("A002", ToyotaYarisCommands.DID_METER_DRIVER_SEATBELT)
+        assertEquals("B001", ToyotaYarisCommands.DID_BODY_AUTO_DOOR_LOCK)
+        assertEquals("B003", ToyotaYarisCommands.DID_BODY_WINDOWS_KEY_FOB)
+        assertEquals("B010", ToyotaYarisCommands.DID_BODY_TURN_SIGNAL_FLASHES)
+        assertEquals("C001", ToyotaYarisCommands.DID_AIRCON_AUTO_AC_BUTTON)
+        assertEquals("D001", ToyotaYarisCommands.DID_ADAS_LDA_WARNING_VOLUME)
+
+        // Helper compositions
+        assertEquals("22A001", ToyotaYarisCommands.buildUdsRead(ToyotaYarisCommands.DID_METER_REVERSE_BEEP))
+        assertEquals("2EA00100", ToyotaYarisCommands.buildUdsWrite(ToyotaYarisCommands.DID_METER_REVERSE_BEEP, "00"))
+        assertEquals("2EB01005", ToyotaYarisCommands.buildUdsWrite(ToyotaYarisCommands.DID_BODY_TURN_SIGNAL_FLASHES, "05"))
+
+        // NRC Decoding & extraction
+        val nrcConditions = Elm327Protocol.extractUdsNrc("7F 10 22")
+        assertNotNull(nrcConditions)
+        assertEquals("10", nrcConditions!!.serviceId)
+        assertEquals("22", nrcConditions.nrc)
+        assertTrue(Elm327Protocol.getUdsNrcDescription(nrcConditions.nrc).contains("Condizioni non corrette"))
+
+        val nrcNotSupported = Elm327Protocol.extractUdsNrc("7F 2E 11")
+        assertNotNull(nrcNotSupported)
+        assertEquals("2E", nrcNotSupported!!.serviceId)
+        assertEquals("11", nrcNotSupported.nrc)
+        assertTrue(Elm327Protocol.getUdsNrcDescription(nrcNotSupported.nrc).contains("non supportato"))
+
+        val nrcOutOfRange = Elm327Protocol.extractUdsNrc("7F 2E 31")
+        assertNotNull(nrcOutOfRange)
+        assertEquals("31", nrcOutOfRange!!.nrc)
+        assertTrue(Elm327Protocol.getUdsNrcDescription(nrcOutOfRange.nrc).contains("fuori limite"))
     }
 
     @Test

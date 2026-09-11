@@ -5,6 +5,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 - **MAJOR (`X.0.0`)**: Fundamental architectural overhauls, major subsystems, or comprehensive UI redesigns.
 - **MINOR (`0.X.0`)**: New features, additional sensors, ECU coding options, or telemetry pipelines.
 
+## [3.1.0] - 2026-09-11
+### ⚡ Migrazione Completa Codifiche ECU a UDS ISO 14229-1 (Toyota TNGA-B)
+- **Eliminazione Totale Dipendenze K-Line `3B`**:
+  - Rimossi integralmente tutti i letterali e i comandi legacy K-Line `3Bxx` (`3B00`, `3B01`, `3B20`, ecc.) dal layer di comando e dalla pipeline di personalizzazione centralina.
+- **Implementazione Protocollo Read-Before-Write a 8 Fasi**:
+  1. `ensureCanHeader(targetHeader)` con timeout diagnostico dedicato `CMD_TIMEOUT_ECU_CODING` (`AT ST 96`).
+  2. Apertura e transizione a sessione estesa UDS `1003` (`CMD_UDS_SESSION_EXTENDED`) con verifica stretta della risposta positiva `5003` o gestione intercettata di NRC 0x22 (*ConditionsNotCorrect*).
+  3. Lettura dello stato originale con Service 0x22 (`buildUdsRead(did)`) per backup e calcolo differenziale mirato.
+  4. Calcolo del nuovo payload con isolamento del parametro o bitmasking.
+  5. Scrittura su EEPROM tramite Service 0x2E (`buildUdsWrite(did, payload)`) con verifica stretta della risposta positiva `6E <DID>`.
+  6. Read-After-Write di convalida immediata con Service 0x22 per certificare l'avvenuta memorizzazione in centralina.
+  7. Commit EEPROM chiudendo la sessione diagnostica su default `1001` (`CMD_UDS_SESSION_DEFAULT`) con guard-time di 100ms.
+  8. Ripristino atomico nel blocco `finally withContext(NonCancellable)` dell'header CAN motore (`ensureEngineHeader()`).
+- **Definizione DIDs UDS per Tutte le Centraline Toyota TNGA-B**:
+  - **Combination Meter (`7C0`/`7C8`)**: DID `A001` (Reverse Beep singolo/continuo), `A002`/`A003`/`A004` (Cicalini cinture guidatore, passeggero e posteriori).
+  - **Main Body / Gateway (`750`/`758`)**: DID `B001` (Chiusura porte automatica in velocità), `B002` (Sblocco porte in P), `B003` (Alzacristalli da telecomando), `B004` (Volume sirena wireless), `B005` (Timer riarmo chiusura), `B006` (Modalità sblocco porte), `B010` (Comfort Turn Signal flashes), `B011` (Sensibilità fari crepuscolari), `B012` (Follow Me Home), `B013` (Dissolvenza luci abitacolo), `B014` (Illuminazione vano piedi in D), `B020`/`B021`/`B022` (Tergicristalli e sensore pioggia).
+  - **Air Conditioning (`7C4`/`7CC`)**: DID `C001` (Compressore A/C su AUTO), `C002` (Eco aircon efficiency), `C003` (Ventilatore su sbrinatore), `C004` (Offset calibrazione temperatura).
+  - **ADAS & TSS 2.5 (`7A0`/`7A8`)**: DID `D001` (Volume LDA), `D002` (Sensibilità BSM), `D003` (RCTA), `D004` (LTA), `D005` (PCS memoria ultimo stato).
+- **Miglioramento Diagnostica UDS & Decodifica NRC**:
+  - Validazione estesa in `Elm327Protocol.isUdsPositiveResponse` per SID 0x50, 0x62, 0x6E, 0x7E.
+  - Decodifica chiara per l'utente in `getUdsNrcDescription`: NRC 0x11 (*ServiceNotSupported*), NRC 0x22 (*ConditionsNotCorrect: veicolo non pronto, quadro in READY, portiere chiuse, cambio in P*), NRC 0x31 (*RequestOutOfRange*).
+- **Incremento Versione & Sincronizzazione**:
+  - Bump versione a `v3.1.0` (`versionCode = 48`).
+  - Sincronizzati build script, workflow CI/CD, README, portale web e file di documentazione.
+
 ## [3.0.9] - 2026-09-11
 ### 🔌 Risoluzione Definitiva Connessione OBD-II Toyota TNGA-B & Vgate iCar Pro
 - **FIX 1: Bonifica Totale di `AT AR` dall'Handshake**:

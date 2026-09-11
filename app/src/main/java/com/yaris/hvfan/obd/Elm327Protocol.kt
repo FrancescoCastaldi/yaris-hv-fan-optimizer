@@ -277,10 +277,20 @@ object Elm327Protocol {
      * Verifica se una risposta UDS (ISO 14229) è positiva.
      * Isola il byte di servizio della risposta per verificare che non sia un NRC (0x7F all'inizio del payload)
      * e permette la presenza legittima del valore 0x7F nei dati della centralina (temperature, impostazioni di coding, ecc.).
+     * Riconosce risposte positive per SID specifici:
+     * - 0x50 (DiagnosticSessionControl, es. 5003 o 5001)
+     * - 0x62 (ReadDataByIdentifier)
+     * - 0x6E (WriteDataByIdentifier)
+     * - 0x7E (TesterPresent)
      */
     fun isUdsPositiveResponse(response: String, expectedService: String? = null): Boolean {
-        val targetPositiveSid = expectedService?.toIntOrNull(16)?.let {
-            String.format(java.util.Locale.US, "%02X", it + 0x40)
+        val targetPositiveSid = expectedService?.let { exp ->
+            val cleanExp = exp.trim().uppercase()
+            // If full request starting with service (e.g. "1003", "10", "22", "2E", "3E", "3E00")
+            val baseServiceHex = if (cleanExp.length >= 2) cleanExp.take(2) else cleanExp
+            baseServiceHex.toIntOrNull(16)?.let {
+                String.format(java.util.Locale.US, "%02X", it + 0x40)
+            }
         }
 
         val lines = response.split('\r', '\n')
@@ -329,7 +339,7 @@ object Elm327Protocol {
                 }
             } else {
                 val sidInt = sid.toIntOrNull(16)
-                if (sidInt != null && sidInt in 0x40..0x7E) {
+                if (sidInt != null && (sidInt in 0x40..0x7E || sid in listOf("50", "62", "6E", "7E"))) {
                     return true
                 }
             }
@@ -403,6 +413,21 @@ object Elm327Protocol {
         }
 
         return null
+    }
+
+    /**
+     * Restituisce una descrizione chiara e orientata all'utente per i codici NRC UDS ISO 14229.
+     */
+    fun getUdsNrcDescription(nrc: String): String {
+        return when (nrc.uppercase()) {
+            NRC_SERVICE_NOT_SUPPORTED -> "Servizio diagnostico non supportato dalla centralina (NRC 0x11)"
+            NRC_SUB_FUNCTION_NOT_SUPPORTED -> "Sotto-funzione non supportata dalla centralina (NRC 0x12)"
+            NRC_CONDITIONS_NOT_CORRECT -> "Condizioni non corrette: veicolo non pronto, assicurarsi che l'auto sia in READY, con tutte le portiere chiuse e cambio in P (NRC 0x22)"
+            NRC_REQUEST_SEQUENCE_ERROR -> "Errore di sequenza nella richiesta diagnostica (NRC 0x24)"
+            NRC_REQUEST_OUT_OF_RANGE -> "Parametro fuori limite o non valido (NRC 0x31)"
+            NRC_RESPONSE_PENDING -> "Risposta centralina in elaborazione (NRC 0x78)"
+            else -> "Risposta negativa centralina NRC 0x$nrc"
+        }
     }
 
     fun isError(response: String): Boolean {

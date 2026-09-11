@@ -281,6 +281,57 @@ object ToyotaYarisCommands {
         }
     }
 
+    // Standard UDS (ISO 14229-1) Diagnostic Session & Service Commands
+    const val CMD_UDS_SESSION_EXTENDED = "1003" // DiagnosticSessionControl: Extended Diagnostic Session (0x03)
+    const val CMD_UDS_SESSION_DEFAULT  = "1001" // DiagnosticSessionControl: Default Diagnostic Session (0x01) - EEPROM Commit
+    const val CMD_UDS_TESTER_PRESENT   = "3E00" // TesterPresent: Zero sub-function / keep-alive
+
+    // Candidate UDS Data Identifiers (DIDs) for TNGA-B Toyota Yaris XP210
+    // Combination Meter ECU (Header 7C0 / Filter 7C8)
+    const val DID_METER_REVERSE_BEEP       = "A001" // Reverse Buzzer (Single / Continuous)
+    const val DID_METER_DRIVER_SEATBELT    = "A002" // Driver Seatbelt Chime
+    const val DID_METER_PASSENGER_SEATBELT = "A003" // Passenger Seatbelt Chime
+    const val DID_METER_REAR_SEATBELT      = "A004" // Rear Seatbelt Chime
+
+    // Main Body / Gateway ECU (Header 750 / Filter 758)
+    const val DID_BODY_AUTO_DOOR_LOCK      = "B001" // Speed-sensing auto door lock
+    const val DID_BODY_AUTO_DOOR_UNLOCK    = "B002" // Shift-to-P auto door unlock
+    const val DID_BODY_WINDOWS_KEY_FOB     = "B003" // Power window control with transmitter
+    const val DID_BODY_KEYLESS_BUZZER_VOL  = "B004" // Wireless buzzer sound volume
+    const val DID_BODY_AUTO_RELOCK_TIME    = "B005" // Automatic relock duration
+    const val DID_BODY_DOOR_UNLOCK_MODE    = "B006" // 1-step all doors vs driver first
+    const val DID_BODY_TURN_SIGNAL_FLASHES = "B010" // Lane change turn signal flashes (Comfort Flashes)
+    const val DID_BODY_LIGHT_SENSITIVITY   = "B011" // Automatic light sensor sensitivity
+    const val DID_BODY_FOLLOW_ME_HOME      = "B012" // Follow me home headlights duration
+    const val DID_BODY_INTERIOR_DIM_TIME   = "B013" // Interior room light illumination dim time
+    const val DID_BODY_FOOTWELL_LIGHT_DRIVE= "B014" // Footwell ambient illumination while in D
+    const val DID_BODY_REAR_WIPER_REVERSE  = "B020" // Rear wiper link to reverse gear
+    const val DID_BODY_DRIP_WIPE_EXTRA     = "B021" // Drip wipe extra pass
+    const val DID_BODY_WIPER_SPEED_LINK    = "B022" // Intermittent wiper speed link
+
+    // Air Conditioning ECU (Header 7C4 / Filter 7CC)
+    const val DID_AIRCON_AUTO_AC_BUTTON    = "C001" // Air conditioning compressor auto link to AUTO button
+    const val DID_AIRCON_ECO_EFFICIENCY    = "C002" // Eco aircon efficiency mode
+    const val DID_AIRCON_DEFROSTER_BLOWER  = "C003" // Blower on defroster
+    const val DID_AIRCON_TEMP_CALIBRATION  = "C004" // Ambient/Cabin temperature offset calibration
+
+    // TSS 2.5 Driving Assist / ADAS ECU (Header 7A0 / Filter 7A8)
+    const val DID_ADAS_LDA_WARNING_VOLUME  = "D001" // Lane departure alert warning buzzer volume
+    const val DID_ADAS_BSM_SENSITIVITY     = "D002" // Blind spot monitor detection timing/sensitivity
+    const val DID_ADAS_RCTA_ENABLED        = "D003" // Rear cross traffic alert toggle
+    const val DID_ADAS_LTA_ENABLED         = "D004" // Lane tracing assist active steering
+    const val DID_ADAS_PCS_REMEMBER_LAST   = "D005" // Pre-collision system memory mode
+
+    /**
+     * Builds a UDS ReadDataByIdentifier (Service 0x22) request frame.
+     */
+    fun buildUdsRead(did: String): String = "22$did"
+
+    /**
+     * Builds a UDS WriteDataByIdentifier (Service 0x2E) request frame with payload.
+     */
+    fun buildUdsWrite(did: String, payload: String): String = "2E$did$payload"
+
     // Hardware Flow Control ISO-TP Multi-Frame (Hybrid Assistant Specification)
     const val CMD_FC_SH_BATTERY          = "AT FC SH 7E2"   // Flow Control Header per ECU Batteria
     const val CMD_FC_SD_CTS              = "AT FC SD 300000" // Clear to Send, Block Size 0, Separation Time 0
