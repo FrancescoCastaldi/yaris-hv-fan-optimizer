@@ -562,14 +562,16 @@ class ObdControllerIntegrationTest {
         // Stage 2: Battery ECU and fallback chain
         assertEquals("7E2", ToyotaYarisCommands.HEADER_BATTERY_ECU)
         assertEquals("7EA", ToyotaYarisCommands.FILTER_BATTERY_ECU)
-        assertEquals(7, ToyotaYarisCommands.BATTERY_FALLBACK_PIDS.size)
-        assertEquals("2101", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[0])   // Primary universal Mode 21 Local ID 01
-        assertEquals("21C3", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[1])   // Lithium Mode 21 (1)
-        assertEquals("21C4", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[2])   // Lithium Mode 21 (2)
-        assertEquals("2161", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[3])   // Legacy KWP Mode 21
-        assertEquals("2228C1", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[4]) // TNGA Mode 22 UDS fallback
-        assertEquals("2228C0", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[5]) // Alternative Mode 22 UDS fallback
-        assertEquals("220101", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[6]) // Alternative Mode 22 UDS fallback 3
+        assertEquals(9, ToyotaYarisCommands.BATTERY_FALLBACK_PIDS.size)
+        assertEquals("2187", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[0])   // Denso Traction Battery Temperatures
+        assertEquals("21CE", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[1])   // Denso Battery Live Data / Voltages
+        assertEquals("2101", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[2])   // Primary universal Mode 21 Local ID 01
+        assertEquals("21C3", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[3])   // Lithium Mode 21 (1)
+        assertEquals("21C4", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[4])   // Lithium Mode 21 (2)
+        assertEquals("2161", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[5])   // Legacy KWP Mode 21
+        assertEquals("2228C1", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[6]) // TNGA Mode 22 UDS fallback
+        assertEquals("2228C0", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[7]) // Alternative Mode 22 UDS fallback
+        assertEquals("220101", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[8]) // Alternative Mode 22 UDS fallback 3
 
         // Verify parsing for each fallback response variant
         // 1. Primary 2228C1 -> 6228C1
@@ -1471,6 +1473,7 @@ class ObdControllerIntegrationTest {
             override suspend fun sendWakeSequence() {}
             override suspend fun sendCommand(command: String, timeoutMs: Long): String {
                 return when (command) {
+                    "2187" -> "61 87 4B 07 4D 38 4E B8 4A 00 >"
                     "2101", ToyotaYarisCommands.PID_READ_BATTERY_DATA_TNGA -> "61 01 44 45 44 43 41 03"
                     else -> "OK\r\n>"
                 }

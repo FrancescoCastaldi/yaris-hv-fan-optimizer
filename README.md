@@ -1,7 +1,7 @@
 # Toyota Yaris MK4 Hybrid — HV Battery Cooling, GR Cockpit & ECU Coding Suite 🏎️⚡
 
 [![Website](https://img.shields.io/badge/Website-Live%20Portal-00E5FF.svg?style=for-the-badge&logo=googlechrome)](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/)
-[![Download APK](https://img.shields.io/badge/Download-APK%20Release%20(v3.1.2)-D71920.svg?style=for-the-badge&logo=android)](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisHvFanControl-v3.1.2.apk)
+[![Download APK](https://img.shields.io/badge/Download-APK%20Release%20(v3.1.3)-D71920.svg?style=for-the-badge&logo=android)](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisHvFanControl-v3.1.3.apk)
 [![OBD Bridge APK](https://img.shields.io/badge/Download-OBD%20Bridge%20(v1.0.0)-00E5FF.svg?style=for-the-badge&logo=android)](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisObdBridge-v1.0.0.apk)
 [![Platform](https://img.shields.io/badge/Platform-Android%208.0%2B%20(API%2026%2B)-3DDC84.svg?style=flat&logo=android)](https://www.android.com/)
 [![Kotlin](https://img.shields.io/badge/Kotlin-1.9.24-7F52FF.svg?style=flat&logo=kotlin)](https://kotlinlang.org/)
@@ -17,8 +17,8 @@ Native Android telemetry and diagnostic application for the **Toyota Yaris MK4 H
    - Warm Start / Reset (`AT WS` / `AT Z`) with calibrated 600ms settling time without baud rate loss.
    - Robust vehicle READY detection via true 12V bus voltage (`AT RV >= 13.0V`, active DC-DC converter), immune to firmware banner strings, complemented by periodic CAN probe verification.
    - Low-power standby state when vehicle is off or non-READY, eliminating bus flooding, `NO DATA` loops, and 12V auxiliary battery drain.
-2. **Denso Multi-Frame ISO-TP Hardware Flow Control (PID 2228C1)**:
-   - Dynamic ELM/STN hardware configuration (`AT CRA 7EA`, `AT FC SH 7E2`, `AT FC SD 300000`, `AT FC SM 1`) with calibrated timeout (`AT ST C8`, ~819ms) providing ample headroom for multi-frame cell and fan responses.
+2. **Denso Multi-Frame ISO-TP Hardware Flow Control (PID 2228C1 & Denso 2187 / 21CE)**:
+   - Dynamic ELM/STN hardware configuration (`AT CRA 7EA`, open filter fallback `AT CRA`, `AT FC SH 7E2`, `AT FC SD 300000`, `AT FC SM 1`) with calibrated timeout (`AT ST C8`, ~819ms) providing ample headroom for multi-frame cell and fan responses.
 3. **Silent Reconnection Watchdog & Instant Auto-Connect**:
    - Closed-loop background watchdog with exponential backoff and thread-safe streaming; non-blocking recovery upon ignition cycles.
    - Seamless auto-pairing to previously bonded Bluetooth adapters without scan modal friction.
@@ -29,9 +29,9 @@ Native Android telemetry and diagnostic application for the **Toyota Yaris MK4 H
 6. **MoTeC / Gazoo Racing Telemetry & Dragy 0–100 km/h Precision Timer**:
    - High-precision linear interpolation for 0–50 km/h and 0–100 km/h acceleration tracking with persistent Personal Best (PB) logging.
 7. **Active Denso HV Battery Cooling Fan Control**:
-   - UDS IO Control Mode 0x2F / Mode 0x30 direct fan speed control with closed-loop ECU acknowledgment and Hall RPM feedback.
+   - UDS IO Control Mode 0x2F / Mode 0x30 direct fan speed control with unblocked manual override and Hall RPM feedback.
 8. **Comprehensive UDS ECU Customization Suite**:
-   - Complete on-demand configuration for Toyota Touch 3 display audio, reverse comfort beep, auto-door locking, key-fob window roll, comfort turn signals, and ADAS alerts.
+   - Complete on-demand configuration for Toyota Touch 3 display audio, reverse comfort beep (candidate DIDs probe), auto-door locking, key-fob window roll, comfort turn signals, and ADAS alerts with Central Gateway BCM extended addressing (`40`).
 9. **Automotive Reverse Engineering & Protocol Logging Engine (v3.1.2+)**:
    - Semantic UDS & CAN auto-annotation tracking active ECU headers (`7E0`, `7E2`, `7C0`, `750`, `7C4`, `7A0`, `7DF`).
    - Real-time decoding of Mode 01 PIDs with formulas and physical units, UDS Session Control (`10`), ReadDID (`22`), WriteDID (`2E`), IOControl (`2F`), RoutineControl (`31`), TesterPresent (`3E`), ACKs, NRCs (`7F <SID> <NRC>`), and ISO-TP framing (SF/FF/FC/CF).
@@ -46,7 +46,7 @@ Native Android telemetry and diagnostic application for the **Toyota Yaris MK4 H
 
 - **Official Web Portal**: [https://francescocastaldi.github.io/yaris-hv-fan-optimizer/](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/)
 - **Interactive Web Simulator**: [https://francescocastaldi.github.io/yaris-hv-fan-optimizer/preview.html](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/preview.html)
-- **Direct Download — Yaris HV Fan Control (v3.1.2)**: [YarisHvFanControl-v3.1.2.apk](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisHvFanControl-v3.1.2.apk)
+- **Direct Download — Yaris HV Fan Control (v3.1.3)**: [YarisHvFanControl-v3.1.3.apk](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisHvFanControl-v3.1.3.apk)
 - **Direct Download — Yaris OBD Bridge & Sniffer (v1.0.0)**: [YarisObdBridge-v1.0.0.apk](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisObdBridge-v1.0.0.apk)
 
 ---
@@ -172,7 +172,7 @@ build_apk.bat
 ```
 
 Generated APKs are automatically verified, signed with release keys, and placed in both the project root and `docs/`:
-- `YarisHvFanControl-v3.1.2.apk` (Primary application)
+- `YarisHvFanControl-v3.1.3.apk` (Primary application)
 - `YarisObdBridge-v1.0.0.apk` (Standalone MITM sniffer & bridge)
 
 ---

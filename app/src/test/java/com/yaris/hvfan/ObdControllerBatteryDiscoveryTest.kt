@@ -503,6 +503,7 @@ class ObdControllerBatteryDiscoveryTest {
         fakeTransport.commandResponder = { cmd, _ ->
             when {
                 cmd.startsWith("AT") -> "OK"
+                cmd == "2187" -> "61 87 4B 07 4D 38 4E B8 4A 00 >"
                 cmd == "2101" || cmd == ToyotaYarisCommands.PID_READ_BATTERY_DATA_TNGA -> "61 01 44 45 44 43 41 03"
                 cmd.startsWith("3008") || cmd.startsWith("2F58") -> "OK"
                 else -> "OK"
@@ -549,6 +550,7 @@ class ObdControllerBatteryDiscoveryTest {
         fakeTransport.commandResponder = { cmd, _ ->
             when {
                 cmd.startsWith("AT") -> "OK"
+                cmd == "2187" -> "61 87 4B 07 4D 38 4E B8 4A 00 >"
                 cmd == "2101" || cmd == ToyotaYarisCommands.PID_READ_BATTERY_DATA_TNGA -> "61 01 44 45 44 43 41 03"
                 cmd.startsWith("2F58") -> "7F2F11" // Negative response (NRC)
                 cmd.startsWith("3008") -> "OK"
@@ -584,6 +586,7 @@ class ObdControllerBatteryDiscoveryTest {
         fakeTransport.commandResponder = { cmd, _ ->
             when {
                 cmd.startsWith("AT") -> "OK"
+                cmd == "2187" -> "61 87 4B 07 4D 38 4E B8 4A 00 >"
                 cmd == "2101" || cmd == ToyotaYarisCommands.PID_READ_BATTERY_DATA_TNGA -> "61 01 44 45 44 43 41 03"
                 cmd.startsWith("2F58") || cmd.startsWith("3008") -> "OK"
                 else -> "OK"
@@ -678,6 +681,108 @@ class ObdControllerBatteryDiscoveryTest {
         // 6. Idempotent call to ensureEngineHeader() under same header & filter -> no re-dispatch
         controller.ensureEngineHeader()
         assertEquals("Should not re-dispatch AT commands if header and filter have not changed", 0, fakeTransport.dispatchedCommands.size)
+    }
+
+    @Test
+    fun testManualFanForcingUnlockedWhenEcuCommunicationEstablishedEvenWithoutBatteryTemp() = runTest {
+        val fakeTransport = FakeObdTransport()
+        fakeTransport.commandResponder = { cmd, _ ->
+            when {
+                cmd.startsWith("AT") -> "OK"
+                // Battery PID 2187 returns NO DATA (undiscovered)
+                cmd == "2187" -> "NO DATA"
+                cmd.startsWith("2F58") || cmd.startsWith("3008") -> "OK"
+                else -> "OK"
+            }
+        }
+
+        val stateMachine = ObdStateMachine()
+        val controller = ObdController(
+            bleManager = fakeTransport,
+            scope = this,
+            stateMachine = stateMachine,
+            discoveryEngine = BatteryDiscoveryEngine()
+        )
+
+        // Engine ECU communication is active
+        controller.setEcuCommunicationForTesting(true)
+        assertTrue(controller.liveState.value.hasEcuCommunication)
+
+        // User commands manual fan override level 5
+        controller.setManualForcedFan(true, level = 5)
+        assertTrue(controller.liveState.value.isManualFanForced)
+
+        // Execute cycle: battery temp is 0.0, but fan command MUST be dispatched immediately!
+        controller.executeBatteryThermalCycle()
+
+        val dispatched = fakeTransport.dispatchedCommands
+        assertTrue(
+            "Primary fan override 2F580305 must be dispatched immediately when hasEcuCommunication is true",
+            dispatched.contains("2F580305")
+        )
+        assertTrue(controller.liveState.value.batteryStatus.isFanForced)
+    }
+
+    @Test
+    fun testBatteryFilterFallbackToOpenOnElmCloneCraError() = runTest {
+        val fakeTransport = FakeObdTransport()
+        fakeTransport.commandResponder = { cmd, _ ->
+            when (cmd) {
+                "AT CRA 7EA" -> "?" // ELM327 clone rejects CRA with error/question mark
+                else -> "OK"
+            }
+        }
+
+        val controller = ObdController(
+            bleManager = fakeTransport,
+            scope = this,
+            stateMachine = ObdStateMachine(),
+            discoveryEngine = BatteryDiscoveryEngine()
+        )
+
+        controller.ensureCanHeader(ToyotaYarisCommands.HEADER_BATTERY_ECU)
+        val dispatched = fakeTransport.dispatchedCommands
+
+        assertTrue("Must attempt AT CRA 7EA first", dispatched.contains("AT CRA 7EA"))
+        assertTrue("Must fallback to open filter AT CRA when clone ELM returns error", dispatched.contains("AT CRA"))
+        assertTrue(controller.isBatteryFilterFallbackToOpen)
+
+        // Subsequent call to ensureCanHeader(7E2) should now directly dispatch AT CRA without 7EA
+        fakeTransport.dispatchedCommands.clear()
+        controller.ensureCanHeader(ToyotaYarisCommands.HEADER_BATTERY_ECU, force = true)
+        assertTrue("Subsequent call should use open filter AT CRA directly", fakeTransport.dispatchedCommands.contains("AT CRA"))
+        assertFalse(fakeTransport.dispatchedCommands.contains("AT CRA 7EA"))
+    }
+
+    @Test
+    fun testBatteryFilterFallbackToOpenOnConsecutiveNoDataResponses() = runTest {
+        val fakeTransport = FakeObdTransport()
+        fakeTransport.commandResponder = { cmd, _ ->
+            when {
+                cmd.startsWith("AT") -> "OK"
+                else -> "NO DATA"
+            }
+        }
+
+        val controller = ObdController(
+            bleManager = fakeTransport,
+            scope = this,
+            stateMachine = ObdStateMachine(),
+            discoveryEngine = BatteryDiscoveryEngine()
+        )
+
+        assertFalse(controller.isBatteryFilterFallbackToOpen)
+
+        // First slow cycle: NO DATA response 1
+        controller.executeBatteryThermalCycle()
+        assertEquals(1, controller.consecutiveBatteryNoDataCount)
+        assertFalse(controller.isBatteryFilterFallbackToOpen)
+
+        // Second slow cycle: NO DATA response 2 -> triggers open filter fallback
+        controller.executeBatteryThermalCycle()
+        assertEquals(2, controller.consecutiveBatteryNoDataCount)
+        assertTrue("Repeated NO DATA responses must trigger open filter fallback", controller.isBatteryFilterFallbackToOpen)
+        assertTrue(fakeTransport.dispatchedCommands.contains("AT CRA"))
     }
 }
 

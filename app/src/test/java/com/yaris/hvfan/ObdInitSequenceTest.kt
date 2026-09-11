@@ -354,14 +354,16 @@ class ObdInitSequenceTest {
 
     @Test
     fun testStage2BatteryFallbackChainPidsParsing() {
-        assertEquals(7, ToyotaYarisCommands.BATTERY_FALLBACK_PIDS.size)
-        assertEquals("2101", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[0])
-        assertEquals("21C3", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[1])
-        assertEquals("21C4", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[2])
-        assertEquals("2161", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[3])
-        assertEquals("2228C1", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[4])
-        assertEquals("2228C0", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[5])
-        assertEquals("220101", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[6])
+        assertEquals(9, ToyotaYarisCommands.BATTERY_FALLBACK_PIDS.size)
+        assertEquals("2187", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[0])
+        assertEquals("21CE", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[1])
+        assertEquals("2101", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[2])
+        assertEquals("21C3", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[3])
+        assertEquals("21C4", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[4])
+        assertEquals("2161", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[5])
+        assertEquals("2228C1", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[6])
+        assertEquals("2228C0", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[7])
+        assertEquals("220101", ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[8])
 
         // Candidate 1: 2228C1
         val res28C1 = "62 28 C1 44 45 44 43 41 03"

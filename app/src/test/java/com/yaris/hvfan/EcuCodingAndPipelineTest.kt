@@ -139,18 +139,39 @@ class EcuCodingAndPipelineTest {
         assertEquals("3E00", ToyotaYarisCommands.CMD_UDS_TESTER_PRESENT)
 
         // DIDs integrity
-        assertEquals("A001", ToyotaYarisCommands.DID_METER_REVERSE_BEEP)
-        assertEquals("A002", ToyotaYarisCommands.DID_METER_DRIVER_SEATBELT)
+        assertEquals("01AC", ToyotaYarisCommands.DID_METER_REVERSE_BEEP)
+        assertEquals("A001", ToyotaYarisCommands.DID_METER_REVERSE_BEEP_LEGACY)
+        assertEquals("01A0", ToyotaYarisCommands.DID_METER_DRIVER_SEATBELT)
         assertEquals("B001", ToyotaYarisCommands.DID_BODY_AUTO_DOOR_LOCK)
         assertEquals("B003", ToyotaYarisCommands.DID_BODY_WINDOWS_KEY_FOB)
         assertEquals("B010", ToyotaYarisCommands.DID_BODY_TURN_SIGNAL_FLASHES)
         assertEquals("C001", ToyotaYarisCommands.DID_AIRCON_AUTO_AC_BUTTON)
         assertEquals("D001", ToyotaYarisCommands.DID_ADAS_LDA_WARNING_VOLUME)
 
+        // Candidate DIDs for Meter Reverse Beep & Seatbelt
+        assertEquals(listOf("01AC", "01A0", "2010", "1020", "01A7", "A001"), ToyotaYarisCommands.CANDIDATE_DIDS_METER_REVERSE_BEEP)
+        assertEquals(listOf("01A0", "01AC", "2010", "1020", "01A7", "A002"), ToyotaYarisCommands.CANDIDATE_DIDS_METER_SEATBELT)
+
         // Helper compositions
-        assertEquals("22A001", ToyotaYarisCommands.buildUdsRead(ToyotaYarisCommands.DID_METER_REVERSE_BEEP))
-        assertEquals("2EA00100", ToyotaYarisCommands.buildUdsWrite(ToyotaYarisCommands.DID_METER_REVERSE_BEEP, "00"))
+        assertEquals("2201AC", ToyotaYarisCommands.buildUdsRead(ToyotaYarisCommands.DID_METER_REVERSE_BEEP))
+        assertEquals("2E01AC00", ToyotaYarisCommands.buildUdsWrite(ToyotaYarisCommands.DID_METER_REVERSE_BEEP, "00"))
         assertEquals("2EB01005", ToyotaYarisCommands.buildUdsWrite(ToyotaYarisCommands.DID_BODY_TURN_SIGNAL_FLASHES, "05"))
+
+        // Gateway BCM prefix 40 helpers
+        assertEquals("40 22 B001", ToyotaYarisCommands.buildGatewayUdsRead("B001", useBcmPrefix = true))
+        assertEquals("22B001", ToyotaYarisCommands.buildGatewayUdsRead("B001", useBcmPrefix = false))
+        assertEquals("40 2E B001 01", ToyotaYarisCommands.buildGatewayUdsWrite("B001", "01", useBcmPrefix = true))
+        assertEquals("2EB00101", ToyotaYarisCommands.buildGatewayUdsWrite("B001", "01", useBcmPrefix = false))
+        assertEquals("AT ST C8", Elm327Protocol.CMD_TIMEOUT_GATEWAY_ECU)
+
+        // Gateway BCM prefix 40 positive responses & NRC
+        assertTrue(Elm327Protocol.isUdsPositiveResponse("40 50 03", "10"))
+        assertTrue(Elm327Protocol.isUdsPositiveResponse("40 62 B0 01 01", "22"))
+        assertTrue(Elm327Protocol.isUdsPositiveResponse("40 6E B0 01 01", "2E"))
+        val gatewayNrc = Elm327Protocol.extractUdsNrc("40 7F 22 31")
+        assertNotNull(gatewayNrc)
+        assertEquals("22", gatewayNrc!!.serviceId)
+        assertEquals("31", gatewayNrc.nrc)
 
         // NRC Decoding & extraction
         val nrcConditions = Elm327Protocol.extractUdsNrc("7F 10 22")

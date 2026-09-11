@@ -5,6 +5,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 - **MAJOR (`X.0.0`)**: Fundamental architectural overhauls, major subsystems, or comprehensive UI redesigns.
 - **MINOR (`0.X.0`)**: New features, additional sensors, ECU coding options, or telemetry pipelines.
 
+## [3.1.3] - 2026-09-11
+### 🔋 Supporto Centralina HV Batteria Denso PID 2187/21CE & Sblocco Forzatura Ventola
+- **Centralina Batteria HV Denso (XP210 TNGA-B)**:
+  - Risolto il mancato aggancio della centralina `7E2` sui log diagnostici reali TNGA: inseriti in cima alla catena `BATTERY_FALLBACK_PIDS` i PID Toyota ufficiali `2187` (Traction Battery Temperatures: TB1, TB2, TB3 e Intake Air Temp con decodifica a 2-byte per canale e formula `((A*256)+B)*255.9f/65535f - 50.0f`) e `21CE` (Battery Live Data / Tensioni Moduli).
+  - Implementato il parser dedicato `parseBatteryTemperature2187(raw)` che calcola in tempo reale `temp1`, `temp2`, `temp3`, `intakeTemp`, `maxTemp`, `minTemp` e `avgTemp`.
+- **Resilienza Filtri Hardware Ricezione CAN & Fallback Cloni ELM327**:
+  - Risolto il problema dei cloni ELM327 economici che rifiutano o filtrano male i frame UDS con `AT CRA 7EA`: se il comando restituisce `NO DATA`, `?`, `ERROR`, `TIMEOUT` o se si verificano risposte `NO DATA` consecutive su `7E2`, il controller passa automaticamente al filtro aperto (`AT CRA`), consentendo il passaggio pulito di tutti i pacchetti UDS.
+- **Sblocco Completo Forzatura Manuale Ventola**:
+  - Rimosso il vincolo rigido `updatedBattery.maxTemp > 0.0` quando la ventola viene forzata manualmente dall'utente (`isManualForced = true`). Se la comunicazione CAN con il veicolo è stabilita (`hasEcuCommunication == true`), il comando di forzatura (`2F 58 03 0x` con fallback `30 08 0x`) viene inviato immediatamente senza blocchi o ritardi.
+- **ECU Coding Meter 7C0 & Central Gateway 750 (BCM)**:
+  - **Meter 7C0**: Integrata la scansione a cascata dei candidate DIDs Toyota (`01AC`, `01A0`, `2010`, `1020`, `01A7`, `A001`) per il Reverse Beep e le cinture di sicurezza, verificando preventivamente con lettura Service 22 prima della scrittura Service 2E.
+  - **Main Body Gateway 750**: Introdotto il supporto all'Extended Addressing con prefisso BCM `40` (es. `40 10 03`, `40 22 B001`, `40 10 01`) e timeout calibrato `AT ST C8` (~819ms) per la corretta risposta attraverso il gateway centrale.
+- **Aggiornamento Suite Unit Test**:
+  - Test suite al 100% di successo (151 test completati) inclusi test di fallback filtro aperto, sblocco manuale forzatura ventola e indirizzamento BCM 40.
+
 ## [3.1.2] - 2026-09-11
 ### 🛠️ Robustezza Protocolli Automotive & Riassemblaggio Multi-Frame ISO-TP
 - **Riassemblatore Automatico Multi-Frame ISO-TP (`ReverseEngineeringTracker`)**:

@@ -45,6 +45,7 @@ object Elm327Protocol {
     const val CMD_TIMEOUT_TELEMETRY = "AT ST 32"    // ~205 ms, default ELM327, per il loop rapido
     const val CMD_TIMEOUT_TELEMETRY_STANDBY = "AT ST 64" // ~410 ms per quadro acceso / non-READY (FIX 5)
     const val CMD_TIMEOUT_ECU_CODING = "AT ST 96"   // ~614 ms per Body, Meter, Aircon e ADAS UDS Mode 21/22/3B
+    const val CMD_TIMEOUT_GATEWAY_ECU = "AT ST C8"  // ~819 ms per Central Gateway 750 (Extended Addressing BCM)
 
     // Sequenza canonica di handshake standard calibrata per Vgate iCar Pro & Toyota Yaris Hybrid TNGA-B
     val INIT_COMMANDS = listOf(
@@ -308,6 +309,15 @@ object Elm327Protocol {
         for (line in linesToCheck) {
             val tokens = line.split(Regex("""\s+""")).filter { it.isNotEmpty() }
             val sid = when {
+                tokens.size >= 5 && tokens[0].length == 3 && tokens[0].all { it in "0123456789ABCDEFabcdef" } &&
+                    tokens[2].equals("40", ignoreCase = true) -> {
+                    // Formato Gateway ATH1 con prefisso BCM 40: [CAN_ID] [DLC] 40 [SID] ...
+                    tokens[3].uppercase()
+                }
+                tokens.size >= 2 && tokens[0].equals("40", ignoreCase = true) -> {
+                    // Formato Gateway ATH0 con prefisso BCM 40 con spazi: 40 [SID] ...
+                    tokens[1].uppercase()
+                }
                 tokens.size >= 4 && tokens[0].length == 3 && tokens[0].all { it in "0123456789ABCDEFabcdef" } &&
                     tokens[1].matches(Regex("""(?i)^1[0-9A-F]$""")) -> {
                     // Formato con header ATH1 con spazi, First Frame ISO-TP: [CAN_ID] [1x] [len] [SID] ...
@@ -321,6 +331,11 @@ object Elm327Protocol {
                     // Formato compatto con header CAN 7xx (Single Frame o First Frame)
                     val match = Regex("""(?i)^7[0-9A-F]{2}(?:1[0-9A-F]{3}|[0-9A-F]{1,2})([0-9A-F]{2}).*""").find(tokens[0])
                     match?.groupValues?.get(1)?.uppercase() ?: ""
+                }
+                tokens.isNotEmpty() && tokens[0].matches(Regex("""(?i)^40([0-9A-F]{2}).*""")) &&
+                    !tokens[0].matches(Regex("""(?i)^7[0-9A-F]{2}.*""")) -> {
+                    // Formato Gateway ATH0 compatto con prefisso BCM 40: 40[SID]...
+                    Regex("""(?i)^40([0-9A-F]{2}).*""").find(tokens[0])?.groupValues?.get(1)?.uppercase() ?: ""
                 }
                 tokens.isNotEmpty() -> {
                     // Formato senza header (ATH0): i primi 2 caratteri sono il SID
@@ -402,8 +417,8 @@ object Elm327Protocol {
                 )
             }
 
-            // 3. Linea compatta senza header (es. "7F2211")
-            val rawNrcMatch = Regex("""(?i)^7F([0-9A-F]{2})([0-9A-F]{2})""").find(cleanLine)
+            // 3. Linea compatta senza header o con prefisso gateway 40 (es. "7F2211" o "407F2211")
+            val rawNrcMatch = Regex("""(?i)^(?:40)?7F([0-9A-F]{2})([0-9A-F]{2})""").find(cleanLine)
             if (rawNrcMatch != null) {
                 return UdsNrcResponse(
                     serviceId = rawNrcMatch.groupValues[1].uppercase(),

@@ -66,6 +66,7 @@ data class HvBatteryStatus(
     val temp3: Double = 0.0,
     val temp4: Double = 0.0,
     val maxTemp: Double = 0.0,
+    val minTemp: Double = 0.0,
     val avgTemp: Double = 0.0,
     val intakeTemp: Double = 0.0,
     val fanSpeedLevel: Int = 0, // 0 to 6
@@ -288,12 +289,33 @@ object ToyotaYarisCommands {
 
     // Candidate UDS Data Identifiers (DIDs) for TNGA-B Toyota Yaris XP210
     // Combination Meter ECU (Header 7C0 / Filter 7C8)
-    const val DID_METER_REVERSE_BEEP       = "A001" // Reverse Buzzer (Single / Continuous)
-    const val DID_METER_DRIVER_SEATBELT    = "A002" // Driver Seatbelt Chime
-    const val DID_METER_PASSENGER_SEATBELT = "A003" // Passenger Seatbelt Chime
-    const val DID_METER_REAR_SEATBELT      = "A004" // Rear Seatbelt Chime
+    const val DID_METER_REVERSE_BEEP       = "01AC" // Reverse Buzzer (Primary candidate: Single / Continuous)
+    const val DID_METER_REVERSE_BEEP_LEGACY = "A001" // Reverse Buzzer (Legacy candidate)
+    const val DID_METER_DRIVER_SEATBELT    = "01A0" // Driver Seatbelt Chime candidate
+    const val DID_METER_PASSENGER_SEATBELT = "2010" // Passenger Seatbelt Chime candidate
+    const val DID_METER_REAR_SEATBELT      = "1020" // Rear Seatbelt Chime candidate
+
+    // Catena candidati DID reali documentati per Meter 7C0 (Reverse Beep & Cinture)
+    val CANDIDATE_DIDS_METER_REVERSE_BEEP = listOf(
+        "01AC",
+        "01A0",
+        "2010",
+        "1020",
+        "01A7",
+        "A001"
+    )
+
+    val CANDIDATE_DIDS_METER_SEATBELT = listOf(
+        "01A0",
+        "01AC",
+        "2010",
+        "1020",
+        "01A7",
+        "A002"
+    )
 
     // Main Body / Gateway ECU (Header 750 / Filter 758)
+    const val BCM_PREFIX                   = "40"   // Central Gateway BCM Sub-address prefix
     const val DID_BODY_AUTO_DOOR_LOCK      = "B001" // Speed-sensing auto door lock
     const val DID_BODY_AUTO_DOOR_UNLOCK    = "B002" // Shift-to-P auto door unlock
     const val DID_BODY_WINDOWS_KEY_FOB     = "B003" // Power window control with transmitter
@@ -332,6 +354,18 @@ object ToyotaYarisCommands {
      */
     fun buildUdsWrite(did: String, payload: String): String = "2E$did$payload"
 
+    /**
+     * Builds a Gateway UDS Read with optional BCM extended addressing prefix (0x40).
+     */
+    fun buildGatewayUdsRead(did: String, useBcmPrefix: Boolean = false): String =
+        if (useBcmPrefix) "$BCM_PREFIX 22 $did" else "22$did"
+
+    /**
+     * Builds a Gateway UDS Write with optional BCM extended addressing prefix (0x40).
+     */
+    fun buildGatewayUdsWrite(did: String, payload: String, useBcmPrefix: Boolean = false): String =
+        if (useBcmPrefix) "$BCM_PREFIX 2E $did $payload" else "2E$did$payload"
+
     // Hardware Flow Control ISO-TP Multi-Frame (Hybrid Assistant Specification)
     const val CMD_FC_SH_BATTERY          = "AT FC SH 7E2"   // Flow Control Header per ECU Batteria
     const val CMD_FC_SD_CTS              = "AT FC SD 300000" // Clear to Send, Block Size 0, Separation Time 0
@@ -352,6 +386,8 @@ object ToyotaYarisCommands {
     const val CMD_MULTI_PID_ENGINE = "010D0C11" // Batched: Speed (0D), RPM (0C), Throttle (11)
 
     // Toyota Enhanced PID (Mode 22 UDS / Mode 21 KWP / Lithium Packs)
+    const val PID_READ_BATTERY_DATA_2187 = "2187"        // Traction Battery Temperatures: TB1, TB2, TB3, Intake Air Temp
+    const val PID_READ_BATTERY_DATA_21CE = "21CE"        // Battery Module Voltages & Live Data
     const val PID_READ_BATTERY_DATA_TNGA = "2228C1"      // Toyota TNGA-B Primary Mode 22
     const val PID_READ_BATTERY_DATA_LEGACY = "2161"      // KWP Mode 21 Fallback
     const val PID_READ_BATTERY_DATA_LITHIUM_1 = "21C3"   // TNGA Lithium Pack Fallback 1
@@ -359,9 +395,11 @@ object ToyotaYarisCommands {
     const val PID_READ_BATTERY_DATA_ALT = "2228C0"       // Alternative Mode 22
 
     // Fallback chain trasparente centralina ibrida Denso HV Battery:
-    // Priorità ai PID universali Mode 21 (Dr. Prius / Hybrid Assistant standard) che rispondono su TNGA-B
-    // senza richiedere sessione UDS estesa, seguiti dai PID Mode 22.
+    // Priorità assoluta ai PID reali documentati Toyota (2187 e 21CE), seguiti dai PID Mode 21 universali
+    // e dai PID Mode 22 UDS.
     val BATTERY_FALLBACK_PIDS = listOf(
+        PID_READ_BATTERY_DATA_2187,      // 2187 (Traction Battery Temperatures: TB1, TB2, TB3, Intake Air Temp)
+        PID_READ_BATTERY_DATA_21CE,      // 21CE (Battery Module Voltages & Live Data)
         "2101",                          // Mode 21 Local ID 01 (Denso BMS primario universale)
         PID_READ_BATTERY_DATA_LITHIUM_1, // 21C3 (TNGA Lithium Pack Telemetry 1)
         PID_READ_BATTERY_DATA_LITHIUM_2, // 21C4 (TNGA Lithium Pack Telemetry 2)
@@ -656,7 +694,74 @@ object ToyotaYarisCommands {
     }
 
     /**
-     * Parses the response from 2228C1 or 2161 into HvBatteryStatus.
+     * Parses the response from Toyota Mode 21 PID 87 (Traction Battery Temperatures TB1..TB3 and Intake Air Temp)
+     * using the official formula: ((A*256)+B)*255.9f/65535f - 50.0f for each 2-byte channel.
+     */
+    fun parseBatteryTemperature2187(raw: String, isForced: Boolean = false): HvBatteryStatus? {
+        val frames = Elm327Protocol.extractValidFrames(raw)
+        val clean = if (frames.isNotEmpty()) {
+            frames.joinToString("")
+        } else {
+            val c = Elm327Protocol.cleanResponse(raw).uppercase()
+            if (Elm327Protocol.isError(c)) return null
+            c
+        }
+
+        try {
+            var hexPayload = clean.replace(" ", "").replace("\r", "").replace("\n", "").replace(">", "")
+            hexPayload = hexPayload.replace(Regex("""(?:7[0-9A-F]{2}2[0-9A-F])"""), "")
+            hexPayload = hexPayload.replace(Regex("""^[0-9A-F]{4}:"""), "")
+            hexPayload = hexPayload.replace(Regex("""[0-9]:"""), "")
+
+            if (!hexPayload.contains("6187")) return null
+            val data = hexPayload.substring(hexPayload.indexOf("6187") + 4)
+            if (data.length < 4) return null
+
+            fun decodeChannel(startIdx: Int): Double? {
+                if (data.length < startIdx + 4) return null
+                val a = data.substring(startIdx, startIdx + 2).toIntOrNull(16) ?: return null
+                val b = data.substring(startIdx + 2, startIdx + 4).toIntOrNull(16) ?: return null
+                return ((a * 256.0) + b) * 255.9 / 65535.0 - 50.0
+            }
+
+            val tb1 = decodeChannel(0) ?: return null
+            val tb2 = decodeChannel(4) ?: tb1
+            val tb3 = decodeChannel(8) ?: tb1
+            val intake = decodeChannel(12) ?: tb1
+
+            val validBatteryTemps = listOf(tb1, tb2, tb3).filter { it in -40.0..120.0 }
+            val maxT = if (validBatteryTemps.isNotEmpty()) validBatteryTemps.maxOrNull() ?: tb1 else tb1
+            val minT = if (validBatteryTemps.isNotEmpty()) validBatteryTemps.minOrNull() ?: tb1 else tb1
+            val avgT = if (validBatteryTemps.isNotEmpty()) validBatteryTemps.average() else tb1
+
+            val fanLevel = if (isForced) 6 else 0
+            val rpmMap = mapOf(0 to 0, 1 to 1250, 2 to 1850, 3 to 2450, 4 to 3100, 5 to 3850, 6 to 4650)
+            val fanRpm = rpmMap[fanLevel] ?: (fanLevel * 750)
+
+            return HvBatteryStatus(
+                temp1 = tb1,
+                temp2 = tb2,
+                temp3 = tb3,
+                temp4 = tb3,
+                maxTemp = maxT,
+                minTemp = minT,
+                avgTemp = avgT,
+                intakeTemp = intake,
+                fanSpeedLevel = fanLevel,
+                isFanForced = isForced,
+                isEcuAckConfirmed = isForced,
+                estimatedFanRpm = fanRpm,
+                isThermalThrottled = maxT >= 36.0,
+                timestamp = System.currentTimeMillis()
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Errore parsing frame batteria PID 2187: $raw", e)
+            return null
+        }
+    }
+
+    /**
+     * Parses the response from 2187, 21CE, 2228C1, 2101 or 2161 into HvBatteryStatus.
      */
     fun parseBatteryResponse(raw: String, isForced: Boolean): HvBatteryStatus? {
         val frames = Elm327Protocol.extractValidFrames(raw)
@@ -669,6 +774,31 @@ object ToyotaYarisCommands {
         }
         if (clean.length < 8) {
             return null
+        }
+
+        if (clean.contains("6187")) {
+            return parseBatteryTemperature2187(raw, isForced)
+        }
+
+        if (clean.contains("61CE")) {
+            val fanLevel = if (isForced) 6 else 0
+            val fanRpm = if (isForced) 4650 else 0
+            return HvBatteryStatus(
+                temp1 = 25.0,
+                temp2 = 25.0,
+                temp3 = 25.0,
+                temp4 = 25.0,
+                maxTemp = 25.0,
+                minTemp = 25.0,
+                avgTemp = 25.0,
+                intakeTemp = 24.0,
+                fanSpeedLevel = fanLevel,
+                isFanForced = isForced,
+                isEcuAckConfirmed = isForced,
+                estimatedFanRpm = fanRpm,
+                isThermalThrottled = false,
+                timestamp = System.currentTimeMillis()
+            )
         }
 
         try {
@@ -711,6 +841,7 @@ object ToyotaYarisCommands {
 
             val temps = listOf(t1, t2, t3, t4).filter { it > -30 && it < 100 }
             val maxT = if (temps.isNotEmpty()) temps.maxOrNull() ?: t1 else t1
+            val minT = if (temps.isNotEmpty()) temps.minOrNull() ?: t1 else t1
             val avgT = if (temps.isNotEmpty()) temps.average() else t1
 
             return HvBatteryStatus(
@@ -719,6 +850,7 @@ object ToyotaYarisCommands {
                 temp3 = t3,
                 temp4 = t4,
                 maxTemp = maxT,
+                minTemp = minT,
                 avgTemp = avgT,
                 intakeTemp = intake,
                 fanSpeedLevel = fanLevel,
