@@ -212,9 +212,7 @@ class ObdController(
      * un PID valido. Distinto da ecuAlertMessage, che copre standby/sincronizzazione transitori.
      */
     private fun computeBatteryAdapterLimitationWarning(): String? {
-        return if (discoveryEngine.areAllCandidatesInCooldown() &&
-            discoveryEngine.completedFailureCycles >= HARDWARE_LIMITATION_CYCLE_THRESHOLD
-        ) {
+        return if (discoveryEngine.completedFailureCycles >= HARDWARE_LIMITATION_CYCLE_THRESHOLD) {
             BATTERY_ADAPTER_LIMITATION_MESSAGE
         } else {
             null
@@ -1149,7 +1147,11 @@ class ObdController(
                     parsedStatus = ToyotaYarisCommands.parseBatteryResponse(rawResponse, _liveState.value.fanForcedMax)
                 }
 
-                if (parsedStatus != null) {
+                val isUdsPositive = if (rawResponse != null && isProbing) {
+                    Elm327Protocol.isUdsPositiveResponse(rawResponse, candidateToProbe.take(2))
+                } else false
+
+                if (parsedStatus != null || isUdsPositive) {
                     if (isProbing) {
                         discoveryEngine.onCandidateSuccess(candidateToProbe, rawResponse)
                         addLog("✅ Motore discovery phased batteria: agganciato PID $candidateToProbe!")

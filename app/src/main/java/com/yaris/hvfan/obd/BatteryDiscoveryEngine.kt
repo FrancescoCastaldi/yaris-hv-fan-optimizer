@@ -21,13 +21,13 @@ data class ProbeResult(
  *
  * Core Responsibilities & Invariants:
  * 1. Exactly ONE candidate PID probed per eligible slow cycle slice (3500ms).
- * 2. Rejected, timed-out, or invalid candidates enter a cooldown state (>= 30s)
+ * 2. Rejected, timed-out, or invalid candidates enter a cooldown state (5s)
  *    and the discovery cursor advances to the next candidate on subsequent cycles.
  * 3. The first candidate returning a valid, parseable battery payload is latched as
  *    activeBatteryPid, transitioning discovery to Discovered and ceasing further candidate probing.
  * 4. Maximum probe timeout bound <= 3000ms. Questo bound resta invariato: e' il timeout BLE
  *    esterno usato solo durante la fase di discovery (probing dei candidati), ben al di sopra
- *    del timeout ELM interno AT ST C8 (~819ms, Elm327Protocol.CMD_TIMEOUT_BATTERY_ECU) usato per
+ *    del timeout ELM interno AT ST FF (~1044ms, Elm327Protocol.CMD_TIMEOUT_BATTERY_ECU) usato per
  *    la risposta multi-frame UDS 2228C1, quindi non necessita di incremento.
  * 5. Lifecycle teardown / resets clear cached latched PID, cooldowns, and cursor.
  * 6. completedFailureCycles conta i giri completi della fallback chain terminati tutti in
@@ -40,7 +40,7 @@ class BatteryDiscoveryEngine(
     private val timeProvider: () -> Long = System::currentTimeMillis
 ) {
     companion object {
-        const val DEFAULT_COOLDOWN_MS = 30_000L // 30s cooldown per candidate backoff; full chain is scanned in ~21s (<25s) without blocking
+        const val DEFAULT_COOLDOWN_MS = 5_000L // 5s cooldown per candidate backoff (FIX 4); accelerazione discovery batteria
         const val MAX_PROBE_TIMEOUT_MS = 3000L
     }
 

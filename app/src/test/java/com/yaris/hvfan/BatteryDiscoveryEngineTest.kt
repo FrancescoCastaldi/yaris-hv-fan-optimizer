@@ -34,7 +34,7 @@ class BatteryDiscoveryEngineTest {
         // Candidate 1 fails (NO DATA)
         engine.onCandidateFailed("2101", ProbeStatus.NO_DATA, "NO DATA")
         assertTrue(engine.isCandidateInCooldown("2101"))
-        assertEquals(30_000L, engine.getRemainingCooldownMs("2101"))
+        assertEquals(5_000L, engine.getRemainingCooldownMs("2101"))
 
         // Cycle 2: Candidate advances to 21C3
         val c2 = engine.getNextCandidate()
@@ -74,13 +74,13 @@ class BatteryDiscoveryEngineTest {
         assertTrue(engine.areAllCandidatesInCooldown())
         assertNull(engine.getNextCandidate())
 
-        // Advance time by 15s (still within 30s cooldown for 2101)
-        currentTime += 15_000L
+        // Advance time by 3s (still within 5s cooldown for 2101)
+        currentTime += 3_000L
         assertTrue(engine.isCandidateInCooldown("2101"))
         assertNull(engine.getNextCandidate())
 
-        // Advance time past 30s from initial failure of 2101
-        currentTime += 16_000L // 31s elapsed
+        // Advance time past 5s from initial failure of 2101
+        currentTime += 3_000L // 6s elapsed
         assertFalse(engine.isCandidateInCooldown("2101"))
         // 2101 is eligible again!
         assertEquals("2101", engine.getNextCandidate())
@@ -157,12 +157,12 @@ class BatteryDiscoveryEngineTest {
         assertTrue(engine.areAllCandidatesInCooldown())
 
         // Advance past cooldown and run a second full failed lap
-        currentTime += 31_000L
+        currentTime += 6_000L
         failAllCandidatesOnce()
         assertEquals(2, engine.completedFailureCycles)
 
         // A successful candidate resets the failure cycle counter
-        currentTime += 31_000L
+        currentTime += 6_000L
         val candidate = engine.getNextCandidate()
         assertNotNull(candidate)
         engine.onCandidateSuccess(candidate!!, "6228C1...")
@@ -194,6 +194,34 @@ class BatteryDiscoveryEngineTest {
         // Il reset completo ripristina anche i PID rifiutati
         engine.reset()
         assertFalse(engine.isPidRejected("2101"))
+        assertEquals("2101", engine.getNextCandidate())
+    }
+
+    @Test
+    fun testRapidFailuresCooldownDurationAndFastRecovery() {
+        var currentTime = 50_000L
+        val engine = BatteryDiscoveryEngine(timeProvider = { currentTime })
+
+        // Fallimento rapido durante handshake (tutti e 7 i candidati falliscono in 700ms)
+        for (i in 0 until engine.candidates.size) {
+            val candidate = engine.getNextCandidate()
+            assertNotNull(candidate)
+            engine.onCandidateFailed(candidate!!, ProbeStatus.NO_DATA, "NO DATA")
+            currentTime += 100L // 100ms tra i candidati
+        }
+
+        // Tutti i candidati sono in cooldown (700ms trascorsi < 5000ms)
+        assertTrue(engine.areAllCandidatesInCooldown())
+        assertNull(engine.getNextCandidate())
+
+        // Avanziamo a 4900ms dal primo fallimento (4200ms aggiuntivi): ancora in cooldown
+        currentTime += 4200L
+        assertTrue(engine.isCandidateInCooldown("2101"))
+        assertNull(engine.getNextCandidate())
+
+        // A 5100ms dal primo fallimento: 2101 esce dal cooldown e torna immediatamente eleggibile (recupero veloce in 5s anziché 30s)
+        currentTime += 200L
+        assertFalse(engine.isCandidateInCooldown("2101"))
         assertEquals("2101", engine.getNextCandidate())
     }
 }

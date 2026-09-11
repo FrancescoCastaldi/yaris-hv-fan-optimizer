@@ -82,7 +82,7 @@ class ObdControllerBatteryDiscoveryTest {
     }
 
     /**
-     * VAL-OBD-004: Stepped candidate progression with cooldown backoff (>= 30s).
+     * VAL-OBD-004: Stepped candidate progression with cooldown backoff (5s - FIX 4).
      * Failed candidates enter cooldown and cursor advances to next candidate on subsequent cycles.
      */
     @Test
@@ -120,6 +120,11 @@ class ObdControllerBatteryDiscoveryTest {
             assertEquals(1, candidatesInThisCycle.size)
             probedAcrossCycles.add(candidatesInThisCycle[0])
 
+            if (cycle == 1) {
+                // At cycle 1, candidate 0 enters 5s cooldown (until t=105_000L)
+                assertTrue(engine.isCandidateInCooldown(ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[0]))
+            }
+
             currentTime += 3500L
         }
 
@@ -128,9 +133,8 @@ class ObdControllerBatteryDiscoveryTest {
         assertEquals(ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[1], probedAcrossCycles[1])
         assertEquals(ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[2], probedAcrossCycles[2])
 
-        // Verify candidate 0 is still in cooldown and was NOT re-probed at cycle 2 or 3
-        assertTrue(engine.isCandidateInCooldown(ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[0]))
-        assertTrue(engine.isCandidateInCooldown(ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[1]))
+        // Candidate 2 was probed at t=107_000L, so at t=110_500L it is still in 5s cooldown (until 112_000L)
+        assertTrue(engine.isCandidateInCooldown(ToyotaYarisCommands.BATTERY_FALLBACK_PIDS[2]))
     }
 
     /**
@@ -355,7 +359,7 @@ class ObdControllerBatteryDiscoveryTest {
             discoveryEngine = engine
         )
 
-        // Lap 1: all 6 fallback candidates fail once (each enters 30s cooldown)
+        // Lap 1: all fallback candidates fail once (each enters 5s cooldown)
         repeat(ToyotaYarisCommands.BATTERY_FALLBACK_PIDS.size) {
             controller.executeBatteryThermalCycle()
             currentTime += 3500L
@@ -366,16 +370,15 @@ class ObdControllerBatteryDiscoveryTest {
             controller.liveState.value.batteryAdapterLimitationWarning
         )
 
-        // Advance exactly past the first candidate's cooldown expiry to unblock lap 2
-        currentTime = 130_000L
+        // Advance past cooldown to unblock lap 2
+        currentTime += 5_000L
 
-        // Lap 2: all 6 candidates fail again -> completes the 2nd full failure cycle
+        // Lap 2: all candidates fail again -> completes the 2nd full failure cycle
         repeat(ToyotaYarisCommands.BATTERY_FALLBACK_PIDS.size) {
             controller.executeBatteryThermalCycle()
             currentTime += 3500L
         }
         assertEquals(2, engine.completedFailureCycles)
-        assertTrue(engine.areAllCandidatesInCooldown())
 
         val warning = controller.liveState.value.batteryAdapterLimitationWarning
         assertNotNull("Warning must activate after repeated full failure cycles", warning)

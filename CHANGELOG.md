@@ -16,8 +16,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
   - **Stadio 0 (Sveglia Gateway Broadcast)**: query broadcast `7DF` -> `0100` preliminare per svegliare e instradare la sessione diagnostica su V-CAN e C-CAN del Central Gateway TNGA-B.
   - **Stadio 1 (Aggancio Motore con Isolamento Hardware)**: interrogazione diretta `7E0` + `CRA 7E8` con scatto immediato su fallback broadcast funzionale `7DF` + `CRA 7E8` su risposte vuote (`NO DATA`).
   - **Stadio 2 (Aggancio HV BMS Denso)**: commutazione su `7E2` + `CRA 7EA` con timeout esteso `AT ST FF` (~1044ms) per la ricezione completa dei frame ISO-TP multiframe.
-- **FIX 4: Gestione Avanzata Negative Response Codes (NRC) UDS**:
+- **FIX 4: Gestione Avanzata Negative Response Codes (NRC) UDS & Accelerazione Discovery**:
   - Parser UDS NRC per `7F <Service> <NRC>`: rifiuto permanente immediato per `7F xx 11` (*ServiceNotSupported*) e `7F xx 12` (*SubFunctionNotSupported*), isolamento in attesa per `7F xx 22` (*ConditionsNotCorrect*), e attesa frame per `7F xx 78` (*ResponsePending*).
+  - Accelerazione cursore fallback batteria: cooldown dei candidati abbassato da 30s a 5s (`DEFAULT_COOLDOWN_MS = 5_000L`) con scansione dinamica non bloccante.
 - **FIX 5: Timeout Dinamici Calibrati sullo Stato Veicolo (READY vs ACC)**:
   - Misurazione continua della tensione ausiliaria 12V con `AT RV`.
   - In stato READY (convertitore DC-DC attivo, tensione >= 13.0V): applicati timeout rapidi e aggressivi (`AT ST 32` / `AT ST 64`).
