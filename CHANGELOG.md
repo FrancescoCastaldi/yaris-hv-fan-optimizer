@@ -5,6 +5,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 - **MAJOR (`X.0.0`)**: Fundamental architectural overhauls, major subsystems, or comprehensive UI redesigns.
 - **MINOR (`0.X.0`)**: New features, additional sensors, ECU coding options, or telemetry pipelines.
 
+## [3.1.4] - 2026-09-11
+### ⚡ Resilienza Cloni ELM, Correzione Fallback Ventola NODATA & Protezione UDS Read-Before-Write
+- **Correzione Critica Fallback Forzatura Ventola su Cloni ELM327**:
+  - Risolto il bug critico in `ObdController.kt` dove `cleanResponse` eliminando gli spazi trasformava `NO DATA` in `NODATA`. La precedente verifica `contains("NO DATA")` falliva, scambiando l'assenza di risposta per un ACK positivo e bloccando l'invio del comando di fallback Mode 30 (`30080x`). Aggiunto controllo completo su `NODATA`, `NO DATA`, `?`, `isError` e stringhe vuote.
+  - Aggiunto calcolo stimato del regime ventola (RPM Hall stimato in base a L1–L6) anche quando la ventola viene forzata manualmente prima dell'aggancio della telemetria termica.
+- **Supporto Frame Multi-PID e Numerazione Frame ISO-TP dai Log Reali**:
+  - Risolto il problema del prefisso lunghezza ISO-TP ELM327 (`008\r`, `014\r`) e della numerazione frame (`0:`, `1:`) presenti nei log reali vettura (`yaris_ecu_log_20260911_135435.txt`), consentendo a `parseMultiPidEngineResponse` di estrarre regolarmente velocità (0 km/h), regime motore (1413 RPM) e farfalla (20%) senza cadere in parsing incompleto.
+  - Sanitizzazione dei canali temperatura per il PID `2187` per isolare sonde disconnesse (0xFFFF) e preservare la temperatura massima attendibile.
+- **ECU Coding: Scansione Candidate DIDs Cinture Meter 7C0 & Protezione Read-Before-Write**:
+  - Attivata in `ObdController.kt` la scansione a cascata per i candidate DIDs cinture di sicurezza (`01A0`, `01AC`, `2010`, `1020`, `01A7`, `A002`) con memorizzazione permanente del DID valido in `discoveredMeterSeatbeltDid`.
+  - Rafforzata la procedura di sicurezza `executeReadBeforeWrite`: se la lettura preliminare Service 22 non riceve un riscontro positivo, la scrittura con Service 2E viene bloccata preventivamente con segnalazione e scansione dei DID alternativi.
+  - Esteso il parsing UDS in `Elm327Protocol.kt` per supportare frame compatti CAN ATH1 con prefisso Gateway BCM `40` (es. `758054062B00101`, `75804407F2231`) e frame numerati `0:`.
+- **Suite di Test Unitari**:
+  - Raggiunto il 100% di successo su tutti i 159 test unitari da build pulita (`--rerun-tasks`).
+
 ## [3.1.3] - 2026-09-11
 ### 🔋 Supporto Centralina HV Batteria Denso PID 2187/21CE & Sblocco Forzatura Ventola
 - **Centralina Batteria HV Denso (XP210 TNGA-B)**:

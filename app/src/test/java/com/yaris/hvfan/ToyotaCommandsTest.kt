@@ -1,5 +1,6 @@
 package com.yaris.hvfan
 
+import com.yaris.hvfan.obd.Elm327Protocol
 import com.yaris.hvfan.obd.ToyotaYarisCommands
 import org.junit.Assert.*
 import org.junit.Test
@@ -138,5 +139,86 @@ class ToyotaCommandsTest {
         assertEquals("7A8", ToyotaYarisCommands.getFilterForHeader("7A0"))
         assertNull(ToyotaYarisCommands.getFilterForHeader("7DF"))
         assertNull(ToyotaYarisCommands.getFilterForHeader("UNKNOWN"))
+    }
+
+    @Test
+    fun testParseMultiPidEngineResponse_realVehicleLogFrame() {
+        // Direct snippet from real vehicle log (with \r frame delimiter from UART):
+        // 0D 00 -> speed = 0 km/h
+        // 0C 16 15 -> RPM = (0x16 * 256 + 0x15) / 4 = 1413 RPM
+        // 11 33 -> throttle = (0x33 * 100.0) / 255.0 = 20.0 %
+        val rawLog = "0080:410D000C1615\r1:11330000000000\r>"
+        val data = ToyotaYarisCommands.parseMultiPidEngineResponse(rawLog)
+
+        assertNotNull(data)
+        assertEquals(0, data?.speedKmh)
+        assertEquals(1413, data?.engineRpm)
+        assertEquals(20.0f, data?.throttlePercent ?: 0f, 0.5f)
+    }
+
+    @Test
+    fun testCleanResponse_multiFramePrefixes() {
+        val raw = "0080:410D000C1615\r1:11330000000000\r>"
+        val cleaned = Elm327Protocol.cleanResponse(raw)
+        assertEquals("410D000C161511330000000000", cleaned)
+    }
+
+    @Test
+    fun testParseBatteryTemperature2187_sensorSanitizationAndMultiFrame() {
+        // Channel 1: 0x4B07 -> 25.0 °C
+        // Channel 2: 0xFFFF -> 205.9 °C (out of range/disconnected sensor -> should be sanitized to maxT 25.0)
+        // Channel 3: 0x4B07 -> 25.0 °C
+        // Channel 4: 0x4A00 -> 23.97 °C
+        val raw = "0080:61874B07FFFF\r1:4B074A00000000\r>"
+        val status = ToyotaYarisCommands.parseBatteryTemperature2187(raw, isForced = false)
+
+        assertNotNull(status)
+        assertEquals(25.0, status?.maxTemp ?: 0.0, 0.1)
+        assertEquals(25.0, status?.minTemp ?: 0.0, 0.1)
+        assertEquals(25.0, status?.temp2 ?: 0.0, 0.1) // sanitized!
+        assertEquals(23.97, status?.intakeTemp ?: 0.0, 0.1)
+    }
+
+    @Test
+    fun testParseMultiPidEngineResponse_realVehicleLogFrameExactIsoTpLength() {
+        // Exact raw byte payload from real vehicle log yaris_ecu_log_20260911_135435.txt:
+        // ELM327 outputs multi-frame message byte count "008" on line 1, then numbered frames
+        val realRaw = "008\r0:410D000C1615\r1:11330000000000\r\r>"
+        val data = ToyotaYarisCommands.parseMultiPidEngineResponse(realRaw)
+
+        assertNotNull(data)
+        assertEquals(0, data?.speedKmh)
+        assertEquals(1413, data?.engineRpm)
+        assertEquals(20.0f, data?.throttlePercent ?: 0f, 0.5f)
+    }
+
+    @Test
+    fun testCleanResponse_realVehicleLogFrameExactIsoTpLength() {
+        val realRaw = "008\r0:410D000C1615\r1:11330000000000\r\r>"
+        val cleaned = Elm327Protocol.cleanResponse(realRaw)
+        assertEquals("008410D000C161511330000000000", cleaned)
+    }
+
+    @Test
+    fun testUdsPositiveAndNrc_multiFrameNumberedFrames() {
+        // Multi-frame positive response with ISO-TP length prefix
+        val positiveRaw = "008\r0:6201A000\r1:0000000000\r\r>"
+        assertTrue(Elm327Protocol.isUdsPositiveResponse(positiveRaw, "22"))
+
+        val positiveSpaced = "0: 62 01 A0 00\r1: 00 00 00 00 00 00\r>"
+        assertTrue(Elm327Protocol.isUdsPositiveResponse(positiveSpaced, "22"))
+
+        // Multi-frame NRC response
+        val nrcRaw = "003\r0:7F2231\r\r>"
+        val nrc = Elm327Protocol.extractUdsNrc(nrcRaw)
+        assertNotNull(nrc)
+        assertEquals("22", nrc?.serviceId)
+        assertEquals("31", nrc?.nrc)
+
+        val nrcSpaced = "0: 7F 22 31\r>"
+        val nrc2 = Elm327Protocol.extractUdsNrc(nrcSpaced)
+        assertNotNull(nrc2)
+        assertEquals("22", nrc2?.serviceId)
+        assertEquals("31", nrc2?.nrc)
     }
 }

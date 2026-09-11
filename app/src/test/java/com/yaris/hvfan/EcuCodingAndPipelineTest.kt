@@ -164,14 +164,22 @@ class EcuCodingAndPipelineTest {
         assertEquals("2EB00101", ToyotaYarisCommands.buildGatewayUdsWrite("B001", "01", useBcmPrefix = false))
         assertEquals("AT ST C8", Elm327Protocol.CMD_TIMEOUT_GATEWAY_ECU)
 
-        // Gateway BCM prefix 40 positive responses & NRC
+        // Gateway BCM prefix 40 positive responses & NRC (both spaced and compact ATH1)
         assertTrue(Elm327Protocol.isUdsPositiveResponse("40 50 03", "10"))
         assertTrue(Elm327Protocol.isUdsPositiveResponse("40 62 B0 01 01", "22"))
         assertTrue(Elm327Protocol.isUdsPositiveResponse("40 6E B0 01 01", "2E"))
+        assertTrue(Elm327Protocol.isUdsPositiveResponse("758054062B00101", "22"))
+        assertTrue(Elm327Protocol.isUdsPositiveResponse("758 05 40 62 B0 01 01", "22"))
+
         val gatewayNrc = Elm327Protocol.extractUdsNrc("40 7F 22 31")
         assertNotNull(gatewayNrc)
         assertEquals("22", gatewayNrc!!.serviceId)
         assertEquals("31", gatewayNrc.nrc)
+
+        val compactGatewayNrc = Elm327Protocol.extractUdsNrc("75804407F2231")
+        assertNotNull(compactGatewayNrc)
+        assertEquals("22", compactGatewayNrc!!.serviceId)
+        assertEquals("31", compactGatewayNrc.nrc)
 
         // NRC Decoding & extraction
         val nrcConditions = Elm327Protocol.extractUdsNrc("7F 10 22")

@@ -784,5 +784,86 @@ class ObdControllerBatteryDiscoveryTest {
         assertTrue("Repeated NO DATA responses must trigger open filter fallback", controller.isBatteryFilterFallbackToOpen)
         assertTrue(fakeTransport.dispatchedCommands.contains("AT CRA"))
     }
+
+    @Test
+    fun testManualFanForcingFallbackToMode30OnNoData() = runTest {
+        val fakeTransport = FakeObdTransport()
+        fakeTransport.commandResponder = { cmd, _ ->
+            when {
+                cmd.startsWith("AT") -> "OK"
+                cmd == "2187" -> "NO DATA\r\r>"
+                // Primary 2F58 returns NO DATA (clone ELM without spaces gives NODATA)
+                cmd.startsWith("2F58") -> "NO DATA\r\r>"
+                // Fallback 3008 succeeds
+                cmd.startsWith("3008") -> "OK"
+                else -> "OK"
+            }
+        }
+
+        val stateMachine = ObdStateMachine()
+        val controller = ObdController(
+            bleManager = fakeTransport,
+            scope = this,
+            stateMachine = stateMachine,
+            discoveryEngine = BatteryDiscoveryEngine()
+        )
+
+        controller.setEcuCommunicationForTesting(true)
+        controller.setManualForcedFan(true, level = 5)
+
+        controller.executeBatteryThermalCycle()
+
+        val dispatched = fakeTransport.dispatchedCommands
+        assertTrue("Primary command 2F580305 must be attempted first", dispatched.contains("2F580305"))
+        assertTrue("Secondary fallback 300805 MUST be dispatched when primary returns NO DATA", dispatched.contains("300805"))
+        assertEquals("Actuation state should be REQUESTED after fallback", FanActuationState.REQUESTED, stateMachine.currentCapabilityState.fanActuationState)
+        assertEquals("Estimated fan RPM for L5 must be 3850", 3850, controller.liveState.value.batteryStatus.estimatedFanRpm)
+    }
+
+    @Test
+    fun testMeterCandidateDiscoveryAndWriteRead22Protection() = runTest {
+        val fakeTransport = FakeObdTransport()
+        fakeTransport.commandResponder = { cmd, _ ->
+            when {
+                cmd.startsWith("AT") -> "OK"
+                cmd == "1003" || cmd == "10 03" -> "50 03 00 32 01 F4"
+                cmd == "1001" || cmd == "10 01" -> "50 01"
+                // Reverse candidates: 01AC returns NRC 31, 01A0 returns 6201A000
+                cmd == "2201AC" || cmd == "22 01AC" -> "7F 22 31"
+                cmd == "2201A0" || cmd == "22 01A0" -> "62 01 A0 00"
+                // Seatbelt candidates: 01A0 returns 7F 22 31, 01AC returns 62 01 AC 01
+                cmd == "222010" -> "7F 22 31"
+                cmd == "221020" -> "7F 22 31"
+                cmd == "2201A7" -> "7F 22 31"
+                cmd == "22A001" -> "7F 22 31"
+                cmd == "22A002" -> "7F 22 31"
+                // Gateway 750 (with prefix 40)
+                cmd.contains("B001") -> "40 62 B0 01 01"
+                cmd.contains("40 10 03") -> "40 50 03"
+                cmd.contains("40 10 01") -> "40 50 01"
+                cmd.startsWith("22") -> "62"
+                cmd.startsWith("2E") -> "6E"
+                else -> "OK"
+            }
+        }
+
+        val controller = ObdController(
+            bleManager = fakeTransport,
+            scope = this,
+            stateMachine = ObdStateMachine(),
+            discoveryEngine = BatteryDiscoveryEngine()
+        )
+
+        controller.setProtocolInitializedForTesting(true)
+        controller.setEcuCommunicationForTesting(true)
+
+        // Run read customizations
+        controller.readEcuCustomizations()
+        testScheduler.advanceUntilIdle()
+
+        assertEquals("01A0", controller.discoveredMeterReverseBeepDid)
+        assertEquals("01A0", controller.discoveredMeterSeatbeltDid)
+        assertTrue(controller.useBcmGatewayPrefix)
+    }
 }
 

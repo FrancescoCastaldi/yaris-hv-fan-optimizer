@@ -66,7 +66,7 @@ object Elm327Protocol {
     const val PROTOCOL_FALLBACK = "AT SP 0" // Auto-detect protocol if SP 6 fails
 
     fun cleanResponse(raw: String): String {
-        val withoutLinePrefixes = raw.replace(Regex("""(?:^|[\r\n\s])[0-9A-Fa-f]{1,2}\s*:\s*"""), " ")
+        val withoutLinePrefixes = raw.replace(Regex("""(?:^|[\r\n\s])[0-9A-Fa-f]{1,4}\s*:\s*"""), " ")
         return withoutLinePrefixes.replace(">", "")
             .replace("\r", "")
             .replace("\n", "")
@@ -294,8 +294,10 @@ object Elm327Protocol {
             }
         }
 
-        val lines = response.split('\r', '\n')
+        val sanitized = response.replace(Regex("""(?i)(?:^|[\r\n])[ \t]*[0-9A-Fa-f]{1,3}\s*[\r\n]+(?=[0-9A-Fa-f]{1,4}\s*:)"""), " ")
+        val lines = sanitized.split('\r', '\n')
             .map { it.replace(">", "").trim() }
+            .map { it.replace(Regex("""^[0-9A-Fa-f]{1,4}\s*:\s*"""), "") }
             .filter { it.isNotEmpty() && !isError(it) }
 
         val linesToCheck = if (lines.isNotEmpty()) {
@@ -309,7 +311,7 @@ object Elm327Protocol {
         for (line in linesToCheck) {
             val tokens = line.split(Regex("""\s+""")).filter { it.isNotEmpty() }
             val sid = when {
-                tokens.size >= 5 && tokens[0].length == 3 && tokens[0].all { it in "0123456789ABCDEFabcdef" } &&
+                tokens.size >= 4 && tokens[0].length == 3 && tokens[0].all { it in "0123456789ABCDEFabcdef" } &&
                     tokens[2].equals("40", ignoreCase = true) -> {
                     // Formato Gateway ATH1 con prefisso BCM 40: [CAN_ID] [DLC] 40 [SID] ...
                     tokens[3].uppercase()
@@ -327,9 +329,9 @@ object Elm327Protocol {
                     // Formato con header ATH1 con spazi, Single Frame: [CAN_ID] [DLC/PCI] [SID] ...
                     tokens[2].uppercase()
                 }
-                tokens.isNotEmpty() && tokens[0].matches(Regex("""(?i)^7[0-9A-F]{2}(?:1[0-9A-F]{3}|[0-9A-F]{1,2})([0-9A-F]{2}).*""")) -> {
-                    // Formato compatto con header CAN 7xx (Single Frame o First Frame)
-                    val match = Regex("""(?i)^7[0-9A-F]{2}(?:1[0-9A-F]{3}|[0-9A-F]{1,2})([0-9A-F]{2}).*""").find(tokens[0])
+                tokens.isNotEmpty() && tokens[0].matches(Regex("""(?i)^7[0-9A-F]{2}(?:1[0-9A-F]{3}|[0-9A-F]{1,2})?(?:40)?([0-9A-F]{2}).*""")) -> {
+                    // Formato compatto con header CAN 7xx (Single Frame o First Frame), con eventuale prefisso BCM Gateway 40
+                    val match = Regex("""(?i)^7[0-9A-F]{2}(?:1[0-9A-F]{3}|[0-9A-F]{1,2})?(?:40)?([0-9A-F]{2}).*""").find(tokens[0])
                     match?.groupValues?.get(1)?.uppercase() ?: ""
                 }
                 tokens.isNotEmpty() && tokens[0].matches(Regex("""(?i)^40([0-9A-F]{2}).*""")) &&
@@ -382,8 +384,10 @@ object Elm327Protocol {
      * sia formati con header CAN (ATH1, es. 7EA 03 7F 22 11 o 7EA037F2211) e multi-frame.
      */
     fun extractUdsNrc(response: String): UdsNrcResponse? {
-        val lines = response.split('\r', '\n')
+        val sanitized = response.replace(Regex("""(?i)(?:^|[\r\n])[ \t]*[0-9A-Fa-f]{1,3}\s*[\r\n]+(?=[0-9A-Fa-f]{1,4}\s*:)"""), " ")
+        val lines = sanitized.split('\r', '\n')
             .map { it.replace(">", "").trim() }
+            .map { it.replace(Regex("""^[0-9A-Fa-f]{1,4}\s*:\s*"""), "") }
             .filter { it.isNotEmpty() }
 
         val linesToCheck = if (lines.isNotEmpty()) lines else listOf(cleanResponse(response).uppercase())
@@ -408,8 +412,8 @@ object Elm327Protocol {
                 }
             }
 
-            // 2. Linea compatta con header CAN 7xx (es. "7EA037F2211" o "7E8037F0111")
-            val canHeaderMatch = Regex("""(?i)^7[0-9A-F]{2}(?:1[0-9A-F]{3}|[0-9A-F]{1,2})?7F([0-9A-F]{2})([0-9A-F]{2})""").find(cleanLine)
+            // 2. Linea compatta con header CAN 7xx (es. "7EA037F2211", "75804407F2231" o "7E8037F0111")
+            val canHeaderMatch = Regex("""(?i)^7[0-9A-F]{2}(?:1[0-9A-F]{3}|[0-9A-F]{1,2})?(?:40)?7F([0-9A-F]{2})([0-9A-F]{2})""").find(cleanLine)
             if (canHeaderMatch != null) {
                 return UdsNrcResponse(
                     serviceId = canHeaderMatch.groupValues[1].uppercase(),

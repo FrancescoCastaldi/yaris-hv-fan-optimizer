@@ -458,6 +458,7 @@ object ToyotaYarisCommands {
         // Rimuove i prefissi dei frame consecutivi ISO-TP (es. 7E8 21, 7EA 21)
         // presenti nelle risposte multi-frame quando gli header CAN sono attivi (ATH1).
         payload = payload.replace(Regex("""(?:7[0-9A-F]{2}2[0-9A-F])"""), "")
+        payload = payload.replace(Regex("""[0-9A-Fa-f]{1,4}:"""), "")
 
         // Case 1: Standard ordered packed payload: 0D [2 hex] 0C [4 hex] 11 [2 hex]
         if (payload.startsWith("0D") && payload.length >= 14) {
@@ -710,8 +711,7 @@ object ToyotaYarisCommands {
         try {
             var hexPayload = clean.replace(" ", "").replace("\r", "").replace("\n", "").replace(">", "")
             hexPayload = hexPayload.replace(Regex("""(?:7[0-9A-F]{2}2[0-9A-F])"""), "")
-            hexPayload = hexPayload.replace(Regex("""^[0-9A-F]{4}:"""), "")
-            hexPayload = hexPayload.replace(Regex("""[0-9]:"""), "")
+            hexPayload = hexPayload.replace(Regex("""[0-9A-Fa-f]{1,4}:"""), "")
 
             if (!hexPayload.contains("6187")) return null
             val data = hexPayload.substring(hexPayload.indexOf("6187") + 4)
@@ -734,19 +734,29 @@ object ToyotaYarisCommands {
             val minT = if (validBatteryTemps.isNotEmpty()) validBatteryTemps.minOrNull() ?: tb1 else tb1
             val avgT = if (validBatteryTemps.isNotEmpty()) validBatteryTemps.average() else tb1
 
-            val fanLevel = if (isForced) 6 else 0
+            val safeTb1 = if (tb1 in -40.0..120.0) tb1 else maxT
+            val safeTb2 = if (tb2 in -40.0..120.0) tb2 else maxT
+            val safeTb3 = if (tb3 in -40.0..120.0) tb3 else maxT
+            val safeIntake = if (intake in -40.0..120.0) intake else safeTb1
+
+            val rawFan = if (data.length >= 18) data.substring(16, 18).toIntOrNull(16) else null
+            val fanLevel = when {
+                isForced -> 6
+                rawFan != null && rawFan in 0..6 -> rawFan
+                else -> 0
+            }
             val rpmMap = mapOf(0 to 0, 1 to 1250, 2 to 1850, 3 to 2450, 4 to 3100, 5 to 3850, 6 to 4650)
             val fanRpm = rpmMap[fanLevel] ?: (fanLevel * 750)
 
             return HvBatteryStatus(
-                temp1 = tb1,
-                temp2 = tb2,
-                temp3 = tb3,
-                temp4 = tb3,
+                temp1 = safeTb1,
+                temp2 = safeTb2,
+                temp3 = safeTb3,
+                temp4 = safeTb3,
                 maxTemp = maxT,
                 minTemp = minT,
                 avgTemp = avgT,
-                intakeTemp = intake,
+                intakeTemp = safeIntake,
                 fanSpeedLevel = fanLevel,
                 isFanForced = isForced,
                 isEcuAckConfirmed = isForced,

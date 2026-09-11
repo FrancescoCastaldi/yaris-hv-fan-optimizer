@@ -1,7 +1,7 @@
 # Toyota Yaris MK4 Hybrid — HV Battery Cooling, GR Cockpit & ECU Coding Suite 🏎️⚡
 
 [![Website](https://img.shields.io/badge/Website-Live%20Portal-00E5FF.svg?style=for-the-badge&logo=googlechrome)](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/)
-[![Download APK](https://img.shields.io/badge/Download-APK%20Release%20(v3.1.3)-D71920.svg?style=for-the-badge&logo=android)](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisHvFanControl-v3.1.3.apk)
+[![Download APK](https://img.shields.io/badge/Download-APK%20Release%20(v3.1.4)-D71920.svg?style=for-the-badge&logo=android)](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisHvFanControl-v3.1.4.apk)
 [![OBD Bridge APK](https://img.shields.io/badge/Download-OBD%20Bridge%20(v1.0.0)-00E5FF.svg?style=for-the-badge&logo=android)](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisObdBridge-v1.0.0.apk)
 [![Platform](https://img.shields.io/badge/Platform-Android%208.0%2B%20(API%2026%2B)-3DDC84.svg?style=flat&logo=android)](https://www.android.com/)
 [![Kotlin](https://img.shields.io/badge/Kotlin-1.9.24-7F52FF.svg?style=flat&logo=kotlin)](https://kotlinlang.org/)
@@ -46,7 +46,7 @@ Native Android telemetry and diagnostic application for the **Toyota Yaris MK4 H
 
 - **Official Web Portal**: [https://francescocastaldi.github.io/yaris-hv-fan-optimizer/](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/)
 - **Interactive Web Simulator**: [https://francescocastaldi.github.io/yaris-hv-fan-optimizer/preview.html](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/preview.html)
-- **Direct Download — Yaris HV Fan Control (v3.1.3)**: [YarisHvFanControl-v3.1.3.apk](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisHvFanControl-v3.1.3.apk)
+- **Direct Download — Yaris HV Fan Control (v3.1.4)**: [YarisHvFanControl-v3.1.4.apk](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisHvFanControl-v3.1.4.apk)
 - **Direct Download — Yaris OBD Bridge & Sniffer (v1.0.0)**: [YarisObdBridge-v1.0.0.apk](https://francescocastaldi.github.io/yaris-hv-fan-optimizer/YarisObdBridge-v1.0.0.apk)
 
 ---
@@ -172,7 +172,7 @@ build_apk.bat
 ```
 
 Generated APKs are automatically verified, signed with release keys, and placed in both the project root and `docs/`:
-- `YarisHvFanControl-v3.1.3.apk` (Primary application)
+- `YarisHvFanControl-v3.1.4.apk` (Primary application)
 - `YarisObdBridge-v1.0.0.apk` (Standalone MITM sniffer & bridge)
 
 ---

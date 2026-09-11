@@ -139,7 +139,8 @@ class ObdController(
     internal var isBatteryFilterFallbackToOpen: Boolean = false
     internal var consecutiveBatteryNoDataCount: Int = 0
     internal var discoveredMeterReverseBeepDid: String? = null
-    internal var useBcmGatewayPrefix: Boolean = false
+    internal var discoveredMeterSeatbeltDid: String? = null
+    internal var useBcmGatewayPrefix: Boolean = true
 
     // Acceleration Timer State Machine (Dragy Precise Interpolation)
     private var launchStartTimeMs = 0L
@@ -1273,7 +1274,10 @@ class ObdController(
                 val primaryUdsCmd = ToyotaYarisCommands.getFanSpeedCommandAlt(activeTargetSpeed) // 2F58030x
                 val fanCmdRes = bleManager.sendCommand(primaryUdsCmd)
                 val cleanFanRes = Elm327Protocol.cleanResponse(fanCmdRes)
-                if (cleanFanRes.contains("7F2F") || cleanFanRes.contains("ERROR") || cleanFanRes.contains("NO DATA")) {
+                val isFanError = cleanFanRes.contains("7F2F") || cleanFanRes.contains("ERROR") ||
+                                 cleanFanRes.contains("NO DATA") || cleanFanRes.contains("NODATA") ||
+                                 cleanFanRes.contains("?") || cleanFanRes.isBlank() || Elm327Protocol.isError(cleanFanRes)
+                if (isFanError) {
                     // Fallback secondario su Mode 30 legacy (30080x)
                     val fallbackCmd = ToyotaYarisCommands.getFanSpeedCommand(activeTargetSpeed)
                     bleManager.sendCommand(fallbackCmd)
@@ -1292,13 +1296,18 @@ class ObdController(
                 addLog("Ventola HV: ripristinato controllo automatico OEM.")
             }
 
+            val forcedFanRpm = if (shouldForceFan) {
+                mapOf(0 to 0, 1 to 1250, 2 to 1850, 3 to 2450, 4 to 3100, 5 to 3850, 6 to 4650)[activeTargetSpeed] ?: (activeTargetSpeed * 750)
+            } else updatedBattery.estimatedFanRpm
+
             _liveState.value = _liveState.value.copy(
                 autoCoolingStatus = updatedAutoStatus,
                 capabilityState = stateMachine.currentCapabilityState,
                 batteryAdapterLimitationWarning = computeBatteryAdapterLimitationWarning(),
                 batteryStatus = updatedBattery.copy(
                     isFanForced = shouldForceFan,
-                    fanSpeedLevel = if (shouldForceFan) activeTargetSpeed else updatedBattery.fanSpeedLevel
+                    fanSpeedLevel = if (shouldForceFan) activeTargetSpeed else updatedBattery.fanSpeedLevel,
+                    estimatedFanRpm = forcedFanRpm
                 )
             )
         } finally {
@@ -1570,6 +1579,11 @@ class ObdController(
         _liveState.value = _liveState.value.copy(hasEcuCommunication = enabled)
     }
 
+    internal fun setProtocolInitializedForTesting(initialized: Boolean) {
+        isProtocolInitialized = initialized
+        _liveState.value = _liveState.value.copy(isInitialized = initialized)
+    }
+
     fun setAutoCoolingEnabled(enabled: Boolean) {
         val current = _liveState.value.autoCoolingStatus
         _liveState.value = _liveState.value.copy(
@@ -1675,16 +1689,32 @@ class ObdController(
                     for (candidateDid in ToyotaYarisCommands.CANDIDATE_DIDS_METER_REVERSE_BEEP) {
                         val resMeter = bleManager.sendCommand(ToyotaYarisCommands.buildUdsRead(candidateDid))
                         val cleanCandidate = Elm327Protocol.cleanResponse(resMeter)
-                        addLog("Meter 7C0 DID $candidateDid Read: $cleanCandidate")
-                        if (Elm327Protocol.isUdsPositiveResponse(cleanCandidate, "22") || cleanCandidate.contains("62$candidateDid")) {
+                        addLog("Meter 7C0 DID Reverse $candidateDid Read: $cleanCandidate")
+                        if (Elm327Protocol.isUdsPositiveResponse(cleanCandidate, "22") || cleanCandidate.contains("62$candidateDid") || (cleanCandidate.contains("62") && !cleanCandidate.contains("7F"))) {
                             discoveredMeterReverseBeepDid = candidateDid
                             cleanMeterBeep = cleanCandidate
-                            addLog("✅ Meter 7C0: agganciato DID valido $candidateDid!")
+                            addLog("✅ Meter 7C0: agganciato DID Reverse Beep valido $candidateDid!")
                             break
                         }
                     }
                     if (cleanMeterBeep.isEmpty()) {
                         cleanMeterBeep = "NO DATA"
+                    }
+                    delay(40)
+                    var cleanMeterSeatbelt = ""
+                    for (candidateDid in ToyotaYarisCommands.CANDIDATE_DIDS_METER_SEATBELT) {
+                        val resBelt = bleManager.sendCommand(ToyotaYarisCommands.buildUdsRead(candidateDid))
+                        val cleanCandidate = Elm327Protocol.cleanResponse(resBelt)
+                        addLog("Meter 7C0 DID Seatbelt $candidateDid Read: $cleanCandidate")
+                        if (Elm327Protocol.isUdsPositiveResponse(cleanCandidate, "22") || cleanCandidate.contains("62$candidateDid") || (cleanCandidate.contains("62") && !cleanCandidate.contains("7F"))) {
+                            discoveredMeterSeatbeltDid = candidateDid
+                            cleanMeterSeatbelt = cleanCandidate
+                            addLog("✅ Meter 7C0: agganciato DID Seatbelt valido $candidateDid!")
+                            break
+                        }
+                    }
+                    if (cleanMeterSeatbelt.isEmpty()) {
+                        cleanMeterSeatbelt = "NO DATA"
                     }
                     bleManager.sendCommand(ToyotaYarisCommands.CMD_UDS_SESSION_DEFAULT) // 1001
                     delay(50)
@@ -1734,10 +1764,12 @@ class ObdController(
                     delay(50)
 
                     val anyPositive = Elm327Protocol.isUdsPositiveResponse(cleanMeterBeep, "22") ||
+                                      Elm327Protocol.isUdsPositiveResponse(cleanMeterSeatbelt, "22") ||
                                       Elm327Protocol.isUdsPositiveResponse(cleanBodyDoor, "22") ||
                                       Elm327Protocol.isUdsPositiveResponse(cleanAc, "22") ||
                                       Elm327Protocol.isUdsPositiveResponse(cleanAdas, "22") ||
                                       Elm327Protocol.isUdsPositiveResponse(cleanMeterBeep) ||
+                                      Elm327Protocol.isUdsPositiveResponse(cleanMeterSeatbelt) ||
                                       Elm327Protocol.isUdsPositiveResponse(cleanBodyDoor) ||
                                       Elm327Protocol.isUdsPositiveResponse(cleanAc) ||
                                       Elm327Protocol.isUdsPositiveResponse(cleanAdas)
@@ -1868,23 +1900,70 @@ class ObdController(
                         did: String,
                         newVal: String,
                         paramName: String,
-                        isBodyGateway: Boolean = false
+                        isBodyGateway: Boolean = false,
+                        candidateDids: List<String>? = null
                     ): Boolean {
-                        // 3. Lettura stato corrente (Read-Before-Write) per backup/rollback
-                        val readCmd = if (isBodyGateway) ToyotaYarisCommands.buildGatewayUdsRead(did, useBcmGatewayPrefix) else ToyotaYarisCommands.buildUdsRead(did)
-                        val origRes = bleManager.sendCommand(readCmd)
-                        val cleanOrig = Elm327Protocol.cleanResponse(origRes)
-                        addLog("Read-Before-Write $paramName ($did): $cleanOrig")
+                        var activeDid = did
+                        var readCmd = if (isBodyGateway) ToyotaYarisCommands.buildGatewayUdsRead(activeDid, useBcmGatewayPrefix) else ToyotaYarisCommands.buildUdsRead(activeDid)
+                        var origRes = bleManager.sendCommand(readCmd)
+                        var cleanOrig = Elm327Protocol.cleanResponse(origRes)
+                        addLog("Read-Before-Write $paramName ($activeDid): $cleanOrig")
+
+                        var isReadPositive = Elm327Protocol.isUdsPositiveResponse(cleanOrig, "22") ||
+                                             cleanOrig.contains("62$activeDid") ||
+                                             (cleanOrig.contains("62") && !cleanOrig.contains("7F"))
+
+                        // Se la lettura iniziale con DID primario fallisce e sono presenti candidati, scansiona i candidati con 22
+                        if (!isReadPositive && !candidateDids.isNullOrEmpty()) {
+                            addLog("ℹ️ Lettura iniziale $paramName su $activeDid non positiva ($cleanOrig), test candidati...")
+                            for (cand in candidateDids) {
+                                if (cand == activeDid) continue
+                                val candRead = if (isBodyGateway) ToyotaYarisCommands.buildGatewayUdsRead(cand, useBcmGatewayPrefix) else ToyotaYarisCommands.buildUdsRead(cand)
+                                val candRes = bleManager.sendCommand(candRead)
+                                val candClean = Elm327Protocol.cleanResponse(candRes)
+                                addLog("Candidate $paramName ($cand): $candClean")
+                                if (Elm327Protocol.isUdsPositiveResponse(candClean, "22") || candClean.contains("62$cand") || (candClean.contains("62") && !candClean.contains("7F"))) {
+                                    activeDid = cand
+                                    origRes = candRes
+                                    cleanOrig = candClean
+                                    readCmd = candRead
+                                    isReadPositive = true
+                                    addLog("✅ Trovato DID candidato valido per $paramName: $activeDid")
+                                    if (paramName.contains("Reverse", ignoreCase = true)) {
+                                        discoveredMeterReverseBeepDid = activeDid
+                                    } else if (paramName.contains("Seatbelt", ignoreCase = true)) {
+                                        discoveredMeterSeatbeltDid = activeDid
+                                    }
+                                    break
+                                }
+                            }
+                        }
+
+                        // Testare con lettura 22 prima di procedere: se la lettura non è positiva, NON procedere con Service 2E!
+                        if (!isReadPositive) {
+                            val readNrc = Elm327Protocol.extractUdsNrc(cleanOrig)
+                            if (readNrc != null) {
+                                val desc = Elm327Protocol.getUdsNrcDescription(readNrc.nrc)
+                                addLog("⚠️ Lettura UDS 22 $paramName ($activeDid) fallita (NRC ${readNrc.nrc}): $desc. Scrittura 2E annullata.")
+                                if (readNrc.nrc == Elm327Protocol.NRC_CONDITIONS_NOT_CORRECT) {
+                                    conditionsNotCorrectDetected = true
+                                    writeFailureReason = "Veicolo non pronto: accendere quadro in READY, chiudere tutte le portiere e mettere il cambio in P"
+                                }
+                            } else {
+                                addLog("⚠️ Lettura UDS 22 $paramName ($activeDid) non confermata ($cleanOrig). Scrittura 2E annullata.")
+                            }
+                            return false
+                        }
 
                         // 4. Calcolo nuovo payload (sostituzione mirata del parametro)
-                        val writeCmd = if (isBodyGateway) ToyotaYarisCommands.buildGatewayUdsWrite(did, newVal, useBcmGatewayPrefix) else ToyotaYarisCommands.buildUdsWrite(did, newVal)
+                        val writeCmd = if (isBodyGateway) ToyotaYarisCommands.buildGatewayUdsWrite(activeDid, newVal, useBcmGatewayPrefix) else ToyotaYarisCommands.buildUdsWrite(activeDid, newVal)
 
                         // 5. Scrittura con Service 2E
                         val writeRes = bleManager.sendCommand(writeCmd)
                         val cleanWrite = Elm327Protocol.cleanResponse(writeRes)
                         val isWritePositive = Elm327Protocol.isUdsPositiveResponse(cleanWrite, "2E") ||
-                                             cleanWrite.contains("6E$did") ||
-                                             cleanWrite.contains("6E")
+                                             cleanWrite.contains("6E$activeDid") ||
+                                             (cleanWrite.contains("6E") && !cleanWrite.contains("7F"))
 
                         if (!isWritePositive) {
                             val writeNrc = Elm327Protocol.extractUdsNrc(cleanWrite)
@@ -1900,16 +1979,16 @@ class ObdController(
                             }
                             return false
                         }
-                        addLog("✅ Scrittura UDS 2E $paramName confermata (6E $did)")
+                        addLog("✅ Scrittura UDS 2E $paramName confermata (6E $activeDid)")
 
                         // 6. Read-After-Write di verifica
                         delay(40)
                         val verifyRes = bleManager.sendCommand(readCmd)
                         val cleanVerify = Elm327Protocol.cleanResponse(verifyRes)
                         val isVerifyPositive = Elm327Protocol.isUdsPositiveResponse(cleanVerify, "22") ||
-                                               cleanVerify.contains("62$did") ||
-                                               cleanVerify.contains("62")
-                        addLog("Read-After-Write $paramName ($did): $cleanVerify (Verificato: $isVerifyPositive)")
+                                               cleanVerify.contains("62$activeDid") ||
+                                               (cleanVerify.contains("62") && !cleanVerify.contains("7F"))
+                        addLog("Read-After-Write $paramName ($activeDid): $cleanVerify (Verificato: $isVerifyPositive)")
                         return true
                     }
 
@@ -1922,25 +2001,30 @@ class ObdController(
                         meterOk = executeReadBeforeWrite(
                             targetReverseDid,
                             updatedState.reverseBeep.code,
-                            "Reverse Beep"
+                            "Reverse Beep",
+                            candidateDids = ToyotaYarisCommands.CANDIDATE_DIDS_METER_REVERSE_BEEP
                         ) && meterOk
                         delay(40)
+                        val targetSeatbeltDid = discoveredMeterSeatbeltDid ?: ToyotaYarisCommands.DID_METER_DRIVER_SEATBELT
                         meterOk = executeReadBeforeWrite(
-                            ToyotaYarisCommands.DID_METER_DRIVER_SEATBELT,
+                            targetSeatbeltDid,
                             if (updatedState.driverSeatbeltBeep) "01" else "00",
-                            "Driver Seatbelt"
+                            "Driver Seatbelt",
+                            candidateDids = ToyotaYarisCommands.CANDIDATE_DIDS_METER_SEATBELT
                         ) && meterOk
                         delay(40)
                         meterOk = executeReadBeforeWrite(
                             ToyotaYarisCommands.DID_METER_PASSENGER_SEATBELT,
                             if (updatedState.passengerSeatbeltBeep) "01" else "00",
-                            "Passenger Seatbelt"
+                            "Passenger Seatbelt",
+                            candidateDids = ToyotaYarisCommands.CANDIDATE_DIDS_METER_SEATBELT
                         ) && meterOk
                         delay(40)
                         meterOk = executeReadBeforeWrite(
                             ToyotaYarisCommands.DID_METER_REAR_SEATBELT,
                             if (updatedState.rearSeatbeltBeep) "01" else "00",
-                            "Rear Seatbelt"
+                            "Rear Seatbelt",
+                            candidateDids = ToyotaYarisCommands.CANDIDATE_DIDS_METER_SEATBELT
                         ) && meterOk
 
                         // 7. Commit EEPROM chiudendo sessione diagnostica con 1001
