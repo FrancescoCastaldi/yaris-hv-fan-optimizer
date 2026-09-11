@@ -3,6 +3,7 @@ package com.yaris.hvfan
 import com.yaris.hvfan.data.AutomotiveProtocolDecoder
 import com.yaris.hvfan.data.ObdLogger
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -28,6 +29,9 @@ class ObdLoggerTest {
         assertEquals("758", AutomotiveProtocolDecoder.getResponseIdForHeader("750"))
         assertEquals("7CC", AutomotiveProtocolDecoder.getResponseIdForHeader("7C4"))
         assertEquals("7A8", AutomotiveProtocolDecoder.getResponseIdForHeader("7A0"))
+
+        // 29-bit CAN target/source swap
+        assertEquals("18DAF110", AutomotiveProtocolDecoder.getResponseIdForHeader("18DA10F1"))
     }
 
     @Test
@@ -90,6 +94,34 @@ class ObdLoggerTest {
     }
 
     @Test
+    fun testIsoTpFlowControlTxAndPadding() {
+        // Flow Control non-padded
+        val fc = AutomotiveProtocolDecoder.decodeTx("30 00 00")
+        assertTrue(fc.contains("Flow Control: CTS"))
+
+        // Flow Control con padding CAN 8-byte
+        val fcPadded = AutomotiveProtocolDecoder.decodeTx("30 00 00 00 00 00 00 00")
+        assertTrue("Flow Control con padding deve essere decodificato come Flow Control e non come Mode 30", fcPadded.contains("Flow Control: CTS"))
+        assertFalse("Non deve confondere Flow Control con Toyota Mode 30", fcPadded.contains("Toyota Mode 30"))
+
+        // Candump format per Flow Control: non deve anteporre byte PCI 03
+        val ts = 1750000000000L
+        val txDump = AutomotiveProtocolDecoder.formatCanDumpTx(ts, "30 00 00", "7E0")
+        assertNotNull(txDump)
+        assertTrue("Il frame Flow Control candump deve mantenere 30 in testa: $txDump", txDump!!.endsWith("3000000000000000"))
+        assertFalse("Non deve anteporre 03 al Flow Control: $txDump", txDump.contains("03300000"))
+    }
+
+    @Test
+    fun testIsoTpSingleFrameTxPaddingRemoval() {
+        // Single Frame con padding CAN: 04 2E A0 01 00 00 00 00 00
+        val paddedWrite = AutomotiveProtocolDecoder.decodeTx("04 2E A0 01 00 00 00 00 00")
+        assertTrue(paddedWrite.contains("WriteDID: 0xA001"))
+        assertTrue("Il payload deve essere esattamente 00 e interpretato correttamente", paddedWrite.contains("Payload: 00 [Singolo Bip (Comfort)]"))
+        assertFalse("Non deve contenere il padding di zeri", paddedWrite.contains("0000000000"))
+    }
+
+    @Test
     fun testDecodeRxResponses() {
         // Positive ACK
         val sessAck = AutomotiveProtocolDecoder.decodeRx("50 03")
@@ -144,6 +176,19 @@ class ObdLoggerTest {
     }
 
     @Test
+    fun testPayloadDisambiguationNoFalseNrcOrReadDid() {
+        // Payload con byte 0x7F all'interno dei dati non deve generare un falso NRC!
+        val rxWith7F = AutomotiveProtocolDecoder.decodeRx("62 28 C1 01 7F 22 31")
+        assertTrue("Deve decodificare ReadDID ACK", rxWith7F.contains("ReadDID ACK: DID 0x28C1"))
+        assertFalse("Non deve generare un falso errore NRC", rxWith7F.contains("NRC 0x31"))
+
+        // Frame consecutivo con byte 0x62 o 0x7F nei dati non deve generare un falso ReadDID ACK
+        val cfWith62 = AutomotiveProtocolDecoder.decodeRx("21 00 62 12 34 00 00 00")
+        assertTrue(cfWith62.contains("ISO-TP Consecutive Frame: seq=1"))
+        assertFalse("Un frame consecutivo non deve generare falsi ACK di servizio", cfWith62.contains("ReadDID ACK"))
+    }
+
+    @Test
     fun testReverseEngineeringTracker() {
         val tracker = AutomotiveProtocolDecoder.ReverseEngineeringTracker()
         tracker.recordTx("AT SH 7C0", "7C0")
@@ -165,9 +210,41 @@ class ObdLoggerTest {
         assertTrue(summary.contains("[ECU 7C0 - Combination Meter ECU (Cluster)]"))
         assertTrue(summary.contains("DID 0xA001 (Combination Meter Reverse Buzzer): Payload=00 [Singolo Bip (Comfort)]"))
         assertTrue(summary.contains("WRITTEN DIDs (0x2E -> 0x6E ACK):"))
-        assertTrue(summary.contains("Written Payload=01 [Continuo (Standard)] -> Command: 2E A0 01 01"))
+        assertTrue(summary.contains("Written Payload=01 [Continuo (Standard)]"))
+        assertTrue(summary.contains("Command: 2E A0 01 01"))
         assertTrue(summary.contains("REJECTED SERVICES (0x7F NRC):"))
         assertTrue(summary.contains("ReadDataByIdentifier (DID/Param 0xA099): [NRC 0x31: requestOutOfRange]"))
+        assertTrue(summary.contains("Ready-to-use Command:"))
+    }
+
+    @Test
+    fun testIsoTpMultiFrameReassemblyInTracker() {
+        val tracker = AutomotiveProtocolDecoder.ReverseEngineeringTracker()
+        tracker.recordTx("AT SH 7E2", "7E2")
+        tracker.recordTx("22 28 C1", "7E2")
+
+        // Invia First Frame con totalLen = 14 (3 byte header 62 28 C1 + 11 byte payload)
+        tracker.recordRx("10 0E 62 28 C1 01 02 03", "7E2", "22 28 C1")
+        // Invia Consecutive Frame 1 (7 byte)
+        tracker.recordRx("21 04 05 06 07 08 09 0A", "7E2", "22 28 C1")
+        // Invia Consecutive Frame 2 (ultimi byte completi)
+        tracker.recordRx("22 0B 00 00 00 00 00 00", "7E2", "22 28 C1")
+
+        val summary = tracker.generateSummary()
+        assertTrue("Il sommario deve contenere DID 28C1 riassemblato completamente", summary.contains("DID 0x28C1"))
+        assertTrue("Il payload riassemblato deve contenere tutti gli 11 byte: 0102030405060708090A0B", summary.contains("Payload=0102030405060708090A0B"))
+    }
+
+    @Test
+    fun testAth1CanIdExtraction() {
+        val ts = 1750000000123L
+        // Risposta con header ATH1 attivo (7EA al posto dell'header di trasmissione 7DF)
+        val rxDumpList = AutomotiveProtocolDecoder.formatCanDumpRx(ts, "7EA 03 7F 22 31", "7DF")
+        assertEquals(1, rxDumpList.size)
+        assertTrue("Deve usare il CAN ID reale 7EA estratto dalla riga: ${rxDumpList[0]}", rxDumpList[0].contains("can0 7EA#037F223100000000"))
+
+        val rxDecoded = AutomotiveProtocolDecoder.decodeRx("7EA 03 7F 22 31")
+        assertTrue(rxDecoded.contains("NRC 0x31: requestOutOfRange"))
     }
 
     @Test

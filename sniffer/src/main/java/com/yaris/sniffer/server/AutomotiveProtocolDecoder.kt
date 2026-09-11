@@ -36,14 +36,18 @@ object AutomotiveProtocolDecoder {
 
     fun getResponseIdForHeader(header: String): String {
         val clean = header.trim().uppercase()
-        return when (clean) {
-            "7E0" -> "7E8"
-            "7E2" -> "7EA"
-            "7C0" -> "7C8"
-            "750" -> "758"
-            "7C4" -> "7CC"
-            "7A0" -> "7A8"
-            "7DF" -> "7E8"
+        return when {
+            clean == "7E0" -> "7E8"
+            clean == "7E2" -> "7EA"
+            clean == "7C0" -> "7C8"
+            clean == "750" -> "758"
+            clean == "7C4" -> "7CC"
+            clean == "7A0" -> "7A8"
+            clean == "7DF" -> "7E8"
+            clean.length == 8 && clean.startsWith("18DA") -> {
+                // In 29-bit CAN UDS (ISO 15765-4), swap target and source nibbles
+                "18DA" + clean.substring(6, 8) + clean.substring(4, 6)
+            }
             else -> {
                 val num = clean.toIntOrNull(16)
                 if (num != null && clean.length == 3) {
@@ -131,6 +135,8 @@ object AutomotiveProtocolDecoder {
         "A002" to "Driver Seatbelt Warning Chime",
         "A003" to "Passenger Seatbelt Warning Chime",
         "A004" to "Rear Seatbelt Warning Chime",
+        "A005" to "Key-in Reminder Warning Chime",
+        "A006" to "Headlight On Reminder Warning Chime",
         "B001" to "Body Speed-Sensing Auto Door Lock",
         "B002" to "Body Shift-to-P Auto Door Unlock",
         "B003" to "Body Power Windows with Key Fob",
@@ -145,6 +151,12 @@ object AutomotiveProtocolDecoder {
         "B00C" to "Body Footwell Lighting in Drive",
         "B00D" to "Body Auto Light Sensitivity",
         "B00E" to "Body Follow Me Home Headlight Duration",
+        "B00F" to "Body Auto Unlock on Driver Door Open",
+        "B010" to "Body Smart Key Entry Unlock All Doors",
+        "B011" to "Body Wireless Key Door Lock Blinker Acknowledge",
+        "B012" to "Body Wireless Key Door Lock Buzzer Acknowledge",
+        "B013" to "Body Power Windows One-Touch Open Driver",
+        "B014" to "Body Power Windows One-Touch Open All",
         "C001" to "Touch 3 Infotainment Opening Screen",
         "C002" to "Audio ASL Speed-Compensated Volume",
         "C003" to "Digital Cluster Theme",
@@ -161,13 +173,18 @@ object AutomotiveProtocolDecoder {
         "E002" to "AirCon Eco Mode Air Conditioning Efficiency",
         "E003" to "AirCon Blower Activation on Defroster",
         "E004" to "AirCon Temperature Sensor Calibration",
-        "F190" to "VIN (Vehicle Identification Number)",
+        "F110" to "Diagnostic Information / On-Line State",
+        "F180" to "Boot Software Identification",
+        "F181" to "Application Software Identification",
+        "F182" to "Application Data Identification",
         "F186" to "Active Diagnostic Session",
         "F187" to "Spare Part Number",
         "F188" to "ECU Software Number",
         "F189" to "ECU Software Version",
         "F18A" to "System Supplier Identifier",
+        "F18B" to "ECU Manufacturing Date",
         "F18C" to "ECU Serial Number",
+        "F190" to "VIN (Vehicle Identification Number)",
         "F191" to "ECU Hardware Number"
     )
 
@@ -185,7 +202,7 @@ object AutomotiveProtocolDecoder {
                 "01" -> "Continuo (Standard)"
                 else -> null
             }
-            "A002", "A003", "A004" -> when (p) {
+            "A002", "A003", "A004", "A005", "A006" -> when (p) {
                 "00" -> "Disattivato"
                 "01" -> "Attivo (Standard)"
                 else -> null
@@ -196,7 +213,8 @@ object AutomotiveProtocolDecoder {
                 "02" -> "Chiusura cambio D (Shift from P)"
                 else -> null
             }
-            "B002", "B003", "B008", "B009", "B00A", "B00C", "C005", "D003", "D004", "D005", "E001", "E002", "E003" -> when (p) {
+            "B002", "B003", "B008", "B009", "B00A", "B00C", "B00F", "B010", "B011", "B012", "B013", "B014",
+            "C005", "D003", "D004", "D005", "E001", "E002", "E003" -> when (p) {
                 "00" -> "Disattivato"
                 "01" -> "Attivo"
                 else -> null
@@ -460,7 +478,8 @@ object AutomotiveProtocolDecoder {
             return decodeStCommand(clean, command.trim())
         }
 
-        if (clean.startsWith("3000") && clean.length in 4..6) {
+        // Riconoscimento ISO-TP Flow Control (CTS): es. "30 00 00" o con padding "30 00 00 00 00 00 00 00"
+        if (clean.startsWith("3000") || (clean.startsWith("30") && clean.length in 6..16 && clean.substring(2, 4) == "00")) {
             val bs = if (clean.length >= 4) clean.substring(2, 4).toIntOrNull(16) ?: 0 else 0
             val st = if (clean.length >= 6) clean.substring(4, 6).toIntOrNull(16) ?: 0 else 0
             return if (bs == 0 && st == 0) {
@@ -469,15 +488,15 @@ object AutomotiveProtocolDecoder {
                 "[ISO-TP Flow Control: CTS, BS=$bs, STmin=${st}ms]"
             }
         }
-        // Riconoscimento eventuale framing ISO-TP Single Frame: es. "02 01 0D"
+
+        // Riconoscimento eventuale framing ISO-TP Single Frame: es. "02 01 0D" o padded "04 2E A0 01 00 00 00 00"
         val payload = if (clean.length >= 4 && clean.length % 2 == 0) {
             val b0 = clean.substring(0, 2).toIntOrNull(16) ?: -1
             val b1 = clean.substring(2, 4)
             val isKnownSid = b1 in SID_MAP.keys || b1 in listOf("21", "22", "2E", "2F", "30", "31", "3E", "10", "01", "03", "04")
-            if (b0 in 2..7 && isKnownSid && clean.length >= 2 + (b0 * 2)) {
-                clean.substring(2)
-            } else if (b0 == 1 && b1 in listOf("03", "04") && clean.length == 4) {
-                clean.substring(2)
+            if (b0 in 1..7 && isKnownSid && clean.length >= 2 + (b0 * 2)) {
+                // Estrai solo i byte effettivi del payload indicati dal PCI byte, scartando il padding CAN!
+                clean.substring(2, 2 + (b0 * 2))
             } else clean
         } else clean
 
@@ -586,6 +605,95 @@ object AutomotiveProtocolDecoder {
         return ""
     }
 
+    // 7. Modello di Framing ISO-TP e Analisi RX Frame
+    enum class IsoTpType {
+        SINGLE_FRAME,
+        FIRST_FRAME,
+        CONSECUTIVE_FRAME,
+        FLOW_CONTROL,
+        RAW_UDS
+    }
+
+    data class DecodedFrame(
+        val ecuId: String?,
+        val frameType: IsoTpType,
+        val totalLength: Int?,
+        val sequenceNum: Int?,
+        val pduBytes: List<String>,
+        val rawHexBytes: List<String>
+    )
+
+    fun parseRxLine(line: String): DecodedFrame? {
+        val clean = line.trim()
+        if (clean.isEmpty()) return null
+
+        val rawTokens = clean.replace(">", "").trim().split(Regex("""\s+""")).filter { it.isNotEmpty() }
+        if (rawTokens.isEmpty()) return null
+
+        var tokenIdx = 0
+        var detectedCanId: String? = null
+
+        val firstToken = rawTokens[0].uppercase()
+        if ((firstToken.length == 3 && firstToken.matches(Regex("""[0-7][0-9A-F]{2}"""))) ||
+            (firstToken.length == 8 && firstToken.matches(Regex("""[0-9A-F]{8}""")))) {
+            detectedCanId = firstToken
+            tokenIdx++
+        }
+
+        val hexBytes = mutableListOf<String>()
+        while (tokenIdx < rawTokens.size) {
+            val tok = rawTokens[tokenIdx]
+            if (tok.matches(Regex("""[0-9A-Fa-f]{1,2}:"""))) {
+                tokenIdx++
+                continue
+            }
+            if (tok.matches(Regex("""[0-9A-Fa-f]{2}"""))) {
+                hexBytes.add(tok.uppercase())
+            }
+            tokenIdx++
+        }
+
+        if (hexBytes.isEmpty()) return null
+
+        val b0 = hexBytes[0]
+        val b0Val = b0.toIntOrNull(16) ?: -1
+
+        // 1. Flow Control: 30 ...
+        if (b0 == "30" && (hexBytes.size <= 3 || hexBytes.getOrNull(1) == "00" || hexBytes.size == 8)) {
+            return DecodedFrame(detectedCanId, IsoTpType.FLOW_CONTROL, null, null, emptyList(), hexBytes)
+        }
+
+        // 2. First Frame: 1x yy (totalLen = ((b0 & 0x0F) << 8) | yy)
+        if (b0.startsWith("1") && hexBytes.size >= 2) {
+            val totalLen = ((b0Val and 0x0F) shl 8) or (hexBytes[1].toIntOrNull(16) ?: 0)
+            if (totalLen >= 8) {
+                val pdu = hexBytes.drop(2)
+                return DecodedFrame(detectedCanId, IsoTpType.FIRST_FRAME, totalLen, null, pdu, hexBytes)
+            }
+        }
+
+        // 3. Consecutive Frame: 2x (seq = b0 & 0x0F)
+        if (b0.startsWith("2") && hexBytes.size >= 1) {
+            val seq = b0Val and 0x0F
+            val pdu = hexBytes.drop(1)
+            return DecodedFrame(detectedCanId, IsoTpType.CONSECUTIVE_FRAME, null, seq, pdu, hexBytes)
+        }
+
+        // 4. Single Frame: 0x (len = x, 1..7)
+        if (b0.startsWith("0") && b0.length == 2 && b0Val in 1..7) {
+            val sfLen = b0Val
+            val pdu = if (hexBytes.size >= 1 + sfLen) {
+                hexBytes.subList(1, 1 + sfLen)
+            } else {
+                hexBytes.drop(1)
+            }
+            return DecodedFrame(detectedCanId, IsoTpType.SINGLE_FRAME, sfLen, null, pdu, hexBytes)
+        }
+
+        // 5. Raw UDS o ELM327 formatted line
+        return DecodedFrame(detectedCanId, IsoTpType.RAW_UDS, null, null, hexBytes, hexBytes)
+    }
+
     /**
      * Decodifica semantica in tempo reale delle risposte ricevute (RX).
      */
@@ -602,140 +710,160 @@ object AutomotiveProtocolDecoder {
         if (upper == "STOPPED") return "[ELM327: STOPPED]"
         if (upper.matches(Regex("""\d{1,2}\.\d+\s*V"""))) return "[AT RV: 12V Battery Voltage = $clean]"
 
-        val stripped = clean.replace(Regex("""(?:^|[\r\n\s])[0-9A-Fa-f]{1,2}\s*:\s*"""), " ")
-            .replace(">", "")
-            .replace("\r", " ")
-            .replace("\n", " ")
-            .trim()
-
-        val hexBytes = stripped.split(Regex("""\s+""")).filter { it.matches(Regex("""[0-9A-Fa-f]{2}""")) }
-        if (hexBytes.isEmpty()) return ""
-
-        val hexStream = hexBytes.joinToString("").uppercase()
-
-        // ISO-TP Framing check
-        if (hexStream.startsWith("300000")) {
-            return "[ISO-TP Flow Control: CTS (Clear To Send), BS=0, STmin=0ms]"
+        val isElmMultiLine = clean.contains(Regex("""(?:^|[\r\n\s])[0-9A-Fa-f]{1,2}\s*:"""))
+        if (isElmMultiLine) {
+            val stripped = clean.replace(Regex("""(?:^|[\r\n\s])[0-9A-Fa-f]{1,2}\s*:\s*"""), " ")
+                .replace(">", "")
+                .replace("\r", " ")
+                .replace("\n", " ")
+                .trim()
+            return decodeRxSingleLine(stripped, activeHeader, lastTx)
         }
-        val isoTpAnnotation = if (hexStream.startsWith("1") && hexStream.length >= 4) {
-            val totalLen = hexStream.substring(1, 4).toIntOrNull(16)
-            if (totalLen != null && totalLen >= 8) {
+
+        val lines = clean.split(Regex("""[\r\n]+""")).map { it.trim() }.filter { it.isNotEmpty() }
+        if (lines.isEmpty()) return ""
+
+        val decodedLines = mutableListOf<String>()
+        for (line in lines) {
+            val decoded = decodeRxSingleLine(line, activeHeader, lastTx)
+            if (decoded.isNotEmpty()) {
+                decodedLines.add(decoded)
+            }
+        }
+
+        return decodedLines.joinToString(" ")
+    }
+
+    private fun decodeRxSingleLine(line: String, activeHeader: String, lastTx: String): String {
+        val parsed = parseRxLine(line) ?: return ""
+
+        val isoTpAnnotation = when (parsed.frameType) {
+            IsoTpType.FLOW_CONTROL -> {
+                val bs = parsed.rawHexBytes.getOrNull(1)?.toIntOrNull(16) ?: 0
+                val st = parsed.rawHexBytes.getOrNull(2)?.toIntOrNull(16) ?: 0
+                if (bs == 0 && st == 0) {
+                    "[ISO-TP Flow Control: CTS (Clear To Send), BS=0, STmin=0ms]"
+                } else {
+                    "[ISO-TP Flow Control: CTS, BS=$bs, STmin=${st}ms]"
+                }
+            }
+            IsoTpType.FIRST_FRAME -> {
+                val totalLen = parsed.totalLength ?: 0
                 "[ISO-TP First Frame: totalLen=$totalLen bytes]"
-            } else null
-        } else if (hexStream.startsWith("2") && hexStream.length >= 2 && hexStream[1].isDigit()) {
-            val seq = hexStream.substring(1, 2)
-            "[ISO-TP Consecutive Frame: seq=$seq]"
-        } else null
+            }
+            IsoTpType.CONSECUTIVE_FRAME -> {
+                val seq = parsed.sequenceNum ?: 0
+                "[ISO-TP Consecutive Frame: seq=$seq]"
+            }
+            else -> null
+        }
+
+        if (parsed.frameType == IsoTpType.FLOW_CONTROL || parsed.frameType == IsoTpType.CONSECUTIVE_FRAME) {
+            return isoTpAnnotation ?: ""
+        }
+
+        val pduBytes = parsed.pduBytes
+        if (pduBytes.isEmpty()) return isoTpAnnotation ?: ""
 
         var innerAnnotation = ""
+        val sid = pduBytes[0]
 
-        // Negative Response Code: 7F <SID> <NRC>
-        val idx7F = hexBytes.indexOfFirst { it.equals("7F", ignoreCase = true) }
-        if (idx7F != -1 && idx7F + 2 < hexBytes.size) {
-            val sid = hexBytes[idx7F + 1].uppercase()
-            val nrc = hexBytes[idx7F + 2].uppercase()
-            val sidName = SID_MAP[sid] ?: "SID 0x$sid"
-            val nrcName = NRC_MAP[nrc] ?: "unknownNRC"
-            innerAnnotation = "[NRC 0x$nrc: $nrcName (SID 0x$sid - $sidName)]"
-        } else {
-            // DiagnosticSessionControl ACK: 50 <subfunc>
-            val idx50 = hexBytes.indexOfFirst { it.equals("50", ignoreCase = true) }
-            if (idx50 != -1 && idx50 + 1 < hexBytes.size) {
-                val sub = hexBytes[idx50 + 1].uppercase()
-                val sName = when (sub) {
-                    "01" -> "Default Session (0x01)"
-                    "02" -> "Programming Session (0x02)"
-                    "03" -> "Extended Session (0x03)"
-                    "04" -> "Safety System Session (0x04)"
-                    else -> "Session 0x$sub"
+        when (sid) {
+            "7F" -> {
+                if (pduBytes.size >= 3) {
+                    val rejSid = pduBytes[1]
+                    val nrc = pduBytes[2]
+                    val sidName = SID_MAP[rejSid] ?: "SID 0x$rejSid"
+                    val nrcName = NRC_MAP[nrc] ?: "unknownNRC"
+                    innerAnnotation = "[NRC 0x$nrc: $nrcName (SID 0x$rejSid - $sidName)]"
                 }
-                innerAnnotation = "[UDS 0x50 SessionControl ACK: $sName]"
-            } else {
-                // ReadDataByIdentifier ACK: 62 <DID> <Payload...>
-                val idx62 = hexBytes.indexOfFirst { it.equals("62", ignoreCase = true) }
-                if (idx62 != -1 && idx62 + 2 < hexBytes.size) {
-                    val did = (hexBytes[idx62 + 1] + hexBytes[idx62 + 2]).uppercase()
-                    val payload = hexBytes.subList(idx62 + 3, hexBytes.size).joinToString("")
+            }
+            "50" -> {
+                if (pduBytes.size >= 2) {
+                    val sub = pduBytes[1]
+                    val sName = when (sub) {
+                        "01" -> "Default Session (0x01)"
+                        "02" -> "Programming Session (0x02)"
+                        "03" -> "Extended Session (0x03)"
+                        "04" -> "Safety System Session (0x04)"
+                        else -> "Session 0x$sub"
+                    }
+                    innerAnnotation = "[UDS 0x50 SessionControl ACK: $sName]"
+                }
+            }
+            "62" -> {
+                if (pduBytes.size >= 3) {
+                    val did = pduBytes[1] + pduBytes[2]
+                    val payload = pduBytes.drop(3).joinToString("")
                     val didName = getDidName(did)
                     val interp = interpretDidPayload(did, payload)
                     val interpStr = if (interp != null) " [$interp]" else ""
                     val payloadDisplay = if (payload.isNotEmpty()) "Payload: $payload$interpStr" else "ACK"
                     innerAnnotation = "[UDS 0x62 ReadDID ACK: DID 0x$did ($didName), $payloadDisplay]"
-                } else {
-                    // WriteDataByIdentifier ACK: 6E <DID>
-                    val idx6E = hexBytes.indexOfFirst { it.equals("6E", ignoreCase = true) }
-                    if (idx6E != -1 && idx6E + 2 < hexBytes.size) {
-                        val did = (hexBytes[idx6E + 1] + hexBytes[idx6E + 2]).uppercase()
-                        val didName = getDidName(did)
-                        innerAnnotation = "[UDS 0x6E WriteDID ACK: DID 0x$did ($didName)]"
-                    } else {
-                        // TesterPresent ACK: 7E <subfunc>
-                        val idx7E = hexBytes.indexOfFirst { it.equals("7E", ignoreCase = true) }
-                        if (idx7E != -1) {
-                            val sub = if (idx7E + 1 < hexBytes.size) hexBytes[idx7E + 1].uppercase() else "00"
-                            innerAnnotation = "[UDS 0x7E TesterPresent ACK: 0x$sub]"
+                }
+            }
+            "6E" -> {
+                if (pduBytes.size >= 3) {
+                    val did = pduBytes[1] + pduBytes[2]
+                    val didName = getDidName(did)
+                    innerAnnotation = "[UDS 0x6E WriteDID ACK: DID 0x$did ($didName)]"
+                }
+            }
+            "7E" -> {
+                val sub = if (pduBytes.size >= 2) pduBytes[1] else "00"
+                innerAnnotation = "[UDS 0x7E TesterPresent ACK: 0x$sub]"
+            }
+            "41" -> {
+                val decodedList = mutableListOf<String>()
+                var curr = 1
+                while (curr < pduBytes.size) {
+                    val pidHex = pduBytes[curr]
+                    val info = MODE01_PIDS[pidHex]
+                    if (info != null) {
+                        if (curr + info.byteCount < pduBytes.size) {
+                            val dataBytes = pduBytes.subList(curr + 1, curr + 1 + info.byteCount).map { it.toInt(16) }
+                            decodedList.add("${info.name} = ${info.decoder(dataBytes)}")
+                            curr += 1 + info.byteCount
                         } else {
-                            // Mode 01 Response: 41 <PID> <Data...>
-                            val idx41 = hexBytes.indexOfFirst { it.equals("41", ignoreCase = true) }
-                            if (idx41 != -1 && idx41 + 1 < hexBytes.size) {
-                                val decodedList = mutableListOf<String>()
-                                var curr = idx41 + 1
-                                while (curr < hexBytes.size) {
-                                    val pidHex = hexBytes[curr].uppercase()
-                                    val info = MODE01_PIDS[pidHex]
-                                    if (info != null) {
-                                        if (curr + info.byteCount < hexBytes.size) {
-                                            val dataBytes = hexBytes.subList(curr + 1, curr + 1 + info.byteCount).map { it.toInt(16) }
-                                            decodedList.add("${info.name} = ${info.decoder(dataBytes)}")
-                                            curr += 1 + info.byteCount
-                                        } else {
-                                            decodedList.add("PID 0x$pidHex (${info.name})")
-                                            break
-                                        }
-                                    } else {
-                                        decodedList.add("PID 0x$pidHex")
-                                        curr += 1
-                                    }
-                                }
-                                if (decodedList.isNotEmpty()) {
-                                    innerAnnotation = "[Mode 01 ACK: ${decodedList.joinToString(", ")}]"
-                                }
-                            } else {
-                                // Mode 03 DTCs ACK: 43 ...
-                                val idx43 = hexBytes.indexOfFirst { it.equals("43", ignoreCase = true) }
-                                if (idx43 != -1) {
-                                    val dtcBytes = hexBytes.subList(idx43 + 1, hexBytes.size)
-                                    innerAnnotation = if (dtcBytes.all { it == "00" }) {
-                                        "[OBD Mode 03 ACK: Nessun codice di errore DTC memorizzato]"
-                                    } else {
-                                        "[OBD Mode 03 ACK: DTC Raw: ${dtcBytes.joinToString(" ")}]"
-                                    }
-                                } else if (hexBytes.contains("44")) {
-                                    innerAnnotation = "[OBD Mode 04 ACK: DTCs azzerati con successo]"
-                                } else {
-                                    // Mode 21 ACK: 61 <PID> ...
-                                    val idx61 = hexBytes.indexOfFirst { it.equals("61", ignoreCase = true) }
-                                    if (idx61 != -1 && idx61 + 1 < hexBytes.size) {
-                                        val pid = hexBytes[idx61 + 1].uppercase()
-                                        val desc = when (pid) {
-                                            "01" -> "Hybrid Powertrain Live Telemetry"
-                                            "81" -> "HV Battery Block Voltages"
-                                            else -> "PID 0x$pid"
-                                        }
-                                        innerAnnotation = "[Toyota Mode 21 ACK: $desc]"
-                                    } else {
-                                        // Mode 30 ACK: 70 <PID> ...
-                                        val idx70 = hexBytes.indexOfFirst { it.equals("70", ignoreCase = true) }
-                                        if (idx70 != -1 && idx70 + 1 < hexBytes.size) {
-                                            val pid = hexBytes[idx70 + 1].uppercase()
-                                            val desc = if (pid == "08") "Active Test HV Battery Fan Control" else "Active Test 0x$pid"
-                                            innerAnnotation = "[Toyota Mode 30 ACK: $desc]"
-                                        }
-                                    }
-                                }
-                            }
+                            decodedList.add("PID 0x$pidHex (${info.name})")
+                            break
                         }
+                    } else {
+                        decodedList.add("PID 0x$pidHex")
+                        curr += 1
                     }
+                }
+                if (decodedList.isNotEmpty()) {
+                    innerAnnotation = "[Mode 01 ACK: ${decodedList.joinToString(", ")}]"
+                }
+            }
+            "43" -> {
+                val dtcBytes = pduBytes.drop(1)
+                innerAnnotation = if (dtcBytes.all { it == "00" }) {
+                    "[OBD Mode 03 ACK: Nessun codice di errore DTC memorizzato]"
+                } else {
+                    "[OBD Mode 03 ACK: DTC Raw: ${dtcBytes.joinToString(" ")}]"
+                }
+            }
+            "44" -> {
+                innerAnnotation = "[OBD Mode 04 ACK: DTCs azzerati con successo]"
+            }
+            "61" -> {
+                if (pduBytes.size >= 2) {
+                    val pid = pduBytes[1]
+                    val desc = when (pid) {
+                        "01" -> "Hybrid Powertrain Live Telemetry"
+                        "81" -> "HV Battery Block Voltages"
+                        else -> "PID 0x$pid"
+                    }
+                    innerAnnotation = "[Toyota Mode 21 ACK: $desc]"
+                }
+            }
+            "70" -> {
+                if (pduBytes.size >= 2) {
+                    val pid = pduBytes[1]
+                    val desc = if (pid == "08") "Active Test HV Battery Fan Control" else "Active Test 0x$pid"
+                    innerAnnotation = "[Toyota Mode 30 ACK: $desc]"
                 }
             }
         }
@@ -757,12 +885,33 @@ object AutomotiveProtocolDecoder {
         }
         val canId = if (activeHeader.isNotBlank()) activeHeader.uppercase() else "7DF"
 
-        val payloadHex = if (clean.length in 2..14 && clean.length % 2 == 0) {
+        val payloadHex = if (clean.startsWith("3000") || (clean.startsWith("30") && clean.length in 6..16 && clean.substring(2, 4) == "00")) {
+            // ISO-TP Flow Control frame: possiede già il PCI byte 30, non anteporre un PCI aggiuntivo!
+            clean.padEnd(16, '0').take(16)
+        } else if (clean.length in 4..16 && (clean.startsWith("1") || clean.startsWith("2"))) {
+            val b0 = clean.substring(0, 2).toIntOrNull(16) ?: -1
+            if (b0 in 0x10..0x2F) {
+                // ISO-TP First Frame (1x yy) o Consecutive Frame (2x) già strutturato
+                clean.padEnd(16, '0').take(16)
+            } else {
+                formatStandardCanPayload(clean)
+            }
+        } else {
+            formatStandardCanPayload(clean)
+        }
+
+        val tsSec = timestampMs / 1000
+        val tsMicro = (timestampMs % 1000) * 1000
+        return String.format(Locale.US, "(%d.%06d) can0 %s#%s", tsSec, tsMicro, canId, payloadHex)
+    }
+
+    private fun formatStandardCanPayload(clean: String): String {
+        return if (clean.length in 2..14 && clean.length % 2 == 0) {
             val byteLen = clean.length / 2
             val b0 = clean.substring(0, 2).toIntOrNull(16) ?: -1
             val b1 = if (clean.length >= 4) clean.substring(2, 4) else ""
             val isKnownSid = b1 in SID_MAP.keys || b1 in listOf("21", "22", "2E", "2F", "30", "31", "3E", "10", "01", "03", "04")
-            if (b0 in 2..7 && b0 == byteLen - 1 && isKnownSid) {
+            if (b0 in 1..7 && b0 == byteLen - 1 && isKnownSid) {
                 clean.padEnd(16, '0')
             } else {
                 val pci = "%02X".format(byteLen)
@@ -771,10 +920,6 @@ object AutomotiveProtocolDecoder {
         } else {
             clean.padEnd(16, '0').take(16)
         }
-
-        val tsSec = timestampMs / 1000
-        val tsMicro = (timestampMs % 1000) * 1000
-        return String.format(Locale.US, "(%d.%06d) can0 %s#%s", tsSec, tsMicro, canId, payloadHex)
     }
 
     /**
@@ -785,27 +930,26 @@ object AutomotiveProtocolDecoder {
         if (clean.isEmpty() || clean.equals("OK", ignoreCase = true) || clean.equals("NO DATA", ignoreCase = true) || clean.startsWith("?")) {
             return emptyList()
         }
-        val canId = getResponseIdForHeader(if (activeHeader.isNotBlank()) activeHeader else "7E0")
+        val defaultCanId = getResponseIdForHeader(if (activeHeader.isNotBlank()) activeHeader else "7E0")
 
         val lines = clean.split(Regex("""[\r\n]+""")).map { it.trim() }.filter { it.isNotEmpty() }
         val result = mutableListOf<String>()
         var offsetMicro = 0L
 
         for (line in lines) {
-            val stripped = line.replace(Regex("""^[0-9A-Fa-f]{1,2}\s*:\s*"""), "")
-                .replace(">", "")
-                .trim()
-            val hexBytes = stripped.split(Regex("""\s+""")).filter { it.matches(Regex("""[0-9A-Fa-f]{2}""")) }
-            if (hexBytes.isEmpty()) continue
+            val parsed = parseRxLine(line) ?: continue
+            val canId = parsed.ecuId ?: defaultCanId
 
-            val hexStream = hexBytes.joinToString("").uppercase()
+            val hexStream = parsed.rawHexBytes.joinToString("").uppercase()
             val payloadHex = if (hexStream.length >= 16) {
                 hexStream.take(16)
-            } else if (hexStream.startsWith("1") || hexStream.startsWith("2") || hexStream.startsWith("30")) {
+            } else if (parsed.frameType == IsoTpType.FIRST_FRAME ||
+                parsed.frameType == IsoTpType.CONSECUTIVE_FRAME ||
+                parsed.frameType == IsoTpType.FLOW_CONTROL) {
                 hexStream.padEnd(16, '0')
             } else {
-                val byteLen = hexBytes.size
-                val sfLen = hexBytes[0].toIntOrNull(16)
+                val byteLen = parsed.rawHexBytes.size
+                val sfLen = parsed.rawHexBytes[0].toIntOrNull(16)
                 if (sfLen != null && sfLen == byteLen - 1) {
                     hexStream.padEnd(16, '0')
                 } else {
@@ -826,6 +970,7 @@ object AutomotiveProtocolDecoder {
     /**
      * Aggregatore dedicato per Reverse Engineering: accumula DIDs letti con successo, DIDs scritti,
      * servizi rifiutati (NRC) e comandi speciali raggruppati per centralina (Header CAN).
+     * Include riassemblatore ISO-TP automatico per risposte multi-frame.
      */
     class ReverseEngineeringTracker {
         data class ReadDidRecord(
@@ -865,11 +1010,21 @@ object AutomotiveProtocolDecoder {
             var lastTimestampMs: Long
         )
 
+        private class IsoTpReassemblyBuffer(
+            val ecuHeader: String,
+            val totalLength: Int,
+            var expectedSeq: Int = 1
+        ) {
+            val collectedBytes = mutableListOf<String>()
+            var lastUpdateMs: Long = System.currentTimeMillis()
+        }
+
         private val readDids = mutableMapOf<String, ReadDidRecord>()
         private val writtenDids = mutableMapOf<String, WrittenDidRecord>()
         private val rejectedServices = mutableMapOf<String, RejectedServiceRecord>()
         private val discoveredCommands = mutableMapOf<String, DiscoveredCommandRecord>()
         private val activeEcus = linkedSetOf<String>()
+        private val activeReassemblers = mutableMapOf<String, IsoTpReassemblyBuffer>()
 
         @Synchronized
         fun recordTx(command: String, activeHeader: String) {
@@ -892,7 +1047,7 @@ object AutomotiveProtocolDecoder {
                 }
                 rec.count++
                 rec.lastTimestampMs = System.currentTimeMillis()
-            } else if (clean.startsWith("30") && clean.length >= 4) {
+            } else if (clean.startsWith("30") && clean.length >= 4 && !clean.startsWith("3000")) {
                 val key = "$ecu:MODE30:$clean"
                 val rec = discoveredCommands.getOrPut(key) {
                     DiscoveredCommandRecord(ecu, "Toyota Mode 30 Active Test", decodeTx(command, ecu), 0, System.currentTimeMillis())
@@ -904,90 +1059,155 @@ object AutomotiveProtocolDecoder {
 
         @Synchronized
         fun recordRx(response: String, activeHeader: String, lastTx: String) {
-            val ecu = if (activeHeader.isNotBlank()) activeHeader.uppercase() else "UNKNOWN"
+            val clean = response.trim()
+            if (clean.isEmpty()) return
+
+            val isElmMultiLine = clean.contains(Regex("""(?:^|[\r\n\s])[0-9A-Fa-f]{1,2}\s*:"""))
+            if (isElmMultiLine) {
+                val stripped = clean.replace(Regex("""(?:^|[\r\n\s])[0-9A-Fa-f]{1,2}\s*:\s*"""), " ")
+                    .replace(">", "")
+                    .replace("\r", " ")
+                    .replace("\n", " ")
+                    .trim()
+                recordRxLine(stripped, activeHeader, lastTx)
+                return
+            }
+
+            val lines = clean.split(Regex("""[\r\n]+""")).map { it.trim() }.filter { it.isNotEmpty() }
+            for (line in lines) {
+                recordRxLine(line, activeHeader, lastTx)
+            }
+        }
+
+        private fun recordRxLine(line: String, activeHeader: String, lastTx: String) {
+            val parsed = parseRxLine(line) ?: return
+            val ecu = parsed.ecuId ?: if (activeHeader.isNotBlank()) activeHeader.uppercase() else "UNKNOWN"
             if (ecu != "UNKNOWN") activeEcus.add(ecu)
 
-            val cleanResp = response.trim().uppercase()
-            val hexBytes = cleanResp.replace(Regex("""(?:^|[\r\n\s])[0-9A-Fa-f]{1,2}\s*:\s*"""), " ")
-                .replace(">", "")
-                .split(Regex("""\s+"""))
-                .filter { it.matches(Regex("""[0-9A-Fa-f]{2}""")) }
-
-            val idx7F = hexBytes.indexOfFirst { it == "7F" }
-            if (idx7F != -1 && idx7F + 2 < hexBytes.size) {
-                val sid = hexBytes[idx7F + 1]
-                val nrc = hexBytes[idx7F + 2]
-                val nrcName = NRC_MAP[nrc] ?: "unknownNRC"
-
-                val cleanTx = lastTx.trim().replace(" ", "").uppercase()
-                val didOrParam = if (cleanTx.startsWith("22") && cleanTx.length >= 6) {
-                    cleanTx.substring(2, 6)
-                } else if (cleanTx.startsWith("2E") && cleanTx.length >= 6) {
-                    cleanTx.substring(2, 6)
-                } else if (cleanTx.length >= 4) {
-                    cleanTx.substring(2)
-                } else "-"
-
-                val key = "$ecu:$sid:$didOrParam:$nrc"
-                val rec = rejectedServices.getOrPut(key) {
-                    RejectedServiceRecord(ecu, sid, didOrParam, nrc, nrcName, 0, System.currentTimeMillis())
+            when (parsed.frameType) {
+                IsoTpType.FLOW_CONTROL -> {
+                    return
                 }
-                rec.count++
-                rec.lastTimestampMs = System.currentTimeMillis()
-                return
+                IsoTpType.FIRST_FRAME -> {
+                    val totalLen = parsed.totalLength ?: return
+                    val buffer = IsoTpReassemblyBuffer(ecu, totalLen).apply {
+                        collectedBytes.addAll(parsed.pduBytes)
+                    }
+                    activeReassemblers[ecu] = buffer
+                    processPdu(ecu, buffer.collectedBytes, lastTx, isPartial = true)
+                }
+                IsoTpType.CONSECUTIVE_FRAME -> {
+                    val buffer = activeReassemblers[ecu]
+                    if (buffer != null) {
+                        buffer.collectedBytes.addAll(parsed.pduBytes)
+                        buffer.expectedSeq = (buffer.expectedSeq + 1) % 16
+                        buffer.lastUpdateMs = System.currentTimeMillis()
+
+                        val isComplete = buffer.collectedBytes.size >= buffer.totalLength
+                        val pduToProcess = if (isComplete) {
+                            buffer.collectedBytes.take(buffer.totalLength)
+                        } else {
+                            buffer.collectedBytes
+                        }
+                        processPdu(ecu, pduToProcess, lastTx, isPartial = !isComplete)
+
+                        if (isComplete) {
+                            activeReassemblers.remove(ecu)
+                        }
+                    }
+                }
+                IsoTpType.SINGLE_FRAME, IsoTpType.RAW_UDS -> {
+                    activeReassemblers.remove(ecu)
+                    processPdu(ecu, parsed.pduBytes, lastTx, isPartial = false)
+                }
             }
+        }
 
-            val idx62 = hexBytes.indexOfFirst { it == "62" }
-            if (idx62 != -1 && idx62 + 2 < hexBytes.size) {
-                val did = hexBytes[idx62 + 1] + hexBytes[idx62 + 2]
-                val didName = getDidName(did)
-                val payload = hexBytes.subList(idx62 + 3, hexBytes.size).joinToString("")
-                val key = "$ecu:$did"
-                val rec = readDids.getOrPut(key) {
-                    ReadDidRecord(ecu, did, didName, payload, 0, System.currentTimeMillis())
+        private fun processPdu(ecu: String, pduBytes: List<String>, lastTx: String, isPartial: Boolean) {
+            if (pduBytes.isEmpty()) return
+
+            val sid = pduBytes[0]
+            when (sid) {
+                "7F" -> {
+                    if (pduBytes.size >= 3) {
+                        val rejSid = pduBytes[1]
+                        val nrc = pduBytes[2]
+                        val nrcName = NRC_MAP[nrc] ?: "unknownNRC"
+
+                        val cleanTx = lastTx.trim().replace(" ", "").uppercase()
+                        val didOrParam = if (cleanTx.startsWith("22") && cleanTx.length >= 6) {
+                            cleanTx.substring(2, 6)
+                        } else if (cleanTx.startsWith("2E") && cleanTx.length >= 6) {
+                            cleanTx.substring(2, 6)
+                        } else if (cleanTx.length >= 4) {
+                            cleanTx.substring(2)
+                        } else "-"
+
+                        val key = "$ecu:$rejSid:$didOrParam:$nrc"
+                        val rec = rejectedServices.getOrPut(key) {
+                            RejectedServiceRecord(ecu, rejSid, didOrParam, nrc, nrcName, 0, System.currentTimeMillis())
+                        }
+                        rec.count++
+                        rec.lastTimestampMs = System.currentTimeMillis()
+                    }
                 }
-                rec.count++
-                rec.lastPayload = payload
-                rec.lastTimestampMs = System.currentTimeMillis()
-                return
-            }
-
-            val idx6E = hexBytes.indexOfFirst { it == "6E" }
-            if (idx6E != -1 && idx6E + 2 < hexBytes.size) {
-                val did = hexBytes[idx6E + 1] + hexBytes[idx6E + 2]
-                val didName = getDidName(did)
-
-                val cleanTx = lastTx.trim().replace(" ", "").uppercase()
-                val writtenPayload = if (cleanTx.startsWith("2E") && cleanTx.length >= 6) {
-                    cleanTx.substring(6)
-                } else ""
-
-                val key = "$ecu:$did"
-                val rec = writtenDids.getOrPut(key) {
-                    WrittenDidRecord(ecu, did, didName, writtenPayload, lastTx.trim(), 0, System.currentTimeMillis())
+                "62" -> {
+                    if (pduBytes.size >= 3) {
+                        val did = pduBytes[1] + pduBytes[2]
+                        val didName = getDidName(did)
+                        val payload = pduBytes.drop(3).joinToString("")
+                        val key = "$ecu:$did"
+                        val rec = readDids.getOrPut(key) {
+                            ReadDidRecord(ecu, did, didName, payload, 0, System.currentTimeMillis())
+                        }
+                        if (!isPartial) {
+                            rec.count++
+                        } else if (rec.count == 0) {
+                            rec.count = 1
+                        }
+                        rec.lastPayload = payload
+                        rec.lastTimestampMs = System.currentTimeMillis()
+                    }
                 }
-                rec.count++
-                if (writtenPayload.isNotEmpty()) rec.lastPayload = writtenPayload
-                rec.command = lastTx.trim()
-                rec.lastTimestampMs = System.currentTimeMillis()
-                return
-            }
+                "6E" -> {
+                    if (pduBytes.size >= 3) {
+                        val did = pduBytes[1] + pduBytes[2]
+                        val didName = getDidName(did)
 
-            val idx50 = hexBytes.indexOfFirst { it == "50" }
-            if (idx50 != -1 && idx50 + 1 < hexBytes.size) {
-                val sub = hexBytes[idx50 + 1]
-                val sessionName = when (sub) {
-                    "01" -> "Default Session"
-                    "02" -> "Programming Session"
-                    "03" -> "Extended Diagnostic Session"
-                    else -> "Session 0x$sub"
+                        val cleanTx = lastTx.trim().replace(" ", "").uppercase()
+                        val writtenPayload = if (cleanTx.startsWith("2E") && cleanTx.length >= 6) {
+                            cleanTx.substring(6)
+                        } else if (cleanTx.startsWith("042E") && cleanTx.length >= 8) {
+                            cleanTx.substring(8)
+                        } else ""
+
+                        val key = "$ecu:$did"
+                        val rec = writtenDids.getOrPut(key) {
+                            WrittenDidRecord(ecu, did, didName, writtenPayload, lastTx.trim(), 0, System.currentTimeMillis())
+                        }
+                        rec.count++
+                        if (writtenPayload.isNotEmpty()) rec.lastPayload = writtenPayload
+                        rec.command = lastTx.trim()
+                        rec.lastTimestampMs = System.currentTimeMillis()
+                    }
                 }
-                val key = "$ecu:SESSION:$sub"
-                val rec = discoveredCommands.getOrPut(key) {
-                    DiscoveredCommandRecord(ecu, "UDS Session Change", "Transizione a $sessionName (0x$sub)", 0, System.currentTimeMillis())
+                "50" -> {
+                    if (pduBytes.size >= 2) {
+                        val sub = pduBytes[1]
+                        val sessionName = when (sub) {
+                            "01" -> "Default Session"
+                            "02" -> "Programming Session"
+                            "03" -> "Extended Diagnostic Session"
+                            else -> "Session 0x$sub"
+                        }
+                        val key = "$ecu:SESSION:$sub"
+                        val rec = discoveredCommands.getOrPut(key) {
+                            DiscoveredCommandRecord(ecu, "UDS Session Change", "Transizione a $sessionName (0x$sub)", 0, System.currentTimeMillis())
+                        }
+                        rec.count++
+                        rec.lastTimestampMs = System.currentTimeMillis()
+                    }
                 }
-                rec.count++
-                rec.lastTimestampMs = System.currentTimeMillis()
             }
         }
 
@@ -1001,7 +1221,7 @@ object AutomotiveProtocolDecoder {
             sb.appendLine("Centraline Rilevate: ${activeEcus.size} (${activeEcus.joinToString(", ") { "$it [${getEcuName(it) ?: "ECU"}]" }})")
             sb.appendLine()
 
-            val allEcus = (activeEcus + readDids.values.map { it.ecuHeader } + writtenDids.values.map { it.ecuHeader } + rejectedServices.values.map { it.ecuHeader }).distinct().sorted()
+            val allEcus = (activeEcus + readDids.values.map { it.ecuHeader } + writtenDids.values.map { it.ecuHeader } + rejectedServices.values.map { it.ecuHeader } + discoveredCommands.values.map { it.ecuHeader }).distinct().sorted()
 
             if (allEcus.isEmpty() && readDids.isEmpty() && writtenDids.isEmpty()) {
                 sb.appendLine("Nessun dato CAN/UDS o DID registrato durante questa sessione.")
@@ -1020,6 +1240,7 @@ object AutomotiveProtocolDecoder {
                         val interp = interpretDidPayload(r.did, r.lastPayload)
                         val interpStr = if (interp != null) " [$interp]" else ""
                         sb.appendLine("    * DID 0x${r.did} (${r.didName}): Payload=${r.lastPayload}$interpStr (Queries: ${r.count})")
+                        sb.appendLine("      -> Ready-to-use Command: 22 ${r.did} (ECU Header: AT SH $ecu)")
                     }
                 } else {
                     sb.appendLine("  - READ DIDs: Nessuno")
@@ -1031,8 +1252,9 @@ object AutomotiveProtocolDecoder {
                     for (w in ecuWrites) {
                         val interp = interpretDidPayload(w.did, w.lastPayload)
                         val interpStr = if (interp != null) " [$interp]" else ""
-                        val cmdStr = if (w.command.isNotBlank()) " -> Command: ${w.command}" else ""
-                        sb.appendLine("    * DID 0x${w.did} (${w.didName}): Written Payload=${w.lastPayload}$interpStr$cmdStr (Count: ${w.count})")
+                        val cmdStr = if (w.command.isNotBlank()) w.command else "2E ${w.did} ${w.lastPayload}"
+                        sb.appendLine("    * DID 0x${w.did} (${w.didName}): Written Payload=${w.lastPayload}$interpStr (Count: ${w.count})")
+                        sb.appendLine("      -> Ready-to-use Command: $cmdStr (ECU Header: AT SH $ecu)")
                     }
                 } else {
                     sb.appendLine("  - WRITTEN DIDs: Nessuno")
@@ -1070,6 +1292,7 @@ object AutomotiveProtocolDecoder {
             rejectedServices.clear()
             discoveredCommands.clear()
             activeEcus.clear()
+            activeReassemblers.clear()
         }
     }
 }

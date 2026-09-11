@@ -5,6 +5,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 - **MAJOR (`X.0.0`)**: Fundamental architectural overhauls, major subsystems, or comprehensive UI redesigns.
 - **MINOR (`0.X.0`)**: New features, additional sensors, ECU coding options, or telemetry pipelines.
 
+## [3.1.2] - 2026-09-11
+### 🛠️ Robustezza Protocolli Automotive & Riassemblaggio Multi-Frame ISO-TP
+- **Riassemblatore Automatico Multi-Frame ISO-TP (`ReverseEngineeringTracker`)**:
+  - Integrazione completa del buffer di riassemblaggio ISO-TP ISO 15765-2 per First Frame (`1x yy`) e Consecutive Frames (`2x`).
+  - Catalogazione integrale del payload esteso (es. telemetria batteria `DID 28C1`, VIN `F190`, parametri centralina estesi) senza troncamento al First Frame.
+- **Disambiguazione Rigorosa PDU & Eliminazione Falsi Positivi NRC / ReadDID**:
+  - Eliminato il matching di sottostringhe `indexOfFirst` per Service IDs: i Service IDs (`7F`, `62`, `6E`, `50`, ecc.) vengono ora ispezionati esclusivamente all'offset standard PDU (byte 0 per raw UDS, byte 1 per Single Frame, byte 2 per First Frame).
+  - Prevenuta la falsa rilevazione di codici di errore negativo NRC `7F` quando il byte `0x7F` è presente all'interno del payload dati (es. temperature o tensioni).
+  - I frame consecutivi (`2x`) e di flow control (`30...`) non vengono più confusi con nuove richieste/risposte UDS.
+- **Supporto Flow Control CTS con Padding CAN e Formato Candump PDU**:
+  - Riconoscimento robusto di comandi Flow Control anche con padding a 8 byte CAN (`30 00 00 00 00 00 00 00`), evitando la collisione con comandi Toyota Mode 30.
+  - Corretta esportazione trace candump SocketCAN senza byte PCI estranei anteposti a frame Flow Control o First/Consecutive Frame.
+  - Stripping automatico del padding zero nei comandi Single Frame TX (es. `04 2E A0 01 00 00 00 00`) per una decodifica perfetta del payload scritto.
+- **Isolamento CAN ID da Intestazioni `ATH1` & 29-bit Extended Addressing**:
+  - Estrazione automatica del CAN ID sorgente dalle risposte con headers attivi (`ATH1`), instradando correttamente le risposte broadcast `7DF` alle rispettive centraline fisiche (`7EA`, `7E8`, `7C8`, ecc.).
+  - Supporto per indirizzamento CAN UDS a 29-bit (`18DAxxxx`) con swap target/source.
+  - Sintesi di reverse engineering arricchita con riga di comando pronta all'uso (`-> Ready-to-use Command: ...`).
+
 ## [3.1.1] - 2026-09-11
 ### 🔍 Motore di Reverse Engineering Automotive & Logging Semantico Avanzato
 - **Annotazione Semantica UDS & CAN Bus in Tempo Reale**:

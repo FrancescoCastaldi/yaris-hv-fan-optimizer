@@ -229,6 +229,11 @@ class BridgeLoggerTest {
         logger.logTx("30 00 00")
         assertTrue(logger.recentLogs.value.last().contains("Flow Control: CTS"))
 
+        // Flow control with 8-byte CAN padding
+        logger.logTx("30 00 00 00 00 00 00 00")
+        assertTrue("Flow control con padding deve essere decodificato come CTS", logger.recentLogs.value.last().contains("Flow Control: CTS"))
+        assertFalse("Non deve essere confuso con Mode 30", logger.recentLogs.value.last().contains("Toyota Mode 30"))
+
         // First frame
         logger.logRx("10 28 61 01 02 80 00 20")
         assertTrue(logger.recentLogs.value.last().contains("ISO-TP First Frame: totalLen=40 bytes"))
@@ -260,6 +265,35 @@ class BridgeLoggerTest {
         assertTrue(summary.contains("Command: 2E A0 01 01"))
         assertTrue(summary.contains("REJECTED SERVICES (0x7F NRC):"))
         assertTrue(summary.contains("NRC 0x31: requestOutOfRange"))
+        assertTrue(summary.contains("Ready-to-use Command:"))
+    }
+
+    @Test
+    fun testIsoTpMultiFrameReassemblyInBridgeLogger() {
+        logger.logTx("AT SH 7E2")
+        logger.logTx("22 28 C1")
+
+        // First Frame (totalLen = 14 bytes: 62 28 C1 + 11 payload bytes)
+        logger.logRx("10 0E 62 28 C1 01 02 03")
+        // Consecutive Frame 1
+        logger.logRx("21 04 05 06 07 08 09 0A")
+        // Consecutive Frame 2
+        logger.logRx("22 0B 00 00 00 00 00 00")
+
+        val summary = logger.getReverseEngineeringSummary()
+        assertTrue(summary.contains("DID 0x28C1"))
+        assertTrue("Il payload multi-frame deve essere completamente riassemblato nel sommario", summary.contains("Payload=0102030405060708090A0B"))
+    }
+
+    @Test
+    fun testPayloadWith7FNoFalseNrc() {
+        logger.logTx("AT SH 7E2")
+        logger.logTx("22 28 C1")
+        logger.logRx("62 28 C1 01 7F 22 31")
+
+        val lastLog = logger.recentLogs.value.last()
+        assertTrue(lastLog.contains("ReadDID ACK: DID 0x28C1"))
+        assertFalse(lastLog.contains("NRC 0x31"))
     }
 
     @Test
