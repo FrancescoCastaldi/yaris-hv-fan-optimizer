@@ -865,5 +865,310 @@ class ObdControllerBatteryDiscoveryTest {
         assertEquals("01A0", controller.discoveredMeterSeatbeltDid)
         assertTrue(controller.useBcmGatewayPrefix)
     }
+
+    @Test
+    fun testSendFanActuationCommands_bothPrimaryAndFallbackFail_marksUnavailableAndResetsAck() = runTest {
+        val fakeTransport = FakeObdTransport()
+        fakeTransport.commandResponder = { cmd, _ ->
+            when {
+                cmd.startsWith("AT") -> "OK"
+                cmd == "2F580304" -> "NO DATA" // Primary UDS rejected
+                cmd == "300804" -> "?"         // Fallback Mode 30 rejected by clone
+                else -> "OK"
+            }
+        }
+
+        val stateMachine = ObdStateMachine()
+        val controller = ObdController(
+            bleManager = fakeTransport,
+            scope = this,
+            stateMachine = stateMachine,
+            discoveryEngine = BatteryDiscoveryEngine()
+        )
+
+        controller.setEcuCommunicationForTesting(true)
+        controller.setManualForcedFan(true, level = 4)
+        assertTrue("LiveState should reflect user request initially", controller.liveState.value.isManualFanForced)
+
+        val success = controller.sendFanActuationCommands(4)
+        assertFalse("Actuation should report failure when both primary and fallback fail", success)
+        assertFalse("wasFanForcedActive should be false on complete failure", controller.wasFanForcedActive)
+        assertEquals("Actuation state should be UNAVAILABLE", FanActuationState.UNAVAILABLE, stateMachine.currentCapabilityState.fanActuationState)
+        assertFalse("isEcuAckConfirmed must be reset to false", controller.liveState.value.batteryStatus.isEcuAckConfirmed)
+    }
+
+    @Test
+    fun testSendFanActuationCommands_vehicleNotReadyNrc22_setsDiagnosticAlert() = runTest {
+        val fakeTransport = FakeObdTransport()
+        fakeTransport.commandResponder = { cmd, _ ->
+            when {
+                cmd.startsWith("AT") -> "OK"
+                cmd == "2F580306" -> "7F 2F 22" // Primary UDS NRC 22
+                cmd == "300806" -> "7F 30 22"   // Fallback Mode 30 NRC 22
+                else -> "OK"
+            }
+        }
+
+        val stateMachine = ObdStateMachine()
+        val controller = ObdController(
+            bleManager = fakeTransport,
+            scope = this,
+            stateMachine = stateMachine,
+            discoveryEngine = BatteryDiscoveryEngine()
+        )
+
+        controller.setEcuCommunicationForTesting(true)
+        val success = controller.sendFanActuationCommands(6)
+
+        assertFalse(success)
+        assertFalse(controller.wasFanForcedActive)
+        assertEquals(FanActuationState.UNAVAILABLE, stateMachine.currentCapabilityState.fanActuationState)
+        val alert = controller.liveState.value.ecuAlertMessage
+        assertNotNull("Diagnostic alert must be set for NRC 22", alert)
+        assertTrue("Alert should mention READY state", alert!!.contains("READY") || alert.contains("22"))
+    }
+
+    @Test
+    fun testRapidFanToggling_serializesExecutionAndMaintainsLatestState() = runTest {
+        val fakeTransport = FakeObdTransport()
+        fakeTransport.commandResponder = { cmd, _ ->
+            when {
+                cmd.startsWith("AT") -> "OK"
+                cmd.startsWith("2F5803") -> "6F 58 03 00" // UDS positive
+                cmd == ToyotaYarisCommands.CMD_FAN_RETURN_CONTROL_TO_ECU -> "OK"
+                cmd == ToyotaYarisCommands.CMD_FAN_STOP_OR_RESET -> "OK"
+                else -> "OK"
+            }
+        }
+
+        val stateMachine = ObdStateMachine()
+        val controller = ObdController(
+            bleManager = fakeTransport,
+            scope = this,
+            stateMachine = stateMachine,
+            discoveryEngine = BatteryDiscoveryEngine()
+        )
+
+        controller.setProtocolInitializedForTesting(true)
+        controller.setEcuCommunicationForTesting(true)
+
+        // Rapid toggles in succession
+        controller.setManualForcedFan(true, level = 2)
+        controller.setManualForcedFan(false)
+        controller.setManualForcedFan(true, level = 6)
+
+        testScheduler.advanceUntilIdle()
+
+        // Final state MUST be forced at level 6
+        assertTrue("Final forced fan state must be true", controller.liveState.value.isManualFanForced)
+        assertEquals("Final fan level must be 6", 6, controller.liveState.value.manualFanTargetLevel)
+        assertEquals(4650, controller.liveState.value.batteryStatus.estimatedFanRpm)
+
+        val dispatched = fakeTransport.dispatchedCommands
+        val lastFanCommand = dispatched.filter { it.startsWith("2F5803") || it == ToyotaYarisCommands.CMD_FAN_RETURN_CONTROL_TO_ECU }.lastOrNull()
+        assertEquals("Last dispatched fan command must correspond to the final level 6 intent", "2F580306", lastFanCommand)
+    }
+
+    @Test
+    fun testApplyEcuCustomization_singleParameterSuccess_marksSucceededEvenIfOthersUnsupported() = runTest {
+        val fakeTransport = FakeObdTransport()
+        fakeTransport.commandResponder = { cmd, _ ->
+            when {
+                cmd.startsWith("AT") -> "OK"
+                cmd == "1003" || cmd == "10 03" -> "50 03 00 32 01 F4"
+                cmd == "1001" || cmd == "10 01" -> "50 01"
+                cmd == "2201AC" || cmd == "22 01AC" -> "62 01 AC 01" // Current: continuous
+                cmd.startsWith("2E01AC") -> "6E 01 AC"                 // Write 2E succeeds
+                // Other DIDs return NRC 31 (unsupported)
+                cmd.startsWith("22") -> "7F 22 31"
+                cmd.startsWith("2E") -> "7F 2E 31"
+                else -> "OK"
+            }
+        }
+
+        val controller = ObdController(
+            bleManager = fakeTransport,
+            scope = this,
+            stateMachine = ObdStateMachine(),
+            discoveryEngine = BatteryDiscoveryEngine()
+        )
+
+        controller.setProtocolInitializedForTesting(true)
+        controller.setEcuCommunicationForTesting(true)
+
+        val targetState = EcuCustomizationState(
+            reverseBeep = ReverseBeepMode.SINGLE
+        )
+
+        controller.applyEcuCustomization(targetState)
+        testScheduler.advanceUntilIdle()
+
+        val status = controller.liveState.value.ecuCodingState.lastOperationStatus
+        assertTrue("Status must indicate verified write success, was: $status", status.contains("VERIFICATA") || status.contains("completata"))
+        assertTrue("isReadCompleted should be true after successful write", controller.liveState.value.ecuCodingState.isReadCompleted)
+    }
+
+    @Test
+    fun testReadEcuCustomizations_decodesActualReverseBeepAndSeatbelt() = runTest {
+        val fakeTransport = FakeObdTransport()
+        fakeTransport.commandResponder = { cmd, _ ->
+            when {
+                cmd.startsWith("AT") -> "OK"
+                cmd == "1003" || cmd == "10 03" -> "50 03 00 32 01 F4"
+                cmd == "1001" || cmd == "10 01" -> "50 01"
+                // Meter 7C0: Reverse Beep 01AC returns 00 (SINGLE)
+                cmd == "2201AC" || cmd == "22 01AC" -> "62 01 AC 00"
+                // Seatbelt 01A0 returns 00 (disabled)
+                cmd == "2201A0" || cmd == "22 01A0" -> "62 01 A0 00"
+                cmd.contains("40 10") -> "40 50 03"
+                cmd.contains("B001") -> "40 62 B0 01 01"
+                cmd.startsWith("22") -> "62"
+                else -> "OK"
+            }
+        }
+
+        val controller = ObdController(
+            bleManager = fakeTransport,
+            scope = this,
+            stateMachine = ObdStateMachine(),
+            discoveryEngine = BatteryDiscoveryEngine()
+        )
+
+        controller.setProtocolInitializedForTesting(true)
+        controller.setEcuCommunicationForTesting(true)
+
+        controller.readEcuCustomizations()
+        testScheduler.advanceUntilIdle()
+
+        assertEquals("Decoded reverse beep must be SINGLE from 62 01 AC 00", ReverseBeepMode.SINGLE, controller.liveState.value.ecuCodingState.reverseBeep)
+        assertFalse("Decoded driver seatbelt beep must be false from 62 01 A0 00", controller.liveState.value.ecuCodingState.driverSeatbeltBeep)
+        assertEquals("Decoded auto door lock must be BY_SPEED from 40 62 B0 01 01", AutoDoorLockMode.BY_SPEED, controller.liveState.value.ecuCodingState.autoDoorLock)
+        assertTrue(controller.liveState.value.ecuCodingState.isReadCompleted)
+    }
+
+    @Test
+    fun testBatteryDiscovery_densoPid21CeFallback_discoversAndParsesStatus() = runTest {
+        val fakeTransport = FakeObdTransport()
+        fakeTransport.commandResponder = { cmd, _ ->
+            when {
+                cmd.startsWith("AT") -> "OK"
+                cmd == "2187" -> "NO DATA\r\r>"
+                cmd == "21CE" -> "61 CE 01 22 01 22 01 22 01 22 01 22 01 22 01 22 01 22 >"
+                else -> "NO DATA"
+            }
+        }
+
+        val stateMachine = ObdStateMachine()
+        val engine = BatteryDiscoveryEngine()
+        val controller = ObdController(
+            bleManager = fakeTransport,
+            scope = this,
+            stateMachine = stateMachine,
+            discoveryEngine = engine
+        )
+
+        // Cycle 1: 2187 fails (NO DATA)
+        controller.executeBatteryThermalCycle()
+        assertFalse("Engine should not be discovered on 2187 failure", engine.isDiscovered)
+
+        // Cycle 2: 21CE succeeds
+        controller.executeBatteryThermalCycle()
+        assertTrue("Engine must report discovered after 21CE succeeds", engine.isDiscovered)
+        assertEquals("21CE", engine.latchedPid)
+        assertEquals("21CE", controller.activeBatteryPid)
+        assertEquals(BatteryEcuDiscoveryState.Discovered, stateMachine.currentCapabilityState.batteryEcuDiscoveryState)
+        assertEquals(25.0, controller.liveState.value.batteryStatus.maxTemp, 0.1)
+    }
+
+    @Test
+    fun testPerformHandshake_repeatedNoDataOnBatteryEcu_triggersOpenFilterFallback() = runTest {
+        val fakeTransport = FakeObdTransport()
+        var candidateAttempt = 0
+        fakeTransport.commandResponder = { cmd, _ ->
+            when {
+                cmd.startsWith("AT") -> "OK"
+                cmd == "0100" || cmd == "010C" -> "41 0C 1F 40"
+                cmd == "2187" -> "NO DATA\r\r>"
+                cmd == "21CE" -> "61 CE 01 22 01 22 01 22 01 22 01 22 01 22 01 22 01 22 >"
+                else -> "OK"
+            }
+        }
+
+        val controller = ObdController(
+            bleManager = fakeTransport,
+            scope = this,
+            stateMachine = ObdStateMachine(),
+            discoveryEngine = BatteryDiscoveryEngine()
+        )
+
+        val handshakeSuccess = controller.performHandshake()
+        assertTrue("Handshake must succeed", handshakeSuccess)
+        assertTrue("Repeated NODATA during handshake must engage open filter fallback", controller.isBatteryFilterFallbackToOpen)
+        assertTrue("Must have dispatched open filter AT CRA", fakeTransport.dispatchedCommands.contains("AT CRA"))
+        assertEquals(0, controller.consecutiveBatteryNoDataCount)
+    }
+
+    @Test
+    fun testEnsureCanHeader_bufferFullOnCra_triggersOpenFilterFallback() = runTest {
+        val fakeTransport = FakeObdTransport()
+        fakeTransport.commandResponder = { cmd, _ ->
+            when (cmd) {
+                "AT CRA 7EA" -> "BUFFER FULL\r\r>" // Clone ELM reports buffer full on CRA
+                else -> "OK"
+            }
+        }
+
+        val controller = ObdController(
+            bleManager = fakeTransport,
+            scope = this,
+            stateMachine = ObdStateMachine(),
+            discoveryEngine = BatteryDiscoveryEngine()
+        )
+
+        controller.ensureCanHeader(ToyotaYarisCommands.HEADER_BATTERY_ECU)
+        assertTrue("BUFFER FULL on AT CRA 7EA must trigger open filter fallback", controller.isBatteryFilterFallbackToOpen)
+        assertTrue("Must dispatch AT CRA", fakeTransport.dispatchedCommands.contains("AT CRA"))
+    }
+
+    @Test
+    fun testTriggerImmediateFanActuation_turningOffWhenWasFanForcedActiveFalse_unconditionallyReleasesFan() = runTest {
+        val fakeTransport = FakeObdTransport()
+        fakeTransport.commandResponder = { cmd, _ ->
+            when {
+                cmd.startsWith("AT") -> "OK"
+                cmd == ToyotaYarisCommands.CMD_FAN_RETURN_CONTROL_TO_ECU -> "OK"
+                cmd == ToyotaYarisCommands.CMD_FAN_STOP_OR_RESET -> "OK"
+                else -> "OK"
+            }
+        }
+
+        val stateMachine = ObdStateMachine()
+        val controller = ObdController(
+            bleManager = fakeTransport,
+            scope = this,
+            stateMachine = stateMachine,
+            discoveryEngine = BatteryDiscoveryEngine()
+        )
+
+        controller.setProtocolInitializedForTesting(true)
+        controller.setEcuCommunicationForTesting(true)
+        controller.wasFanForcedActive = false
+
+        // User explicitly sets forced to false
+        controller.triggerImmediateFanActuation(forced = false, level = 6)
+        testScheduler.advanceUntilIdle()
+
+        val dispatched = fakeTransport.dispatchedCommands
+        assertTrue(
+            "Turning off manual fan must dispatch ReturnControlToECU even if wasFanForcedActive was false",
+            dispatched.contains(ToyotaYarisCommands.CMD_FAN_RETURN_CONTROL_TO_ECU)
+        )
+        assertTrue(
+            "Turning off manual fan must dispatch Mode 30 Stop even if wasFanForcedActive was false",
+            dispatched.contains(ToyotaYarisCommands.CMD_FAN_STOP_OR_RESET)
+        )
+        assertEquals(FanActuationState.OEM_AUTOMATIC, stateMachine.currentCapabilityState.fanActuationState)
+    }
 }
+
 

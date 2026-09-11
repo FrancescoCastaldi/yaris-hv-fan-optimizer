@@ -80,6 +80,10 @@ class FanControlForegroundService : Service() {
             playAlertSoundAndHaptic(isStarting)
             updateNotification()
         }
+        obdController.onManualFanForcedChanged = { isStarting, _ ->
+            playAlertSoundAndHaptic(isStarting)
+            updateNotification()
+        }
         obdController.startController()
         observeStateForNotification()
     }

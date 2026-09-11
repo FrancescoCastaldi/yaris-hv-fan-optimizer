@@ -72,6 +72,7 @@ class ObdController(
     )
 
     var onAutoCoolingStateChanged: ((Boolean) -> Unit)? = null
+    var onManualFanForcedChanged: ((Boolean, Int) -> Unit)? = null
 
     val capabilityState: StateFlow<ObdCapabilityState> = stateMachine.capabilityState
     val consecutiveCanErrors: Int get() = stateMachine.consecutiveCanErrors
@@ -141,6 +142,8 @@ class ObdController(
     internal var discoveredMeterReverseBeepDid: String? = null
     internal var discoveredMeterSeatbeltDid: String? = null
     internal var useBcmGatewayPrefix: Boolean = true
+    internal var wasFanForcedActive: Boolean = false
+    private var immediateFanJob: kotlinx.coroutines.Job? = null
 
     // Acceleration Timer State Machine (Dragy Precise Interpolation)
     private var launchStartTimeMs = 0L
@@ -525,6 +528,7 @@ class ObdController(
 
                         if (parsedStatus != null || isUdsPositive) {
                             candidateSuccess = true
+                            consecutiveBatteryNoDataCount = 0
                             discoveryEngine.onCandidateSuccess(candidatePid, rawBatteryRes)
                             stateMachine.onBatteryDiscovered(candidatePid)
                             if (parsedStatus != null) {
@@ -536,6 +540,14 @@ class ObdController(
                             addLog("✅ Centralina Batteria 7E2 agganciata con successo su PID $candidatePid!")
                             break
                         } else {
+                            if (cleanBattery.contains("NODATA") || cleanBattery.contains("NO DATA")) {
+                                consecutiveBatteryNoDataCount++
+                                if (!isBatteryFilterFallbackToOpen && consecutiveBatteryNoDataCount >= 2) {
+                                    addLog("⚠️ Risposte NO DATA ripetute su 7E2 in handshake: fallback a filtro aperto (AT CRA)...")
+                                    isBatteryFilterFallbackToOpen = true
+                                    ensureCanHeader(ToyotaYarisCommands.HEADER_BATTERY_ECU, force = true)
+                                }
+                            }
                             if (attempt < 2 && (cleanBattery.contains("NODATA") || cleanBattery.contains("CANERROR") || cleanBattery.isEmpty())) {
                                 delay(150)
                             }
@@ -710,7 +722,7 @@ class ObdController(
                         val craRes = bleManager.sendCommand("AT CRA $targetRxFilter")
                         val cleanCra = Elm327Protocol.cleanResponse(craRes).uppercase()
                         if (header == ToyotaYarisCommands.HEADER_BATTERY_ECU &&
-                            (cleanCra.contains("NO DATA") || cleanCra.contains("NODATA") || cleanCra.contains("?") || cleanCra.contains("ERROR") || cleanCra.contains("TIMEOUT") || craRes.isBlank())) {
+                            (cleanCra != "OK" || cleanCra.contains("NO DATA") || cleanCra.contains("NODATA") || cleanCra.contains("?") || cleanCra.contains("ERROR") || cleanCra.contains("TIMEOUT") || craRes.isBlank() || Elm327Protocol.isError(cleanCra))) {
                             addLog("⚠️ Clone ELM327 ha restituito '$cleanCra' ad 'AT CRA $targetRxFilter': fallback a filtro aperto (AT CRA).")
                             isBatteryFilterFallbackToOpen = true
                             bleManager.sendCommand("AT CRA")
@@ -1072,6 +1084,9 @@ class ObdController(
                     addLog("💤 Auto spenta (12V: ${volt}V < 11.8V, CAN silente per >12s). Entrata in standby.")
                     currentCanHeader = ""
                     currentRxFilter = null
+                    wasFanForcedActive = false
+                    immediateFanJob?.cancel()
+                    immediateFanJob = null
                     discoveryEngine.reset()
                     stateMachine.onVehicleStandby()
                     _liveState.value = _liveState.value.copy(
@@ -1172,7 +1187,7 @@ class ObdController(
                 val cleanRes = Elm327Protocol.cleanResponse(rawResponse ?: "")
                 val udsNrc = Elm327Protocol.extractUdsNrc(rawResponse ?: "")
                 if (rawResponse != null && !Elm327Protocol.isError(cleanRes) && !cleanRes.contains("TIMEOUT")) {
-                    parsedStatus = ToyotaYarisCommands.parseBatteryResponse(rawResponse, _liveState.value.fanForcedMax)
+                    parsedStatus = ToyotaYarisCommands.parseBatteryResponse(rawResponse, _liveState.value.fanForcedMax, _liveState.value.manualFanTargetLevel)
                 }
 
                 val isUdsPositive = if (rawResponse != null && isProbing) {
@@ -1269,31 +1284,10 @@ class ObdController(
             }
 
             if (shouldForceFan) {
-                ensureCanHeader(ToyotaYarisCommands.HEADER_BATTERY_ECU)
-                // Su Toyota TNGA-B XP210 il controllo ventola primario affidabile è UDS Service 0x2F (InputOutputControlByIdentifier)
-                val primaryUdsCmd = ToyotaYarisCommands.getFanSpeedCommandAlt(activeTargetSpeed) // 2F58030x
-                val fanCmdRes = bleManager.sendCommand(primaryUdsCmd)
-                val cleanFanRes = Elm327Protocol.cleanResponse(fanCmdRes)
-                val isFanError = cleanFanRes.contains("7F2F") || cleanFanRes.contains("ERROR") ||
-                                 cleanFanRes.contains("NO DATA") || cleanFanRes.contains("NODATA") ||
-                                 cleanFanRes.contains("?") || cleanFanRes.isBlank() || Elm327Protocol.isError(cleanFanRes)
-                if (isFanError) {
-                    // Fallback secondario su Mode 30 legacy (30080x)
-                    val fallbackCmd = ToyotaYarisCommands.getFanSpeedCommand(activeTargetSpeed)
-                    bleManager.sendCommand(fallbackCmd)
-                    stateMachine.onFanActuationStateChanged(FanActuationState.REQUESTED)
-                } else {
-                    stateMachine.onFanControlConfirmed()
-                    stateMachine.onFanActuationStateChanged(FanActuationState.CONFIRMED)
-                }
+                sendFanActuationCommands(activeTargetSpeed)
                 addLog("⚡ VENTOLA HV FORZATA L$activeTargetSpeed [${if (isManualForced) "MANUALE" else "AUTO"}] | Batt: ${String.format(java.util.Locale.US, "%.1f", updatedBattery.maxTemp)}°C")
-            } else if (currentState.batteryStatus.isFanForced) {
-                ensureCanHeader(ToyotaYarisCommands.HEADER_BATTERY_ECU)
-                // Rilascio ventola a gestione automatica ECU: UDS ReturnControlToECU (2F5800) e Mode 30 stop
-                bleManager.sendCommand(ToyotaYarisCommands.CMD_FAN_RETURN_CONTROL_TO_ECU)
-                bleManager.sendCommand(ToyotaYarisCommands.CMD_FAN_STOP_OR_RESET)
-                stateMachine.onFanActuationStateChanged(FanActuationState.OEM_AUTOMATIC)
-                addLog("Ventola HV: ripristinato controllo automatico OEM.")
+            } else if (wasFanForcedActive) {
+                sendFanReleaseCommands()
             }
 
             val forcedFanRpm = if (shouldForceFan) {
@@ -1556,23 +1550,156 @@ class ObdController(
 
     fun setManualForcedFan(forced: Boolean, level: Int = _liveState.value.manualFanTargetLevel) {
         val safeLevel = level.coerceIn(1, 6)
+        val rpmMap = mapOf(0 to 0, 1 to 1250, 2 to 1850, 3 to 2450, 4 to 3100, 5 to 3850, 6 to 4650)
+        val forcedFanRpm = if (forced) {
+            rpmMap[safeLevel] ?: (safeLevel * 750)
+        } else if (_liveState.value.autoCoolingStatus.isActivelyCooling) {
+            _liveState.value.batteryStatus.estimatedFanRpm
+        } else 0
+
         _liveState.value = _liveState.value.copy(
             isManualFanForced = forced,
             manualFanTargetLevel = safeLevel,
-            fanForcedMax = forced
+            fanForcedMax = forced,
+            batteryStatus = _liveState.value.batteryStatus.copy(
+                isFanForced = forced || _liveState.value.autoCoolingStatus.isActivelyCooling,
+                fanSpeedLevel = if (forced) safeLevel else if (_liveState.value.autoCoolingStatus.isActivelyCooling) _liveState.value.batteryStatus.fanSpeedLevel else 0,
+                estimatedFanRpm = forcedFanRpm,
+                isEcuAckConfirmed = forced || _liveState.value.batteryStatus.isEcuAckConfirmed
+            )
         )
         appPreferences?.isManualFanForced = forced
         appPreferences?.manualFanTargetLevel = safeLevel
         pendingBatterySafetyCheck = true
         addLog(if (forced) "⚡ Forzatura manuale ventola L$safeLevel ABILITATA" else "Forzatura ventola DISABILITATA (controllo OEM)")
+
+        onManualFanForcedChanged?.invoke(forced, safeLevel)
+
+        // ZERO-FRICTION INCONDIZIONATO: non appena il link Bluetooth e il bus CAN sono connessi
+        // (hasEcuCommunication == true), invia immediatamente il comando ventola senza attendere
+        // né dipendere dalla lettura preliminare della temperatura della batteria!
+        if (_liveState.value.hasEcuCommunication && !_liveState.value.isStandbyMode) {
+            triggerImmediateFanActuation(forced, safeLevel)
+        }
     }
 
     fun setManualFanTargetLevel(level: Int) {
         val safeLevel = level.coerceIn(1, 6)
-        _liveState.value = _liveState.value.copy(manualFanTargetLevel = safeLevel)
-        appPreferences?.manualFanTargetLevel = safeLevel
-        pendingBatterySafetyCheck = true
-        addLog("Livello ventola manuale impostato a L$safeLevel")
+        setManualForcedFan(forced = true, level = safeLevel)
+    }
+
+    fun triggerImmediateFanActuation(forced: Boolean, level: Int) {
+        immediateFanJob?.cancel()
+        immediateFanJob = scope.launch {
+            try {
+                obdTransactionMutex.withLock {
+                    val currentForced = _liveState.value.isManualFanForced
+                    val currentLevel = _liveState.value.manualFanTargetLevel
+                    if (currentForced) {
+                        sendFanActuationCommands(currentLevel)
+                    } else {
+                        val autoActive = _liveState.value.autoCoolingStatus.isEnabled && _liveState.value.autoCoolingStatus.isActivelyCooling
+                        if (autoActive) {
+                            sendFanActuationCommands(_liveState.value.autoCoolingStatus.targetSpeed)
+                        } else {
+                            sendFanReleaseCommands()
+                        }
+                    }
+                }
+            } catch (e: CancellationException) {
+                // Job superato da una nuova richiesta utente
+            } catch (e: Exception) {
+                Log.e(TAG, "Errore attuazione immediata ventola", e)
+            }
+        }
+    }
+
+    internal suspend fun sendFanActuationCommands(level: Int): Boolean {
+        val safeLevel = level.coerceIn(1, 6)
+        try {
+            ensureCanHeader(ToyotaYarisCommands.HEADER_BATTERY_ECU)
+            // 1. Comando primario: UDS Service 0x2F (2F 58 03 0x)
+            val primaryUdsCmd = ToyotaYarisCommands.getFanSpeedCommandAlt(safeLevel)
+            val fanCmdRes = bleManager.sendCommand(primaryUdsCmd, timeoutMs = 600L)
+            val cleanFanRes = Elm327Protocol.cleanResponse(fanCmdRes)
+            val primaryNrc = Elm327Protocol.extractUdsNrc(cleanFanRes)
+            val isFanError = cleanFanRes.contains("7F2F") || cleanFanRes.contains("ERROR") ||
+                             cleanFanRes.contains("NO DATA") || cleanFanRes.contains("NODATA") ||
+                             cleanFanRes.contains("?") || cleanFanRes.isBlank() ||
+                             cleanFanRes.contains("TIMEOUT") || Elm327Protocol.isError(cleanFanRes)
+
+            if (!isFanError) {
+                wasFanForcedActive = true
+                stateMachine.onFanControlConfirmed()
+                stateMachine.onFanActuationStateChanged(FanActuationState.CONFIRMED)
+                addLog("⚡ VENTOLA HV FORZATA L$safeLevel (UDS 2F58 confermato: $cleanFanRes)")
+                return true
+            }
+
+            // 2. Scatta automaticamente entro 100ms sul comando secondario Mode 30 (30 08 0x)
+            delay(50L)
+            val fallbackCmd = ToyotaYarisCommands.getFanSpeedCommand(safeLevel)
+            val fallbackRes = bleManager.sendCommand(fallbackCmd, timeoutMs = 600L)
+            val cleanFallback = Elm327Protocol.cleanResponse(fallbackRes)
+            val fallbackNrc = Elm327Protocol.extractUdsNrc(cleanFallback)
+            val isFallbackError = cleanFallback.contains("7F30") || cleanFallback.contains("ERROR") ||
+                                  cleanFallback.contains("NO DATA") || cleanFallback.contains("NODATA") ||
+                                  cleanFallback.contains("?") || cleanFallback.isBlank() ||
+                                  cleanFallback.contains("TIMEOUT") || Elm327Protocol.isError(cleanFallback)
+
+            if (!isFallbackError) {
+                wasFanForcedActive = true
+                stateMachine.onFanActuationStateChanged(FanActuationState.REQUESTED)
+                addLog("⚡ VENTOLA HV FORZATA L$safeLevel (Inviato fallback Mode 30: $cleanFallback)")
+                return true
+            } else {
+                wasFanForcedActive = false
+                stateMachine.onFanActuationStateChanged(FanActuationState.UNAVAILABLE)
+                val isNrc22 = primaryNrc?.nrc == Elm327Protocol.NRC_CONDITIONS_NOT_CORRECT ||
+                              fallbackNrc?.nrc == Elm327Protocol.NRC_CONDITIONS_NOT_CORRECT
+                if (isNrc22) {
+                    val nrcMsg = "⚠️ Attuazione ventola rifiutata (NRC 22): veicolo non in READY o pre-condizioni non soddisfatte."
+                    addLog(nrcMsg)
+                    _liveState.value = _liveState.value.copy(
+                        batteryStatus = _liveState.value.batteryStatus.copy(isEcuAckConfirmed = false),
+                        ecuAlertMessage = "⚠️ Impossibile forzare la ventola: il veicolo non è in stato READY (NRC 22)"
+                    )
+                } else {
+                    addLog("⚠️ Attuazione ventola L$safeLevel non riuscita (2F: $cleanFanRes | Mode 30: $cleanFallback)")
+                    _liveState.value = _liveState.value.copy(
+                        batteryStatus = _liveState.value.batteryStatus.copy(isEcuAckConfirmed = false)
+                    )
+                }
+                return false
+            }
+        } finally {
+            withContext(NonCancellable) {
+                try {
+                    ensureEngineHeader()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Errore ripristino header motore dopo comando ventola", e)
+                }
+            }
+        }
+    }
+
+    internal suspend fun sendFanReleaseCommands() {
+        try {
+            ensureCanHeader(ToyotaYarisCommands.HEADER_BATTERY_ECU)
+            bleManager.sendCommand(ToyotaYarisCommands.CMD_FAN_RETURN_CONTROL_TO_ECU, timeoutMs = 600L)
+            bleManager.sendCommand(ToyotaYarisCommands.CMD_FAN_STOP_OR_RESET, timeoutMs = 600L)
+            stateMachine.onFanActuationStateChanged(FanActuationState.OEM_AUTOMATIC)
+            wasFanForcedActive = false
+            addLog("Ventola HV: ripristinato controllo automatico OEM.")
+        } finally {
+            withContext(NonCancellable) {
+                try {
+                    ensureEngineHeader()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Errore ripristino header motore dopo rilascio ventola", e)
+                }
+            }
+        }
     }
 
     internal fun setEcuCommunicationForTesting(enabled: Boolean) {
@@ -1628,6 +1755,9 @@ class ObdController(
     }
 
     fun stopLoop() {
+        immediateFanJob?.cancel()
+        immediateFanJob = null
+        wasFanForcedActive = false
         loopJob?.cancel()
         loopJob = null
         currentCanHeader = ""
@@ -1680,16 +1810,34 @@ class ObdController(
             )
 
             obdTransactionMutex.withLock {
+                var conditionsNotCorrectDetected = false
                 try {
                     // 1. Meter ECU (7C0 / 7C8) -> Reverse Beep & Seatbelts
                     ensureCanHeader(ToyotaYarisCommands.HEADER_METER_ECU)
-                    bleManager.sendCommand(ToyotaYarisCommands.CMD_UDS_SESSION_EXTENDED) // 1003
+                    val resMeterSession = bleManager.sendCommand(ToyotaYarisCommands.CMD_UDS_SESSION_EXTENDED) // 1003
+                    val cleanMeterSession = Elm327Protocol.cleanResponse(resMeterSession)
+                    val isMeterSessionConfirmed = Elm327Protocol.isUdsPositiveResponse(cleanMeterSession, "10") ||
+                                                  cleanMeterSession.contains("5003") ||
+                                                  cleanMeterSession.contains("50")
+                    val meterSessionNrc = Elm327Protocol.extractUdsNrc(cleanMeterSession)
+                    if (meterSessionNrc?.nrc == Elm327Protocol.NRC_CONDITIONS_NOT_CORRECT) {
+                        conditionsNotCorrectDetected = true
+                        addLog("⚠️ Meter 7C0: Sessione estesa 1003 rifiutata (NRC 22). Pre-condizioni non soddisfatte: quadro in READY, portiere chiuse, cambio in P.")
+                    } else if (isMeterSessionConfirmed) {
+                        addLog("✅ Meter 7C0: Sessione estesa 1003 confermata (50 03).")
+                    } else {
+                        addLog("⚠️ Meter 7C0: Sessione estesa 1003 non confermata: $cleanMeterSession")
+                    }
                     delay(50)
                     var cleanMeterBeep = ""
                     for (candidateDid in ToyotaYarisCommands.CANDIDATE_DIDS_METER_REVERSE_BEEP) {
                         val resMeter = bleManager.sendCommand(ToyotaYarisCommands.buildUdsRead(candidateDid))
                         val cleanCandidate = Elm327Protocol.cleanResponse(resMeter)
                         addLog("Meter 7C0 DID Reverse $candidateDid Read: $cleanCandidate")
+                        val candNrc = Elm327Protocol.extractUdsNrc(cleanCandidate)
+                        if (candNrc?.nrc == Elm327Protocol.NRC_CONDITIONS_NOT_CORRECT) {
+                            conditionsNotCorrectDetected = true
+                        }
                         if (Elm327Protocol.isUdsPositiveResponse(cleanCandidate, "22") || cleanCandidate.contains("62$candidateDid") || (cleanCandidate.contains("62") && !cleanCandidate.contains("7F"))) {
                             discoveredMeterReverseBeepDid = candidateDid
                             cleanMeterBeep = cleanCandidate
@@ -1706,6 +1854,10 @@ class ObdController(
                         val resBelt = bleManager.sendCommand(ToyotaYarisCommands.buildUdsRead(candidateDid))
                         val cleanCandidate = Elm327Protocol.cleanResponse(resBelt)
                         addLog("Meter 7C0 DID Seatbelt $candidateDid Read: $cleanCandidate")
+                        val candNrc = Elm327Protocol.extractUdsNrc(cleanCandidate)
+                        if (candNrc?.nrc == Elm327Protocol.NRC_CONDITIONS_NOT_CORRECT) {
+                            conditionsNotCorrectDetected = true
+                        }
                         if (Elm327Protocol.isUdsPositiveResponse(cleanCandidate, "22") || cleanCandidate.contains("62$candidateDid") || (cleanCandidate.contains("62") && !cleanCandidate.contains("7F"))) {
                             discoveredMeterSeatbeltDid = candidateDid
                             cleanMeterSeatbelt = cleanCandidate
@@ -1733,6 +1885,10 @@ class ObdController(
                             useBcmGatewayPrefix = !useBcmGatewayPrefix
                             cleanSession = cleanAlt
                         }
+                    }
+                    val bodySessionNrc = Elm327Protocol.extractUdsNrc(cleanSession)
+                    if (bodySessionNrc?.nrc == Elm327Protocol.NRC_CONDITIONS_NOT_CORRECT) {
+                        conditionsNotCorrectDetected = true
                     }
                     delay(50)
                     val readDoorCmd = ToyotaYarisCommands.buildGatewayUdsRead(ToyotaYarisCommands.DID_BODY_AUTO_DOOR_LOCK, useBcmGatewayPrefix)
@@ -1774,9 +1930,62 @@ class ObdController(
                                       Elm327Protocol.isUdsPositiveResponse(cleanAc) ||
                                       Elm327Protocol.isUdsPositiveResponse(cleanAdas)
 
-                    if (anyPositive) {
+                    var parsedReverseBeep = _liveState.value.ecuCodingState.reverseBeep
+                    var parsedSeatbelt = _liveState.value.ecuCodingState.driverSeatbeltBeep
+
+                    if (cleanMeterBeep.isNotEmpty() && cleanMeterBeep != "NO DATA") {
+                        val cleanNoSpaces = cleanMeterBeep.replace(" ", "").replace(">", "").uppercase()
+                        val targetDid = discoveredMeterReverseBeepDid ?: ToyotaYarisCommands.DID_METER_REVERSE_BEEP
+                        val marker = "62" + targetDid.uppercase()
+                        val idx = cleanNoSpaces.indexOf(marker)
+                        if (idx >= 0 && cleanNoSpaces.length >= idx + marker.length + 2) {
+                            val valHex = cleanNoSpaces.substring(idx + marker.length, idx + marker.length + 2)
+                            parsedReverseBeep = if (valHex == "00") ReverseBeepMode.SINGLE else ReverseBeepMode.CONTINUOUS
+                        }
+                    }
+
+                    if (cleanMeterSeatbelt.isNotEmpty() && cleanMeterSeatbelt != "NO DATA") {
+                        val cleanNoSpaces = cleanMeterSeatbelt.replace(" ", "").replace(">", "").uppercase()
+                        val targetBeltDid = discoveredMeterSeatbeltDid ?: ToyotaYarisCommands.DID_METER_DRIVER_SEATBELT
+                        val marker = "62" + targetBeltDid.uppercase()
+                        val idx = cleanNoSpaces.indexOf(marker)
+                        if (idx >= 0 && cleanNoSpaces.length >= idx + marker.length + 2) {
+                            val valHex = cleanNoSpaces.substring(idx + marker.length, idx + marker.length + 2)
+                            parsedSeatbelt = (valHex != "00")
+                        }
+                    }
+
+                    var parsedDoorLock = _liveState.value.ecuCodingState.autoDoorLock
+                    if (cleanBodyDoor.isNotEmpty() && cleanBodyDoor != "NO DATA") {
+                        val cleanNoSpaces = cleanBodyDoor.replace(" ", "").replace(">", "").uppercase()
+                        val marker = "62" + ToyotaYarisCommands.DID_BODY_AUTO_DOOR_LOCK.uppercase()
+                        val idx = cleanNoSpaces.indexOf(marker)
+                        if (idx >= 0 && cleanNoSpaces.length >= idx + marker.length + 2) {
+                            val valHex = cleanNoSpaces.substring(idx + marker.length, idx + marker.length + 2)
+                            parsedDoorLock = when (valHex) {
+                                "01" -> AutoDoorLockMode.BY_SPEED
+                                "02" -> AutoDoorLockMode.BY_SHIFT_D
+                                else -> AutoDoorLockMode.OFF
+                            }
+                        }
+                    }
+
+                    if (conditionsNotCorrectDetected && !anyPositive) {
+                        val conditionMsg = "⚠️ Pre-condizioni non soddisfatte: accendere quadro in READY, chiudere tutte le portiere e mettere il cambio in P"
                         _liveState.value = _liveState.value.copy(
                             ecuCodingState = _liveState.value.ecuCodingState.copy(
+                                isReadCompleted = false,
+                                isWriting = false,
+                                lastOperationStatus = conditionMsg
+                            )
+                        )
+                        addLog("⚠️ ECU Coding: $conditionMsg")
+                    } else if (anyPositive) {
+                        _liveState.value = _liveState.value.copy(
+                            ecuCodingState = _liveState.value.ecuCodingState.copy(
+                                reverseBeep = parsedReverseBeep,
+                                driverSeatbeltBeep = parsedSeatbelt,
+                                autoDoorLock = parsedDoorLock,
                                 isReadCompleted = true,
                                 isWriting = false,
                                 lastOperationStatus = "✅ Configurazione centralina UDS letta con successo (Backup salvato)"
@@ -1784,14 +1993,15 @@ class ObdController(
                         )
                         addLog("Lettura parametri centralina UDS completata con successo.")
                     } else {
+                        val alertMsg = "⚠️ Nessuna risposta dalle centraline: verificare quadro acceso in READY, portiere chiuse e cambio in P"
                         _liveState.value = _liveState.value.copy(
                             ecuCodingState = _liveState.value.ecuCodingState.copy(
                                 isReadCompleted = false,
                                 isWriting = false,
-                                lastOperationStatus = "⚠️ Nessuna risposta dalle centraline: verifica quadro acceso in READY"
+                                lastOperationStatus = alertMsg
                             )
                         )
-                        addLog("⚠️ Nessuna centralina Body/Meter/Clima/ADAS ha risposto. Quadro non in READY o bus non sincronizzato.")
+                        addLog("⚠️ $alertMsg")
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Errore lettura ECU", e)
@@ -1871,7 +2081,7 @@ class ObdController(
                         if (nrc != null) {
                             if (nrc.nrc == Elm327Protocol.NRC_CONDITIONS_NOT_CORRECT) {
                                 conditionsNotCorrectDetected = true
-                                writeFailureReason = "Veicolo non pronto: accendere quadro in READY, chiudere tutte le portiere e mettere il cambio in P"
+                                writeFailureReason = "⚠️ Pre-condizioni non soddisfatte: accendere quadro in READY, chiudere tutte le portiere e mettere il cambio in P"
                                 addLog("⚠️ UDS Session 1003 rifiutata (NRC 22): $writeFailureReason")
                             } else {
                                 val desc = Elm327Protocol.getUdsNrcDescription(nrc.nrc)
@@ -1947,7 +2157,7 @@ class ObdController(
                                 addLog("⚠️ Lettura UDS 22 $paramName ($activeDid) fallita (NRC ${readNrc.nrc}): $desc. Scrittura 2E annullata.")
                                 if (readNrc.nrc == Elm327Protocol.NRC_CONDITIONS_NOT_CORRECT) {
                                     conditionsNotCorrectDetected = true
-                                    writeFailureReason = "Veicolo non pronto: accendere quadro in READY, chiudere tutte le portiere e mettere il cambio in P"
+                                    writeFailureReason = "⚠️ Pre-condizioni non soddisfatte: accendere quadro in READY, chiudere tutte le portiere e mettere il cambio in P"
                                 }
                             } else {
                                 addLog("⚠️ Lettura UDS 22 $paramName ($activeDid) non confermata ($cleanOrig). Scrittura 2E annullata.")
@@ -1972,7 +2182,7 @@ class ObdController(
                                 addLog("❌ Scrittura UDS 2E $paramName fallita (NRC ${writeNrc.nrc}): $desc")
                                 if (writeNrc.nrc == Elm327Protocol.NRC_CONDITIONS_NOT_CORRECT) {
                                     conditionsNotCorrectDetected = true
-                                    writeFailureReason = "Veicolo non pronto: accendere quadro in READY, chiudere tutte le portiere e mettere il cambio in P"
+                                    writeFailureReason = "⚠️ Pre-condizioni non soddisfatte: accendere quadro in READY, chiudere tutte le portiere e mettere il cambio in P"
                                 }
                             } else {
                                 addLog("❌ Scrittura UDS 2E $paramName non confermata: $cleanWrite")
@@ -1996,219 +2206,211 @@ class ObdController(
                     ensureCanHeader(ToyotaYarisCommands.HEADER_METER_ECU)
                     if (openExtendedSession()) {
                         delay(40)
-                        var meterOk = true
                         val targetReverseDid = discoveredMeterReverseBeepDid ?: ToyotaYarisCommands.DID_METER_REVERSE_BEEP
-                        meterOk = executeReadBeforeWrite(
+                        if (executeReadBeforeWrite(
                             targetReverseDid,
                             updatedState.reverseBeep.code,
                             "Reverse Beep",
                             candidateDids = ToyotaYarisCommands.CANDIDATE_DIDS_METER_REVERSE_BEEP
-                        ) && meterOk
+                        )) anyWriteSucceeded = true
                         delay(40)
                         val targetSeatbeltDid = discoveredMeterSeatbeltDid ?: ToyotaYarisCommands.DID_METER_DRIVER_SEATBELT
-                        meterOk = executeReadBeforeWrite(
+                        if (executeReadBeforeWrite(
                             targetSeatbeltDid,
                             if (updatedState.driverSeatbeltBeep) "01" else "00",
                             "Driver Seatbelt",
                             candidateDids = ToyotaYarisCommands.CANDIDATE_DIDS_METER_SEATBELT
-                        ) && meterOk
+                        )) anyWriteSucceeded = true
                         delay(40)
-                        meterOk = executeReadBeforeWrite(
+                        if (executeReadBeforeWrite(
                             ToyotaYarisCommands.DID_METER_PASSENGER_SEATBELT,
                             if (updatedState.passengerSeatbeltBeep) "01" else "00",
                             "Passenger Seatbelt",
                             candidateDids = ToyotaYarisCommands.CANDIDATE_DIDS_METER_SEATBELT
-                        ) && meterOk
+                        )) anyWriteSucceeded = true
                         delay(40)
-                        meterOk = executeReadBeforeWrite(
+                        if (executeReadBeforeWrite(
                             ToyotaYarisCommands.DID_METER_REAR_SEATBELT,
                             if (updatedState.rearSeatbeltBeep) "01" else "00",
                             "Rear Seatbelt",
                             candidateDids = ToyotaYarisCommands.CANDIDATE_DIDS_METER_SEATBELT
-                        ) && meterOk
+                        )) anyWriteSucceeded = true
 
                         // 7. Commit EEPROM chiudendo sessione diagnostica con 1001
                         commitSessionDefault()
-                        if (meterOk) anyWriteSucceeded = true
                     }
 
                     // --- 2. MAIN BODY ECU (750 / 758) ---
                     ensureCanHeader(ToyotaYarisCommands.HEADER_BODY_ECU)
                     if (openExtendedSession(isBodyGateway = true)) {
                         delay(40)
-                        var bodyOk = true
-                        bodyOk = executeReadBeforeWrite(
+                        if (executeReadBeforeWrite(
                             ToyotaYarisCommands.DID_BODY_AUTO_DOOR_LOCK,
                             updatedState.autoDoorLock.code,
                             "Auto Door Lock",
                             isBodyGateway = true
-                        ) && bodyOk
+                        )) anyWriteSucceeded = true
                         delay(40)
-                        bodyOk = executeReadBeforeWrite(
+                        if (executeReadBeforeWrite(
                             ToyotaYarisCommands.DID_BODY_AUTO_DOOR_UNLOCK,
                             if (updatedState.autoDoorUnlock) "01" else "00",
                             "Auto Door Unlock",
                             isBodyGateway = true
-                        ) && bodyOk
+                        )) anyWriteSucceeded = true
                         delay(40)
-                        bodyOk = executeReadBeforeWrite(
+                        if (executeReadBeforeWrite(
                             ToyotaYarisCommands.DID_BODY_WINDOWS_KEY_FOB,
                             if (updatedState.windowsWithKeyFob) "01" else "00",
                             "Windows Key Fob",
                             isBodyGateway = true
-                        ) && bodyOk
+                        )) anyWriteSucceeded = true
                         delay(40)
-                        bodyOk = executeReadBeforeWrite(
+                        if (executeReadBeforeWrite(
                             ToyotaYarisCommands.DID_BODY_KEYLESS_BUZZER_VOL,
                             updatedState.keylessBuzzerVolume.code,
                             "Keyless Buzzer Volume",
                             isBodyGateway = true
-                        ) && bodyOk
+                        )) anyWriteSucceeded = true
                         delay(40)
-                        bodyOk = executeReadBeforeWrite(
+                        if (executeReadBeforeWrite(
                             ToyotaYarisCommands.DID_BODY_AUTO_RELOCK_TIME,
                             updatedState.autoRelockTime.code,
                             "Auto Relock Time",
                             isBodyGateway = true
-                        ) && bodyOk
+                        )) anyWriteSucceeded = true
                         delay(40)
-                        bodyOk = executeReadBeforeWrite(
+                        if (executeReadBeforeWrite(
                             ToyotaYarisCommands.DID_BODY_DOOR_UNLOCK_MODE,
                             updatedState.doorUnlockMode.code,
                             "Door Unlock Mode",
                             isBodyGateway = true
-                        ) && bodyOk
+                        )) anyWriteSucceeded = true
                         delay(40)
-                        bodyOk = executeReadBeforeWrite(
+                        if (executeReadBeforeWrite(
                             ToyotaYarisCommands.DID_BODY_TURN_SIGNAL_FLASHES,
                             updatedState.turnSignalFlashes.code,
                             "Turn Signal Flashes",
                             isBodyGateway = true
-                        ) && bodyOk
+                        )) anyWriteSucceeded = true
                         delay(40)
-                        bodyOk = executeReadBeforeWrite(
+                        if (executeReadBeforeWrite(
                             ToyotaYarisCommands.DID_BODY_LIGHT_SENSITIVITY,
                             updatedState.lightSensitivity.code,
                             "Light Sensitivity",
                             isBodyGateway = true
-                        ) && bodyOk
+                        )) anyWriteSucceeded = true
                         delay(40)
-                        bodyOk = executeReadBeforeWrite(
+                        if (executeReadBeforeWrite(
                             ToyotaYarisCommands.DID_BODY_FOLLOW_ME_HOME,
                             updatedState.followMeHome.code,
                             "Follow Me Home",
                             isBodyGateway = true
-                        ) && bodyOk
+                        )) anyWriteSucceeded = true
                         delay(40)
-                        bodyOk = executeReadBeforeWrite(
+                        if (executeReadBeforeWrite(
                             ToyotaYarisCommands.DID_BODY_INTERIOR_DIM_TIME,
                             updatedState.interiorDimTime.code,
                             "Interior Dim Time",
                             isBodyGateway = true
-                        ) && bodyOk
+                        )) anyWriteSucceeded = true
                         delay(40)
-                        bodyOk = executeReadBeforeWrite(
+                        if (executeReadBeforeWrite(
                             ToyotaYarisCommands.DID_BODY_FOOTWELL_LIGHT_DRIVE,
                             if (updatedState.footwellLightingInDrive) "01" else "00",
                             "Footwell Light in Drive",
                             isBodyGateway = true
-                        ) && bodyOk
+                        )) anyWriteSucceeded = true
                         delay(40)
-                        bodyOk = executeReadBeforeWrite(
+                        if (executeReadBeforeWrite(
                             ToyotaYarisCommands.DID_BODY_REAR_WIPER_REVERSE,
                             if (updatedState.rearWiperReverseLink) "01" else "00",
                             "Rear Wiper Reverse Link",
                             isBodyGateway = true
-                        ) && bodyOk
+                        )) anyWriteSucceeded = true
                         delay(40)
-                        bodyOk = executeReadBeforeWrite(
+                        if (executeReadBeforeWrite(
                             ToyotaYarisCommands.DID_BODY_DRIP_WIPE_EXTRA,
                             if (updatedState.dripWipeExtraPass) "01" else "00",
                             "Drip Wipe Extra Pass",
                             isBodyGateway = true
-                        ) && bodyOk
+                        )) anyWriteSucceeded = true
                         delay(40)
-                        bodyOk = executeReadBeforeWrite(
+                        if (executeReadBeforeWrite(
                             ToyotaYarisCommands.DID_BODY_WIPER_SPEED_LINK,
                             if (updatedState.wiperSpeedLink) "01" else "00",
                             "Wiper Speed Link",
                             isBodyGateway = true
-                        ) && bodyOk
+                        )) anyWriteSucceeded = true
 
                         commitSessionDefault(isBodyGateway = true)
-                        if (bodyOk) anyWriteSucceeded = true
                     }
 
                     // --- 3. AIRCON ECU (7C4 / 7CC) ---
                     ensureCanHeader(ToyotaYarisCommands.HEADER_AIRCON_ECU)
                     if (openExtendedSession()) {
                         delay(40)
-                        var acOk = true
-                        acOk = executeReadBeforeWrite(
+                        if (executeReadBeforeWrite(
                             ToyotaYarisCommands.DID_AIRCON_AUTO_AC_BUTTON,
                             if (updatedState.autoAcWithAutoButton) "01" else "00",
                             "Auto AC with AUTO Button"
-                        ) && acOk
+                        )) anyWriteSucceeded = true
                         delay(40)
-                        acOk = executeReadBeforeWrite(
+                        if (executeReadBeforeWrite(
                             ToyotaYarisCommands.DID_AIRCON_ECO_EFFICIENCY,
                             if (updatedState.ecoAirConEfficiencyMode) "01" else "00",
                             "Eco AirCon Efficiency Mode"
-                        ) && acOk
+                        )) anyWriteSucceeded = true
                         delay(40)
-                        acOk = executeReadBeforeWrite(
+                        if (executeReadBeforeWrite(
                             ToyotaYarisCommands.DID_AIRCON_DEFROSTER_BLOWER,
                             if (updatedState.blowerOnDefroster) "01" else "00",
                             "Blower on Defroster"
-                        ) && acOk
+                        )) anyWriteSucceeded = true
                         delay(40)
-                        acOk = executeReadBeforeWrite(
+                        if (executeReadBeforeWrite(
                             ToyotaYarisCommands.DID_AIRCON_TEMP_CALIBRATION,
                             updatedState.temperatureCalibration.code,
                             "Temperature Calibration"
-                        ) && acOk
+                        )) anyWriteSucceeded = true
 
                         commitSessionDefault()
-                        if (acOk) anyWriteSucceeded = true
                     }
 
                     // --- 4. ADAS ECU (7A0 / 7A8) ---
                     ensureCanHeader(ToyotaYarisCommands.HEADER_ADAS_ECU)
                     if (openExtendedSession()) {
                         delay(40)
-                        var adasOk = true
-                        adasOk = executeReadBeforeWrite(
+                        if (executeReadBeforeWrite(
                             ToyotaYarisCommands.DID_ADAS_LDA_WARNING_VOLUME,
                             updatedState.ldaWarningVolume.code,
                             "LDA Warning Volume"
-                        ) && adasOk
+                        )) anyWriteSucceeded = true
                         delay(40)
-                        adasOk = executeReadBeforeWrite(
+                        if (executeReadBeforeWrite(
                             ToyotaYarisCommands.DID_ADAS_BSM_SENSITIVITY,
                             updatedState.bsmSensitivity.code,
                             "BSM Sensitivity"
-                        ) && adasOk
+                        )) anyWriteSucceeded = true
                         delay(40)
-                        adasOk = executeReadBeforeWrite(
+                        if (executeReadBeforeWrite(
                             ToyotaYarisCommands.DID_ADAS_RCTA_ENABLED,
                             if (updatedState.rctaEnabled) "01" else "00",
                             "RCTA Enabled"
-                        ) && adasOk
+                        )) anyWriteSucceeded = true
                         delay(40)
-                        adasOk = executeReadBeforeWrite(
+                        if (executeReadBeforeWrite(
                             ToyotaYarisCommands.DID_ADAS_LTA_ENABLED,
                             if (updatedState.ltaEnabled) "01" else "00",
                             "LTA Enabled"
-                        ) && adasOk
+                        )) anyWriteSucceeded = true
                         delay(40)
-                        adasOk = executeReadBeforeWrite(
+                        if (executeReadBeforeWrite(
                             ToyotaYarisCommands.DID_ADAS_PCS_REMEMBER_LAST,
                             if (updatedState.pcsRememberLast) "01" else "00",
                             "PCS Remember Last"
-                        ) && adasOk
+                        )) anyWriteSucceeded = true
 
                         commitSessionDefault()
-                        if (adasOk) anyWriteSucceeded = true
                     }
 
                     if (anyWriteSucceeded) {
@@ -2221,7 +2423,11 @@ class ObdController(
                         )
                         addLog("✅ Scrittura centralina UDS completata e verificata con successo!")
                     } else {
-                        val failureMsg = writeFailureReason ?: "❌ Scrittura non riuscita: centralina non ha risposto (NODATA). Verifica quadro in READY"
+                        val failureMsg = writeFailureReason ?: if (conditionsNotCorrectDetected) {
+                            "⚠️ Pre-condizioni non soddisfatte: accendere quadro in READY, chiudere tutte le portiere e mettere il cambio in P"
+                        } else {
+                            "❌ Scrittura non riuscita: centralina non ha risposto (NODATA). Verifica quadro in READY"
+                        }
                         _liveState.value = _liveState.value.copy(
                             ecuCodingState = updatedState.copy(
                                 isWriting = false,

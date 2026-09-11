@@ -128,9 +128,11 @@ class MainActivity : ComponentActivity() {
                             service?.obdController?.setTargetThreshold(temp)
                         },
                         onForcedFanToggle = { forced ->
+                            if (service == null) playFeedbackTone(forced)
                             service?.obdController?.setManualForcedFan(forced)
                         },
                         onManualFanLevelChanged = { level ->
+                            if (service == null) playFeedbackTone(true)
                             service?.obdController?.setManualFanTargetLevel(level)
                         },
                         onAutoCoolingToggle = { enabled ->
@@ -295,8 +297,28 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private var feedbackToneGenerator: android.media.ToneGenerator? = null
+
+    private fun playFeedbackTone(isSuccess: Boolean = true) {
+        try {
+            if (feedbackToneGenerator == null) {
+                feedbackToneGenerator = android.media.ToneGenerator(android.media.AudioManager.STREAM_MUSIC, 70)
+            }
+            val tone = if (isSuccess) android.media.ToneGenerator.TONE_PROP_BEEP else android.media.ToneGenerator.TONE_PROP_NACK
+            feedbackToneGenerator?.startTone(tone, 150)
+        } catch (e: Exception) {
+            // Audio output stream might be muted or unavailable
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
+        try {
+            feedbackToneGenerator?.release()
+            feedbackToneGenerator = null
+        } catch (e: Exception) {
+            // Ignored
+        }
         if (isBound) {
             unbindService(serviceConnection)
             isBound = false

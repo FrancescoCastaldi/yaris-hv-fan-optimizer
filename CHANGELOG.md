@@ -5,6 +5,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 - **MAJOR (`X.0.0`)**: Fundamental architectural overhauls, major subsystems, or comprehensive UI redesigns.
 - **MINOR (`0.X.0`)**: New features, additional sensors, ECU coding options, or telemetry pipelines.
 
+## [3.1.5] - 2026-09-11
+### 🚀 Controllo Ventola Zero-Friction (L1–L6), Feedback Audio/Tattile & Hardening Diagnostica UDS
+- **Controllo Ventola HV Zero-Friction a Tolleranza Zero**:
+  - Attuazione incondizionata al 100%: non appena il link Bluetooth e il bus CAN sono connessi (`hasEcuCommunication == true`), la selezione o forzatura dei livelli L1–L6 invia immediatamente il comando UDS primario (`2F 58 03 0x`) senza attendere né dipendere dalla lettura preliminare della temperatura batteria.
+  - Doppia strategia di attuazione trasparente: invio primario UDS Service 0x2F e, su errore, NODATA o timeout (600ms), fallback automatico entro 50ms (ben sotto i 100ms) su Mode 30 (`30 08 0x`).
+  - Aggiornamento istantaneo dell'interfaccia (stato ventola, livello duty cycle ed RPM stimati) con feedback sonoro dedicato (`ToneGenerator`) e vibrazione aptica.
+  - Nuova barra di selezione rapida discreta L1..L6 e barre a 6 segmenti interattive e cliccabili direttamente nella sezione di gestione termica.
+- **Hardening Diagnostica ECU Coding UDS & Feedback Pre-condizioni**:
+  - Riconoscimento rigoroso del codice NRC 0x22 (`ConditionsNotCorrect`) per la sessione estesa `10 03`, la lettura `22` e la scrittura `2E`.
+  - Messaggio diagnostico chiaro ed esaustivo nell'interfaccia utente: `"⚠️ Pre-condizioni non soddisfatte: accendere quadro in READY, chiudere tutte le portiere e mettere il cambio in P"`, senza blocchi UI né loop infiniti.
+  - Sincronizzazione precisa dello stato del rilascio ventola OEM tramite tracking dedicato dell'attuazione reale su centralina.
+- **Suite di Test Unitari & Build Verificata**:
+  - 100% test unitari passati (159/159 test verdi con `--rerun-tasks`).
+  - Compilazione e firma RSA 2048-bit di `YarisHvFanControl-v3.1.5.apk` e `YarisObdBridge-v1.0.0.apk`.
+
 ## [3.1.4] - 2026-09-11
 ### ⚡ Resilienza Cloni ELM, Correzione Fallback Ventola NODATA & Protezione UDS Read-Before-Write
 - **Correzione Critica Fallback Forzatura Ventola su Cloni ELM327**:

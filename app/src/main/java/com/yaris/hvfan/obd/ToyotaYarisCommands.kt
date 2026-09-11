@@ -698,7 +698,7 @@ object ToyotaYarisCommands {
      * Parses the response from Toyota Mode 21 PID 87 (Traction Battery Temperatures TB1..TB3 and Intake Air Temp)
      * using the official formula: ((A*256)+B)*255.9f/65535f - 50.0f for each 2-byte channel.
      */
-    fun parseBatteryTemperature2187(raw: String, isForced: Boolean = false): HvBatteryStatus? {
+    fun parseBatteryTemperature2187(raw: String, isForced: Boolean = false, forcedLevel: Int = 6): HvBatteryStatus? {
         val frames = Elm327Protocol.extractValidFrames(raw)
         val clean = if (frames.isNotEmpty()) {
             frames.joinToString("")
@@ -741,7 +741,7 @@ object ToyotaYarisCommands {
 
             val rawFan = if (data.length >= 18) data.substring(16, 18).toIntOrNull(16) else null
             val fanLevel = when {
-                isForced -> 6
+                isForced -> forcedLevel.coerceIn(1, 6)
                 rawFan != null && rawFan in 0..6 -> rawFan
                 else -> 0
             }
@@ -773,7 +773,7 @@ object ToyotaYarisCommands {
     /**
      * Parses the response from 2187, 21CE, 2228C1, 2101 or 2161 into HvBatteryStatus.
      */
-    fun parseBatteryResponse(raw: String, isForced: Boolean): HvBatteryStatus? {
+    fun parseBatteryResponse(raw: String, isForced: Boolean, forcedLevel: Int = 6): HvBatteryStatus? {
         val frames = Elm327Protocol.extractValidFrames(raw)
         val clean = if (frames.isNotEmpty()) {
             frames.joinToString("")
@@ -787,12 +787,13 @@ object ToyotaYarisCommands {
         }
 
         if (clean.contains("6187")) {
-            return parseBatteryTemperature2187(raw, isForced)
+            return parseBatteryTemperature2187(raw, isForced, forcedLevel)
         }
 
         if (clean.contains("61CE")) {
-            val fanLevel = if (isForced) 6 else 0
-            val fanRpm = if (isForced) 4650 else 0
+            val fanLevel = if (isForced) forcedLevel.coerceIn(1, 6) else 0
+            val rpmMap = mapOf(0 to 0, 1 to 1250, 2 to 1850, 3 to 2450, 4 to 3100, 5 to 3850, 6 to 4650)
+            val fanRpm = rpmMap[fanLevel] ?: (fanLevel * 750)
             return HvBatteryStatus(
                 temp1 = 25.0,
                 temp2 = 25.0,
@@ -804,7 +805,7 @@ object ToyotaYarisCommands {
                 intakeTemp = 24.0,
                 fanSpeedLevel = fanLevel,
                 isFanForced = isForced,
-                isEcuAckConfirmed = isForced,
+                isEcuAckConfirmed = isForced || fanLevel > 0,
                 estimatedFanRpm = fanRpm,
                 isThermalThrottled = false,
                 timestamp = System.currentTimeMillis()
@@ -817,10 +818,10 @@ object ToyotaYarisCommands {
                 hexPayload.contains("6228C1") -> hexPayload = hexPayload.substring(hexPayload.indexOf("6228C1") + 6)
                 hexPayload.contains("6228C0") -> hexPayload = hexPayload.substring(hexPayload.indexOf("6228C0") + 6)
                 hexPayload.contains("620101") -> hexPayload = hexPayload.substring(hexPayload.indexOf("620101") + 6)
-                hexPayload.contains("6101")   -> hexPayload = hexPayload.substring(hexPayload.indexOf("6101") + 4)
-                hexPayload.contains("6161")   -> hexPayload = hexPayload.substring(hexPayload.indexOf("6161") + 4)
-                hexPayload.contains("61C3")   -> hexPayload = hexPayload.substring(hexPayload.indexOf("61C3") + 4)
-                hexPayload.contains("61C4")   -> hexPayload = hexPayload.substring(hexPayload.indexOf("61C4") + 4)
+                hexPayload.contains("6101") -> hexPayload = hexPayload.substring(hexPayload.indexOf("6101") + 4)
+                hexPayload.contains("6161") -> hexPayload = hexPayload.substring(hexPayload.indexOf("6161") + 4)
+                hexPayload.contains("61C3") -> hexPayload = hexPayload.substring(hexPayload.indexOf("61C3") + 4)
+                hexPayload.contains("61C4") -> hexPayload = hexPayload.substring(hexPayload.indexOf("61C4") + 4)
                 else -> return null
             }
 
@@ -828,22 +829,19 @@ object ToyotaYarisCommands {
             // presenti nelle risposte multi-frame quando gli header CAN sono attivi (ATH1).
             hexPayload = hexPayload.replace(Regex("""(?:7[0-9A-F]{2}2[0-9A-F])"""), "")
 
-            if (hexPayload.length < 8) {
-                return null
-            }
+            if (hexPayload.length < 8) return null
 
-            val t1Hex = hexPayload.substring(0, 2).toIntOrNull(16) ?: return null
-            val t1 = (t1Hex - 40).toDouble()
-            val t2 = if (hexPayload.length >= 4) (hexPayload.substring(2, 4).toIntOrNull(16)?.let { (it - 40).toDouble() } ?: return null) else t1
-            val t3 = if (hexPayload.length >= 6) (hexPayload.substring(4, 6).toIntOrNull(16)?.let { (it - 40).toDouble() } ?: return null) else t1
-            val t4 = if (hexPayload.length >= 8) (hexPayload.substring(6, 8).toIntOrNull(16)?.let { (it - 40).toDouble() } ?: return null) else t1
+            val t1 = hexPayload.substring(0, 2).toIntOrNull(16)?.let { (it - 40).toDouble() } ?: return null
+            val t2 = hexPayload.substring(2, 4).toIntOrNull(16)?.let { (it - 40).toDouble() } ?: return null
+            val t3 = hexPayload.substring(4, 6).toIntOrNull(16)?.let { (it - 40).toDouble() } ?: return null
+            val t4 = hexPayload.substring(6, 8).toIntOrNull(16)?.let { (it - 40).toDouble() } ?: return null
             
             val intake = if (hexPayload.length >= 10) (hexPayload.substring(8, 10).toIntOrNull(16)?.let { (it - 40).toDouble() } ?: return null) else t1
             val fanLevel = if (hexPayload.length >= 12) {
                 val rawFan = hexPayload.substring(10, 12).toIntOrNull(16) ?: return null
                 rawFan.coerceIn(0, 6)
             } else {
-                if (isForced) 6 else 0
+                if (isForced) forcedLevel.coerceIn(1, 6) else 0
             }
 
             val rpmMap = mapOf(0 to 0, 1 to 1250, 2 to 1850, 3 to 2450, 4 to 3100, 5 to 3850, 6 to 4650)

@@ -56,6 +56,9 @@ fun FanManagementSection(
         if (temps.isNotEmpty()) (temps.maxOrNull() ?: 0.0) - (temps.minOrNull() ?: 0.0) else 0.0
     } else 0.0
 
+    val haptic = LocalHapticFeedback.current
+    val currentTarget = liveState.manualFanTargetLevel
+
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
 
         // --- 1. FAN OVERRIDE & DISCRETE 6-LEVEL GAUGE (MoTeC Style) ---
@@ -107,7 +110,6 @@ fun FanManagementSection(
                         )
                     }
 
-                    val haptic = LocalHapticFeedback.current
                     Switch(
                         checked = isForced,
                         onCheckedChange = {
@@ -135,9 +137,6 @@ fun FanManagementSection(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val haptic = LocalHapticFeedback.current
-                    val currentTarget = liveState.manualFanTargetLevel
-
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = "LIVELLO FORZATURA:",
@@ -217,6 +216,41 @@ fun FanManagementSection(
                     }
                 }
 
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Quick Selector L1-L6 Discrete Buttons Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    for (lvl in 1..6) {
+                        val isSelected = isForced && currentTarget == lvl
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(32.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .clickable {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onManualFanLevelChanged(lvl)
+                                },
+                            color = if (isSelected) AccentCyan else DarkBackground,
+                            border = BorderStroke(1.dp, if (isSelected) AccentCyan else CardBorder),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = "L$lvl",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = if (isSelected) DarkBackground else TextPrimary
+                                )
+                            }
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(14.dp))
 
                 // Discrete 6-Segment Level Indicator
@@ -262,7 +296,7 @@ fun FanManagementSection(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // 6 Segment bars
+                // 6 Segment bars (interactive quick selection)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -277,7 +311,12 @@ fun FanManagementSection(
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .height(12.dp)
+                                .height(14.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .clickable {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onManualFanLevelChanged(level)
+                                }
                                 .background(
                                     if (isActive) activeColor else DarkBackground,
                                     RoundedCornerShape(2.dp)
